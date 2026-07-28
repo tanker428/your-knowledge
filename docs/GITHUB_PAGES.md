@@ -110,10 +110,20 @@ assets/  domain/  src/
 3. `feat/github-pages-port` → `main` の Pull Request を作る
    （CI が lint / typecheck / test / build を実行する）
 4. マージする
-5. リポジトリの **Settings → Pages → Build and deployment → Source** を
-   **GitHub Actions** にする
-6. `Deploy to GitHub Pages` ワークフローが走り、`dist/` が配信される
-7. `https://tanker428.github.io/your-knowledge/` を開く
+5. `Deploy to GitHub Pages` ワークフローが走り、`dist/` が配信される
+6. `https://tanker428.github.io/your-knowledge/` を開く
+
+**Settings → Pages の手動設定は不要。** `actions/configure-pages` を
+`enablement: true` で使っているため、ワークフローが Pages を有効化し、ソースを
+GitHub Actions に設定する。
+
+> **リポジトリが Private の場合**、GitHub Pages の公開には有料プラン（Pro 以上）が
+> 必要になる。無料プランでは `configure-pages` が 403 で失敗するので、その場合は
+> リポジトリを Public にすること。
+>
+> なお Pages サイト自体は、リポジトリが Private であっても URL を知っていれば
+> 誰でも閲覧できる（Private Pages は Enterprise 限定）。同梱しているサンプル写真
+> 20枚も公開対象になる点に注意。
 
 ## リポジトリ名を変えた場合
 

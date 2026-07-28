@@ -52,7 +52,11 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+      # enablement: true turns Pages on for the repository if it is not yet
+      # enabled, so no manual Settings → Pages step is needed.
       - uses: actions/configure-pages@v5
+        with:
+          enablement: true
       # Only dist/ is published — never the repo root, so node_modules, docs,
       # tests and .local-media can never end up on the public site.
       - uses: actions/upload-pages-artifact@v3
