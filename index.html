@@ -115,7 +115,12 @@
       <section class="view" id="view-photos" aria-labelledby="photosTitle">
         <div class="page-hero compact">
           <div><p class="section-kicker">PHOTO LIBRARY</p><h1 id="photosTitle">訪問の写真</h1><p>写真は知識対象ではなく、観察したものへつながる入口です。カードには抽出された対象数と整理状態を表示します。</p></div>
-          <div class="page-actions"><button class="ghost-button dark" id="exportButton">JSONを書き出す</button><button class="primary-button" id="photosUploadButton">＋ 写真を追加</button></div>
+          <div class="page-actions">
+            <button class="ghost-button dark" id="exportButton">JSONを書き出す</button>
+            <button class="ghost-button dark" id="importButton">JSONを読み込む</button>
+            <input id="importInput" type="file" accept="application/json,.json" hidden />
+            <button class="primary-button" id="photosUploadButton">＋ 写真を追加</button>
+          </div>
         </div>
         <div class="filter-bar" id="photoFilterBar">
           <button class="filter-chip active" data-photo-filter="all">すべて</button>
@@ -261,11 +266,23 @@
         <span class="drop-icon">＋</span><strong>写真をここにドロップ</strong><small>またはクリックして選択</small>
       </label>
       <div class="upload-preview" id="uploadPreview"></div>
+      <div class="import-progress" id="importProgress">
+        <div class="import-progress-track"><span id="importProgressBar"></span></div>
+        <div class="import-progress-row">
+          <small id="importProgressText">準備中…</small>
+          <button class="text-button hidden" id="cancelImportButton" type="button">中止する</button>
+        </div>
+        <small class="import-progress-note">数枚ずつ処理して保存します。中止しても、保存済みの写真は残ります。</small>
+      </div>
       <div class="pwa-share-note">
         <div><strong>スマートフォンでまとめて追加</strong><p>ChromeからYour Knowledgeをホーム画面へ追加すると、ギャラリーで複数選択して「共有 → Your Knowledge」を利用できます。</p></div>
         <button class="ghost-button dark hidden" id="installPwaButton" type="button">ホーム画面へ追加</button>
       </div>
-      <div class="api-note"><strong>このプロトタイプの動作</strong><p>既存20枚には複数対象の候補を用意しています。新しい写真は「未整理」として追加でき、手動で対象を追加できます。AI候補生成はサーバー連携時だけ実行します。</p></div>
+      <div class="api-note">
+        <strong>このプロトタイプの動作</strong>
+        <p>既存20枚には複数対象の候補を用意しています。新しい写真は「未整理」として追加でき、手動で対象を追加できます。AI候補生成はサーバー連携時だけ実行します。</p>
+        <p class="storage-note" id="storageNote">保存領域を確認しています…</p>
+      </div>
       <div class="modal-actions"><button class="ghost-button dark" id="addWithoutAnalysisButton" disabled>未整理で追加</button><button class="primary-button" id="analyzeUploadButton" disabled>AI解析は未接続</button></div>
     </article>
   </div>
@@ -282,7 +299,22 @@
   </div>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script src="sample-data.js"></script>
-  <script src="app.js"></script>
+
+  <div class="app-banner update-banner" id="updateBanner" role="status" aria-live="polite">
+    <div><strong>新しいバージョンがあります</strong><small>編集中の内容を保存してから更新してください。</small></div>
+    <div class="app-banner-actions">
+      <button class="ghost-button dark" id="updateLaterButton" type="button">後で更新</button>
+      <button class="primary-button" id="updateNowButton" type="button">今すぐ更新</button>
+    </div>
+  </div>
+
+  <div class="app-banner storage-alert" id="storageAlert" role="alert">
+    <div><strong>保存に関する注意</strong><small id="storageAlertText"></small></div>
+    <div class="app-banner-actions">
+      <button class="ghost-button dark" id="storageAlertClose" type="button">閉じる</button>
+    </div>
+  </div>
+
+  <script type="module" src="src/main.js"></script>
 </body>
 </html>

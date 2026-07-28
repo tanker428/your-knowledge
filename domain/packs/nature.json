@@ -1,0 +1,85 @@
+{
+  "id": "nature",
+  "label": "自然・生態",
+  "icon": "🌲",
+  "description": "屋久島、森林、生物、保全",
+  "visitTemplate": {
+    "title": "自然・観光地",
+    "description": "樹木、地形、案内板、体験を整理",
+    "icon": "🌲"
+  },
+  "categories": [
+    {
+      "id": "tree",
+      "label": "樹木"
+    },
+    {
+      "id": "plant",
+      "label": "草本・植物"
+    },
+    {
+      "id": "moss-fern",
+      "label": "コケ・シダ"
+    },
+    {
+      "id": "animal",
+      "label": "動物"
+    },
+    {
+      "id": "rock",
+      "label": "岩石"
+    },
+    {
+      "id": "water",
+      "label": "水・河川"
+    },
+    {
+      "id": "terrain",
+      "label": "地形"
+    },
+    {
+      "id": "forest",
+      "label": "森林"
+    },
+    {
+      "id": "trail",
+      "label": "登山道"
+    },
+    {
+      "id": "viewpoint",
+      "label": "展望地点"
+    },
+    {
+      "id": "guide-board",
+      "label": "案内板"
+    },
+    {
+      "id": "species",
+      "label": "生物種"
+    },
+    {
+      "id": "individual",
+      "label": "個体"
+    },
+    {
+      "id": "ecology",
+      "label": "森林生態"
+    },
+    {
+      "id": "structure",
+      "label": "樹木の構造"
+    },
+    {
+      "id": "climate",
+      "label": "気候"
+    },
+    {
+      "id": "conservation",
+      "label": "自然保護"
+    },
+    {
+      "id": "human-nature",
+      "label": "人と自然"
+    }
+  ]
+}

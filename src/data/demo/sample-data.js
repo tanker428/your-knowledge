@@ -1,8 +1,18 @@
-/* Your Knowledge sample model: Photo ≠ Observation ≠ Entity ≠ LearningFact */
+/**
+ * Demo visit data for the bundled 20 sample photos (Fukui dinosaur museum).
+ *
+ * This file holds ONLY demo content. Domain-specific classification vocabulary
+ * lives in `domain/packs/*.json` and the domain-independent vocabulary lives in
+ * `domain/core/vocabulary.json` — never add either of those here.
+ *
+ * Generated from the original prototype's `sample-data.js`; the records are
+ * byte-for-byte the same values, only the module wrapper changed.
+ */
 
-window.YOUR_KNOWLEDGE_DATA_MODEL = {
-  version: 2,
-  records: [
+/** @type {{version:number,records:string[],note:string}} */
+export const DATA_MODEL = {
+  "version": 2,
+  "records": [
     "Visit",
     "Photo",
     "Observation",
@@ -12,530 +22,10 @@ window.YOUR_KNOWLEDGE_DATA_MODEL = {
     "Collection",
     "Question"
   ],
-  note: "Runtimeでは表示効率のためObservationをPhoto内へ配置し、JSON出力時はphotoIdを持つ独立レコードへ正規化する。"
+  "note": "Runtimeでは表示効率のためObservationをPhoto内へ配置し、JSON出力時はphotoIdを持つ独立レコードへ正規化する。"
 };
 
-window.GENERIC_CATEGORIES = [
-  {
-    "id": "exhibit-object",
-    "label": "展示物・現物",
-    "icon": "◆",
-    "description": "標本、作品、文化財、道具など"
-  },
-  {
-    "id": "replica-model",
-    "label": "模型・複製・復元",
-    "icon": "⬡",
-    "description": "レプリカ、復元骨格、ジオラマなど"
-  },
-  {
-    "id": "explanation-panel",
-    "label": "説明パネル・ラベル",
-    "icon": "▤",
-    "description": "名称ラベル、解説文、案内板など"
-  },
-  {
-    "id": "diagram-map",
-    "label": "図表・地図",
-    "icon": "⌘",
-    "description": "系統図、時間軸、グラフ、地図など"
-  },
-  {
-    "id": "place-landscape",
-    "label": "場所・景観",
-    "icon": "▧",
-    "description": "展示空間、建築、森林、遺跡など"
-  },
-  {
-    "id": "living-natural",
-    "label": "生物・自然物",
-    "icon": "✦",
-    "description": "樹木、動物、岩石、地形など"
-  },
-  {
-    "id": "person-activity",
-    "label": "人物・活動",
-    "icon": "◉",
-    "description": "人物、作業、祭り、体験など"
-  },
-  {
-    "id": "media-image",
-    "label": "映像・画像",
-    "icon": "▣",
-    "description": "スクリーン、古写真、復元画など"
-  },
-  {
-    "id": "unknown",
-    "label": "未判定",
-    "icon": "?",
-    "description": "まだ分類していない対象"
-  }
-];
-
-window.LEARNING_ROLES = [
-  {
-    "id": "direct",
-    "label": "見た対象"
-  },
-  {
-    "id": "explains",
-    "label": "説明するもの"
-  },
-  {
-    "id": "comparison",
-    "label": "比較するもの"
-  },
-  {
-    "id": "context",
-    "label": "背景・文脈"
-  },
-  {
-    "id": "detail",
-    "label": "部分・細部"
-  },
-  {
-    "id": "route",
-    "label": "場所・経路"
-  },
-  {
-    "id": "memory",
-    "label": "体験・思い出"
-  },
-  {
-    "id": "evidence",
-    "label": "証拠・資料"
-  }
-];
-
-window.DOMAIN_PACKS = [
-  {
-    "id": "paleontology",
-    "label": "自然史・古生物",
-    "icon": "🦴",
-    "description": "恐竜、進化、化石、地質時代"
-  },
-  {
-    "id": "cultural",
-    "label": "美術・文化財",
-    "icon": "🏺",
-    "description": "故宮、工芸、書画、文化財"
-  },
-  {
-    "id": "nature",
-    "label": "自然・生態",
-    "icon": "🌲",
-    "description": "屋久島、森林、生物、保全"
-  },
-  {
-    "id": "history",
-    "label": "歴史・考古",
-    "icon": "📜",
-    "description": "歴史資料、人物、出来事、地域"
-  },
-  {
-    "id": "other",
-    "label": "その他",
-    "icon": "＋",
-    "description": "分野をあとで決める"
-  }
-];
-
-window.DOMAIN_CATEGORIES = {
-  "paleontology": [
-    {
-      "id": "skeleton",
-      "label": "骨格標本"
-    },
-    {
-      "id": "fossil",
-      "label": "化石・標本"
-    },
-    {
-      "id": "restoration",
-      "label": "生体復元・模型"
-    },
-    {
-      "id": "trace",
-      "label": "足跡・痕跡"
-    },
-    {
-      "id": "rock-strata",
-      "label": "岩石・地層"
-    },
-    {
-      "id": "phylogeny",
-      "label": "系統図"
-    },
-    {
-      "id": "geologic-time",
-      "label": "地質年代・時間軸"
-    },
-    {
-      "id": "paleoenvironment",
-      "label": "古環境"
-    },
-    {
-      "id": "dinosaur",
-      "label": "恐竜"
-    },
-    {
-      "id": "saurischia",
-      "label": "竜盤類"
-    },
-    {
-      "id": "ornithischia",
-      "label": "鳥盤類"
-    },
-    {
-      "id": "pterosaur",
-      "label": "翼竜"
-    },
-    {
-      "id": "marine-reptile",
-      "label": "海生爬虫類"
-    },
-    {
-      "id": "mammal-human",
-      "label": "哺乳類・人類"
-    },
-    {
-      "id": "plant",
-      "label": "植物"
-    },
-    {
-      "id": "insect",
-      "label": "昆虫"
-    },
-    {
-      "id": "evolution",
-      "label": "進化・系統"
-    },
-    {
-      "id": "anatomy",
-      "label": "身体構造"
-    },
-    {
-      "id": "exhibit-space",
-      "label": "展示空間"
-    }
-  ],
-  "cultural": [
-    {
-      "id": "painting",
-      "label": "絵画"
-    },
-    {
-      "id": "calligraphy",
-      "label": "書"
-    },
-    {
-      "id": "document",
-      "label": "文書"
-    },
-    {
-      "id": "ceramic",
-      "label": "陶磁器"
-    },
-    {
-      "id": "bronze",
-      "label": "青銅器"
-    },
-    {
-      "id": "jade",
-      "label": "玉器"
-    },
-    {
-      "id": "lacquer",
-      "label": "漆器"
-    },
-    {
-      "id": "wood",
-      "label": "木工"
-    },
-    {
-      "id": "metal",
-      "label": "金工"
-    },
-    {
-      "id": "textile",
-      "label": "織物"
-    },
-    {
-      "id": "furniture",
-      "label": "家具"
-    },
-    {
-      "id": "religious",
-      "label": "宗教用品"
-    },
-    {
-      "id": "daily-life",
-      "label": "生活用品"
-    },
-    {
-      "id": "material",
-      "label": "素材"
-    },
-    {
-      "id": "technique",
-      "label": "製作技法"
-    },
-    {
-      "id": "motif",
-      "label": "文様"
-    },
-    {
-      "id": "dynasty",
-      "label": "王朝・時代"
-    },
-    {
-      "id": "ritual",
-      "label": "儀礼・生活"
-    }
-  ],
-  "nature": [
-    {
-      "id": "tree",
-      "label": "樹木"
-    },
-    {
-      "id": "plant",
-      "label": "草本・植物"
-    },
-    {
-      "id": "moss-fern",
-      "label": "コケ・シダ"
-    },
-    {
-      "id": "animal",
-      "label": "動物"
-    },
-    {
-      "id": "rock",
-      "label": "岩石"
-    },
-    {
-      "id": "water",
-      "label": "水・河川"
-    },
-    {
-      "id": "terrain",
-      "label": "地形"
-    },
-    {
-      "id": "forest",
-      "label": "森林"
-    },
-    {
-      "id": "trail",
-      "label": "登山道"
-    },
-    {
-      "id": "viewpoint",
-      "label": "展望地点"
-    },
-    {
-      "id": "guide-board",
-      "label": "案内板"
-    },
-    {
-      "id": "species",
-      "label": "生物種"
-    },
-    {
-      "id": "individual",
-      "label": "個体"
-    },
-    {
-      "id": "ecology",
-      "label": "森林生態"
-    },
-    {
-      "id": "structure",
-      "label": "樹木の構造"
-    },
-    {
-      "id": "climate",
-      "label": "気候"
-    },
-    {
-      "id": "conservation",
-      "label": "自然保護"
-    },
-    {
-      "id": "human-nature",
-      "label": "人と自然"
-    }
-  ],
-  "history": [
-    {
-      "id": "old-document",
-      "label": "古文書"
-    },
-    {
-      "id": "map",
-      "label": "地図"
-    },
-    {
-      "id": "photo-record",
-      "label": "写真・記録"
-    },
-    {
-      "id": "picture",
-      "label": "絵図"
-    },
-    {
-      "id": "newspaper",
-      "label": "新聞"
-    },
-    {
-      "id": "daily-tool",
-      "label": "生活道具"
-    },
-    {
-      "id": "weapon",
-      "label": "武具"
-    },
-    {
-      "id": "agriculture",
-      "label": "農具"
-    },
-    {
-      "id": "clothing",
-      "label": "衣服"
-    },
-    {
-      "id": "currency",
-      "label": "貨幣"
-    },
-    {
-      "id": "pottery",
-      "label": "土器・陶器"
-    },
-    {
-      "id": "archaeology",
-      "label": "考古資料"
-    },
-    {
-      "id": "timeline",
-      "label": "年表"
-    },
-    {
-      "id": "diorama",
-      "label": "ジオラマ"
-    },
-    {
-      "id": "era",
-      "label": "時代"
-    },
-    {
-      "id": "event",
-      "label": "出来事"
-    },
-    {
-      "id": "person",
-      "label": "人物"
-    },
-    {
-      "id": "region",
-      "label": "地域"
-    },
-    {
-      "id": "life",
-      "label": "生活"
-    },
-    {
-      "id": "industry",
-      "label": "産業"
-    },
-    {
-      "id": "politics",
-      "label": "政治"
-    },
-    {
-      "id": "war",
-      "label": "戦争"
-    },
-    {
-      "id": "culture",
-      "label": "文化"
-    }
-  ],
-  "other": [
-    {
-      "id": "unclassified",
-      "label": "未分類"
-    }
-  ]
-};
-
-window.VISIT_TEMPLATES = [
-  {
-    "id": "paleontology",
-    "title": "恐竜・自然史博物館",
-    "description": "展示物、骨格、説明パネル、系統図を整理",
-    "icon": "🦕"
-  },
-  {
-    "id": "cultural",
-    "title": "美術館・文化財施設",
-    "description": "作品、素材、技法、説明ラベルを整理",
-    "icon": "🏺"
-  },
-  {
-    "id": "nature",
-    "title": "自然・観光地",
-    "description": "樹木、地形、案内板、体験を整理",
-    "icon": "🌲"
-  },
-  {
-    "id": "history",
-    "title": "歴史・資料館",
-    "description": "文書、道具、人物、出来事を整理",
-    "icon": "🏛"
-  }
-];
-
-window.RELATION_TYPES = [
-  {
-    "id": "explains",
-    "label": "説明している"
-  },
-  {
-    "id": "part-of",
-    "label": "部分と全体"
-  },
-  {
-    "id": "same-object",
-    "label": "同じ物理対象"
-  },
-  {
-    "id": "same-exhibit",
-    "label": "同じ展示"
-  },
-  {
-    "id": "same-place",
-    "label": "同じ場所"
-  },
-  {
-    "id": "same-theme",
-    "label": "同じテーマ"
-  },
-  {
-    "id": "different-angle",
-    "label": "別角度"
-  },
-  {
-    "id": "compares",
-    "label": "比較している"
-  },
-  {
-    "id": "nearby-time",
-    "label": "撮影順が近い"
-  }
-];
-
-window.SAMPLE_VISIT = {
+export const SAMPLE_VISIT = {
   "id": "visit-fukui",
   "title": "恐竜博物館の訪問",
   "place": "自然史・恐竜博物館",
@@ -566,7 +56,7 @@ window.SAMPLE_VISIT = {
   ]
 };
 
-window.SAMPLE_PHOTOS = [
+export const SAMPLE_PHOTOS = [
   {
     "id": "p01",
     "file": "43083_0.jpg",
@@ -601,7 +91,8 @@ window.SAMPLE_PHOTOS = [
         "confidence": 0.98,
         "status": "confirmed",
         "visibleText": [],
-        "entityId": null
+        "entityId": null,
+        "photoId": "p01"
       },
       {
         "id": "o01b",
@@ -628,7 +119,8 @@ window.SAMPLE_PHOTOS = [
         "confidence": 0.96,
         "status": "confirmed",
         "visibleText": [],
-        "entityId": null
+        "entityId": null,
+        "photoId": "p01"
       },
       {
         "id": "o01c",
@@ -650,9 +142,11 @@ window.SAMPLE_PHOTOS = [
         "confidence": 0.87,
         "status": "confirmed",
         "visibleText": [],
-        "entityId": null
+        "entityId": null,
+        "photoId": "p01"
       }
-    ]
+    ],
+    "visitId": "visit-fukui"
   },
   {
     "id": "p02",
@@ -690,7 +184,8 @@ window.SAMPLE_PHOTOS = [
         "visibleText": [
           "拡大した脳"
         ],
-        "entityId": null
+        "entityId": null,
+        "photoId": "p02"
       },
       {
         "id": "o02b",
@@ -719,7 +214,8 @@ window.SAMPLE_PHOTOS = [
         "confidence": 0.98,
         "status": "confirmed",
         "visibleText": [],
-        "entityId": null
+        "entityId": null,
+        "photoId": "p02"
       },
       {
         "id": "o02c",
@@ -742,9 +238,11 @@ window.SAMPLE_PHOTOS = [
         "confidence": 0.89,
         "status": "confirmed",
         "visibleText": [],
-        "entityId": null
+        "entityId": null,
+        "photoId": "p02"
       }
-    ]
+    ],
+    "visitId": "visit-fukui"
   },
   {
     "id": "p03",
@@ -782,7 +280,8 @@ window.SAMPLE_PHOTOS = [
         "confidence": 0.96,
         "status": "suggested",
         "visibleText": [],
-        "entityId": null
+        "entityId": null,
+        "photoId": "p03"
       },
       {
         "id": "o03b",
@@ -813,7 +312,8 @@ window.SAMPLE_PHOTOS = [
         "confidence": 0.97,
         "status": "suggested",
         "visibleText": [],
-        "entityId": null
+        "entityId": null,
+        "photoId": "p03"
       },
       {
         "id": "o03c",
@@ -843,7 +343,8 @@ window.SAMPLE_PHOTOS = [
         "confidence": 0.93,
         "status": "suggested",
         "visibleText": [],
-        "entityId": null
+        "entityId": null,
+        "photoId": "p03"
       },
       {
         "id": "o03d",
@@ -872,7 +373,8 @@ window.SAMPLE_PHOTOS = [
         "confidence": 0.9,
         "status": "suggested",
         "visibleText": [],
-        "entityId": null
+        "entityId": null,
+        "photoId": "p03"
       },
       {
         "id": "o03e",
@@ -896,9 +398,11 @@ window.SAMPLE_PHOTOS = [
         "confidence": 0.82,
         "status": "suggested",
         "visibleText": [],
-        "entityId": null
+        "entityId": null,
+        "photoId": "p03"
       }
-    ]
+    ],
+    "visitId": "visit-fukui"
   },
   {
     "id": "p04",
@@ -936,7 +440,8 @@ window.SAMPLE_PHOTOS = [
         "confidence": 0.94,
         "status": "suggested",
         "visibleText": [],
-        "entityId": null
+        "entityId": null,
+        "photoId": "p04"
       },
       {
         "id": "o04b",
@@ -967,7 +472,8 @@ window.SAMPLE_PHOTOS = [
         "confidence": 0.91,
         "status": "suggested",
         "visibleText": [],
-        "entityId": null
+        "entityId": null,
+        "photoId": "p04"
       },
       {
         "id": "o04c",
@@ -994,9 +500,11 @@ window.SAMPLE_PHOTOS = [
         "confidence": 0.88,
         "status": "suggested",
         "visibleText": [],
-        "entityId": null
+        "entityId": null,
+        "photoId": "p04"
       }
-    ]
+    ],
+    "visitId": "visit-fukui"
   },
   {
     "id": "p05",
@@ -1032,7 +540,8 @@ window.SAMPLE_PHOTOS = [
         "confidence": 0.96,
         "status": "suggested",
         "visibleText": [],
-        "entityId": null
+        "entityId": null,
+        "photoId": "p05"
       },
       {
         "id": "o05b",
@@ -1061,7 +570,8 @@ window.SAMPLE_PHOTOS = [
         "confidence": 0.94,
         "status": "suggested",
         "visibleText": [],
-        "entityId": null
+        "entityId": null,
+        "photoId": "p05"
       },
       {
         "id": "o05c",
@@ -1090,7 +600,8 @@ window.SAMPLE_PHOTOS = [
         "confidence": 0.94,
         "status": "suggested",
         "visibleText": [],
-        "entityId": null
+        "entityId": null,
+        "photoId": "p05"
       },
       {
         "id": "o05d",
@@ -1119,9 +630,11 @@ window.SAMPLE_PHOTOS = [
         "confidence": 0.84,
         "status": "suggested",
         "visibleText": [],
-        "entityId": null
+        "entityId": null,
+        "photoId": "p05"
       }
-    ]
+    ],
+    "visitId": "visit-fukui"
   },
   {
     "id": "p06",
@@ -1157,7 +670,8 @@ window.SAMPLE_PHOTOS = [
         "confidence": 0.97,
         "status": "suggested",
         "visibleText": [],
-        "entityId": null
+        "entityId": null,
+        "photoId": "p06"
       },
       {
         "id": "o06b",
@@ -1186,9 +700,11 @@ window.SAMPLE_PHOTOS = [
         "confidence": 0.85,
         "status": "suggested",
         "visibleText": [],
-        "entityId": null
+        "entityId": null,
+        "photoId": "p06"
       }
-    ]
+    ],
+    "visitId": "visit-fukui"
   },
   {
     "id": "p07",
@@ -1225,7 +741,8 @@ window.SAMPLE_PHOTOS = [
         "confidence": 0.96,
         "status": "confirmed",
         "visibleText": [],
-        "entityId": "e-basilo"
+        "entityId": "e-basilo",
+        "photoId": "p07"
       },
       {
         "id": "o07b",
@@ -1248,9 +765,11 @@ window.SAMPLE_PHOTOS = [
         "confidence": 0.78,
         "status": "confirmed",
         "visibleText": [],
-        "entityId": null
+        "entityId": null,
+        "photoId": "p07"
       }
-    ]
+    ],
+    "visitId": "visit-fukui"
   },
   {
     "id": "p08",
@@ -1287,7 +806,8 @@ window.SAMPLE_PHOTOS = [
         "visibleText": [
           "バシロサウルス ケトイデス"
         ],
-        "entityId": "e-basilo"
+        "entityId": "e-basilo",
+        "photoId": "p08"
       },
       {
         "id": "o08b",
@@ -1316,9 +836,11 @@ window.SAMPLE_PHOTOS = [
         "confidence": 0.96,
         "status": "confirmed",
         "visibleText": [],
-        "entityId": null
+        "entityId": null,
+        "photoId": "p08"
       }
-    ]
+    ],
+    "visitId": "visit-fukui"
   },
   {
     "id": "p09",
@@ -1356,7 +878,8 @@ window.SAMPLE_PHOTOS = [
         "confidence": 0.9,
         "status": "suggested",
         "visibleText": [],
-        "entityId": null
+        "entityId": null,
+        "photoId": "p09"
       },
       {
         "id": "o09b",
@@ -1387,7 +910,8 @@ window.SAMPLE_PHOTOS = [
         "confidence": 0.88,
         "status": "suggested",
         "visibleText": [],
-        "entityId": null
+        "entityId": null,
+        "photoId": "p09"
       },
       {
         "id": "o09c",
@@ -1411,9 +935,11 @@ window.SAMPLE_PHOTOS = [
         "confidence": 0.82,
         "status": "suggested",
         "visibleText": [],
-        "entityId": null
+        "entityId": null,
+        "photoId": "p09"
       }
-    ]
+    ],
+    "visitId": "visit-fukui"
   },
   {
     "id": "p10",
@@ -1450,7 +976,8 @@ window.SAMPLE_PHOTOS = [
         "confidence": 0.94,
         "status": "suggested",
         "visibleText": [],
-        "entityId": null
+        "entityId": null,
+        "photoId": "p10"
       },
       {
         "id": "o10b",
@@ -1480,7 +1007,8 @@ window.SAMPLE_PHOTOS = [
         "confidence": 0.91,
         "status": "suggested",
         "visibleText": [],
-        "entityId": null
+        "entityId": null,
+        "photoId": "p10"
       },
       {
         "id": "o10c",
@@ -1502,9 +1030,11 @@ window.SAMPLE_PHOTOS = [
         "confidence": 0.99,
         "status": "confirmed",
         "visibleText": [],
-        "entityId": null
+        "entityId": null,
+        "photoId": "p10"
       }
-    ]
+    ],
+    "visitId": "visit-fukui"
   },
   {
     "id": "p11",
@@ -1542,7 +1072,8 @@ window.SAMPLE_PHOTOS = [
         "confidence": 0.93,
         "status": "suggested",
         "visibleText": [],
-        "entityId": null
+        "entityId": null,
+        "photoId": "p11"
       },
       {
         "id": "o11b",
@@ -1572,7 +1103,8 @@ window.SAMPLE_PHOTOS = [
         "confidence": 0.84,
         "status": "suggested",
         "visibleText": [],
-        "entityId": null
+        "entityId": null,
+        "photoId": "p11"
       },
       {
         "id": "o11c",
@@ -1599,9 +1131,11 @@ window.SAMPLE_PHOTOS = [
         "confidence": 0.78,
         "status": "suggested",
         "visibleText": [],
-        "entityId": null
+        "entityId": null,
+        "photoId": "p11"
       }
-    ]
+    ],
+    "visitId": "visit-fukui"
   },
   {
     "id": "p12",
@@ -1638,7 +1172,8 @@ window.SAMPLE_PHOTOS = [
         "confidence": 0.92,
         "status": "suggested",
         "visibleText": [],
-        "entityId": null
+        "entityId": null,
+        "photoId": "p12"
       },
       {
         "id": "o12b",
@@ -1668,7 +1203,8 @@ window.SAMPLE_PHOTOS = [
         "confidence": 0.88,
         "status": "suggested",
         "visibleText": [],
-        "entityId": null
+        "entityId": null,
+        "photoId": "p12"
       },
       {
         "id": "o12c",
@@ -1697,9 +1233,11 @@ window.SAMPLE_PHOTOS = [
         "confidence": 0.81,
         "status": "suggested",
         "visibleText": [],
-        "entityId": null
+        "entityId": null,
+        "photoId": "p12"
       }
-    ]
+    ],
+    "visitId": "visit-fukui"
   },
   {
     "id": "p13",
@@ -1737,7 +1275,8 @@ window.SAMPLE_PHOTOS = [
         "confidence": 0.91,
         "status": "suggested",
         "visibleText": [],
-        "entityId": null
+        "entityId": null,
+        "photoId": "p13"
       },
       {
         "id": "o13b",
@@ -1767,7 +1306,8 @@ window.SAMPLE_PHOTOS = [
         "confidence": 0.86,
         "status": "suggested",
         "visibleText": [],
-        "entityId": null
+        "entityId": null,
+        "photoId": "p13"
       },
       {
         "id": "o13c",
@@ -1794,9 +1334,11 @@ window.SAMPLE_PHOTOS = [
         "confidence": 0.82,
         "status": "suggested",
         "visibleText": [],
-        "entityId": null
+        "entityId": null,
+        "photoId": "p13"
       }
-    ]
+    ],
+    "visitId": "visit-fukui"
   },
   {
     "id": "p14",
@@ -1834,7 +1376,8 @@ window.SAMPLE_PHOTOS = [
         "confidence": 0.93,
         "status": "suggested",
         "visibleText": [],
-        "entityId": null
+        "entityId": null,
+        "photoId": "p14"
       },
       {
         "id": "o14b",
@@ -1865,7 +1408,8 @@ window.SAMPLE_PHOTOS = [
         "confidence": 0.91,
         "status": "suggested",
         "visibleText": [],
-        "entityId": null
+        "entityId": null,
+        "photoId": "p14"
       },
       {
         "id": "o14c",
@@ -1894,9 +1438,11 @@ window.SAMPLE_PHOTOS = [
         "confidence": 0.84,
         "status": "suggested",
         "visibleText": [],
-        "entityId": null
+        "entityId": null,
+        "photoId": "p14"
       }
-    ]
+    ],
+    "visitId": "visit-fukui"
   },
   {
     "id": "p15",
@@ -1932,7 +1478,8 @@ window.SAMPLE_PHOTOS = [
         "confidence": 0.96,
         "status": "suggested",
         "visibleText": [],
-        "entityId": null
+        "entityId": null,
+        "photoId": "p15"
       },
       {
         "id": "o15b",
@@ -1962,7 +1509,8 @@ window.SAMPLE_PHOTOS = [
         "confidence": 0.93,
         "status": "suggested",
         "visibleText": [],
-        "entityId": null
+        "entityId": null,
+        "photoId": "p15"
       },
       {
         "id": "o15c",
@@ -1990,9 +1538,11 @@ window.SAMPLE_PHOTOS = [
         "confidence": 0.82,
         "status": "suggested",
         "visibleText": [],
-        "entityId": null
+        "entityId": null,
+        "photoId": "p15"
       }
-    ]
+    ],
+    "visitId": "visit-fukui"
   },
   {
     "id": "p16",
@@ -2029,7 +1579,8 @@ window.SAMPLE_PHOTOS = [
         "confidence": 0.94,
         "status": "suggested",
         "visibleText": [],
-        "entityId": null
+        "entityId": null,
+        "photoId": "p16"
       },
       {
         "id": "o16b",
@@ -2058,7 +1609,8 @@ window.SAMPLE_PHOTOS = [
         "confidence": 0.89,
         "status": "suggested",
         "visibleText": [],
-        "entityId": null
+        "entityId": null,
+        "photoId": "p16"
       },
       {
         "id": "o16c",
@@ -2086,9 +1638,11 @@ window.SAMPLE_PHOTOS = [
         "confidence": 0.84,
         "status": "suggested",
         "visibleText": [],
-        "entityId": null
+        "entityId": null,
+        "photoId": "p16"
       }
-    ]
+    ],
+    "visitId": "visit-fukui"
   },
   {
     "id": "p17",
@@ -2124,7 +1678,8 @@ window.SAMPLE_PHOTOS = [
         "confidence": 0.96,
         "status": "confirmed",
         "visibleText": [],
-        "entityId": null
+        "entityId": null,
+        "photoId": "p17"
       },
       {
         "id": "o17b",
@@ -2155,7 +1710,8 @@ window.SAMPLE_PHOTOS = [
         "visibleText": [
           "恐竜時代の森"
         ],
-        "entityId": null
+        "entityId": null,
+        "photoId": "p17"
       },
       {
         "id": "o17c",
@@ -2182,9 +1738,11 @@ window.SAMPLE_PHOTOS = [
         "confidence": 0.88,
         "status": "confirmed",
         "visibleText": [],
-        "entityId": null
+        "entityId": null,
+        "photoId": "p17"
       }
-    ]
+    ],
+    "visitId": "visit-fukui"
   },
   {
     "id": "p18",
@@ -2221,7 +1779,8 @@ window.SAMPLE_PHOTOS = [
         "confidence": 0.97,
         "status": "confirmed",
         "visibleText": [],
-        "entityId": "e-pterosaur"
+        "entityId": "e-pterosaur",
+        "photoId": "p18"
       },
       {
         "id": "o18b",
@@ -2251,7 +1810,8 @@ window.SAMPLE_PHOTOS = [
         "confidence": 0.92,
         "status": "confirmed",
         "visibleText": [],
-        "entityId": null
+        "entityId": null,
+        "photoId": "p18"
       },
       {
         "id": "o18c",
@@ -2279,9 +1839,11 @@ window.SAMPLE_PHOTOS = [
         "confidence": 0.78,
         "status": "confirmed",
         "visibleText": [],
-        "entityId": null
+        "entityId": null,
+        "photoId": "p18"
       }
-    ]
+    ],
+    "visitId": "visit-fukui"
   },
   {
     "id": "p19",
@@ -2317,7 +1879,8 @@ window.SAMPLE_PHOTOS = [
         "confidence": 0.98,
         "status": "confirmed",
         "visibleText": [],
-        "entityId": null
+        "entityId": null,
+        "photoId": "p19"
       },
       {
         "id": "o19b",
@@ -2347,9 +1910,11 @@ window.SAMPLE_PHOTOS = [
         "visibleText": [
           "空の爬虫類"
         ],
-        "entityId": "e-pterosaur"
+        "entityId": "e-pterosaur",
+        "photoId": "p19"
       }
-    ]
+    ],
+    "visitId": "visit-fukui"
   },
   {
     "id": "p20",
@@ -2386,7 +1951,8 @@ window.SAMPLE_PHOTOS = [
         "confidence": 0.92,
         "status": "suggested",
         "visibleText": [],
-        "entityId": null
+        "entityId": null,
+        "photoId": "p20"
       },
       {
         "id": "o20b",
@@ -2416,7 +1982,8 @@ window.SAMPLE_PHOTOS = [
         "confidence": 0.9,
         "status": "suggested",
         "visibleText": [],
-        "entityId": null
+        "entityId": null,
+        "photoId": "p20"
       },
       {
         "id": "o20c",
@@ -2447,7 +2014,8 @@ window.SAMPLE_PHOTOS = [
         "confidence": 0.89,
         "status": "suggested",
         "visibleText": [],
-        "entityId": null
+        "entityId": null,
+        "photoId": "p20"
       },
       {
         "id": "o20d",
@@ -2478,13 +2046,15 @@ window.SAMPLE_PHOTOS = [
         "visibleText": [
           "真獣類と後獣類"
         ],
-        "entityId": null
+        "entityId": null,
+        "photoId": "p20"
       }
-    ]
+    ],
+    "visitId": "visit-fukui"
   }
 ];
 
-window.SAMPLE_RELATIONS = [
+export const SAMPLE_RELATIONS = [
   {
     "id": "r01",
     "sourceId": "o03c",
@@ -2631,7 +2201,7 @@ window.SAMPLE_RELATIONS = [
   }
 ];
 
-window.SAMPLE_ENTITIES = [
+export const SAMPLE_ENTITIES = [
   {
     "id": "e-basilo",
     "name": "バシロサウルス",
@@ -2646,7 +2216,7 @@ window.SAMPLE_ENTITIES = [
   }
 ];
 
-window.LEARNING_FACTS = [
+export const LEARNING_FACTS = [
   {
     "id": "f01",
     "targetId": "o07a",
@@ -2712,7 +2282,7 @@ window.LEARNING_FACTS = [
   }
 ];
 
-window.SAMPLE_COLLECTIONS = [
+export const SAMPLE_COLLECTIONS = [
   {
     "id": "c-human",
     "title": "人類の進化",
@@ -2811,12 +2381,18 @@ window.SAMPLE_COLLECTIONS = [
   }
 ];
 
-window.SAMPLE_QUIZZES = [
+export const SAMPLE_QUIZZES = [
   {
     "id": "q1",
     "level": "observed",
     "photoId": "p03",
-    "requiredObservationIds": ["o03a", "o03b", "o03c", "o03d", "o03e"],
+    "requiredObservationIds": [
+      "o03a",
+      "o03b",
+      "o03c",
+      "o03d",
+      "o03e"
+    ],
     "question": "この写真の整理方法として最も適切なのは？",
     "choices": [
       "中央の骨格だけを1対象として保存する",
@@ -2831,7 +2407,10 @@ window.SAMPLE_QUIZZES = [
     "id": "q2",
     "level": "observed",
     "photoId": "p02",
-    "requiredObservationIds": ["o02a", "o02b"],
+    "requiredObservationIds": [
+      "o02a",
+      "o02b"
+    ],
     "question": "「拡大した脳」の写真に付ける汎用分類の組合せは？",
     "choices": [
       "展示物だけ",
@@ -2846,8 +2425,14 @@ window.SAMPLE_QUIZZES = [
     "id": "q3",
     "level": "observed",
     "photoId": "p08",
-    "requiredObservationIds": ["o07a", "o08a"],
-    "requiredRelationIds": ["r06", "r07"],
+    "requiredObservationIds": [
+      "o07a",
+      "o08a"
+    ],
+    "requiredRelationIds": [
+      "r06",
+      "r07"
+    ],
     "question": "この説明パネルと骨格写真の関係として最も適切なのは？",
     "choices": [
       "無関係",
@@ -2862,7 +2447,11 @@ window.SAMPLE_QUIZZES = [
     "id": "q4",
     "level": "observed",
     "photoId": "p15",
-    "requiredObservationIds": ["o15a", "o15b", "o15c"],
+    "requiredObservationIds": [
+      "o15a",
+      "o15b",
+      "o15c"
+    ],
     "question": "この写真から抽出できる観察対象は？",
     "choices": [
       "系統図だけ",
@@ -2877,7 +2466,9 @@ window.SAMPLE_QUIZZES = [
     "id": "q5",
     "level": "observed",
     "photoId": "p18",
-    "requiredObservationIds": ["o18a"],
+    "requiredObservationIds": [
+      "o18a"
+    ],
     "question": "この写真の浅い分野分類として適切なのは？",
     "choices": [
       "翼竜",
@@ -2935,7 +2526,7 @@ window.SAMPLE_QUIZZES = [
   }
 ];
 
-window.SAMPLE_STORIES = [
+export const SAMPLE_STORIES = [
   {
     "id": "s1",
     "title": "写真から複数の対象を見つける",
@@ -2987,12 +2578,5 @@ window.SAMPLE_STORIES = [
   }
 ];
 
-window.SAMPLE_PHOTOS.forEach(photo => {
-  photo.visitId = window.SAMPLE_VISIT.id;
-  photo.observations.forEach(observation => {
-    observation.photoId = photo.id;
-  });
-});
-
-window.SAMPLE_OBSERVATIONS = window.SAMPLE_PHOTOS.flatMap(photo => photo.observations);
-window.SAMPLE_OBSERVATION_RELATIONS = window.SAMPLE_RELATIONS;
+/** Every demo Observation, flattened out of its Photo. */
+export const SAMPLE_OBSERVATIONS = SAMPLE_PHOTOS.flatMap(photo => photo.observations);

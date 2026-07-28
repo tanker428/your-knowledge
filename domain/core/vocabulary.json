@@ -1,0 +1,132 @@
+{
+  "format": "your-knowledge-core-vocabulary",
+  "schemaVersion": "1.0.0",
+  "genericCategories": [
+    {
+      "id": "exhibit-object",
+      "label": "展示物・現物",
+      "icon": "◆",
+      "description": "標本、作品、文化財、道具など"
+    },
+    {
+      "id": "replica-model",
+      "label": "模型・複製・復元",
+      "icon": "⬡",
+      "description": "レプリカ、復元骨格、ジオラマなど"
+    },
+    {
+      "id": "explanation-panel",
+      "label": "説明パネル・ラベル",
+      "icon": "▤",
+      "description": "名称ラベル、解説文、案内板など"
+    },
+    {
+      "id": "diagram-map",
+      "label": "図表・地図",
+      "icon": "⌘",
+      "description": "系統図、時間軸、グラフ、地図など"
+    },
+    {
+      "id": "place-landscape",
+      "label": "場所・景観",
+      "icon": "▧",
+      "description": "展示空間、建築、森林、遺跡など"
+    },
+    {
+      "id": "living-natural",
+      "label": "生物・自然物",
+      "icon": "✦",
+      "description": "樹木、動物、岩石、地形など"
+    },
+    {
+      "id": "person-activity",
+      "label": "人物・活動",
+      "icon": "◉",
+      "description": "人物、作業、祭り、体験など"
+    },
+    {
+      "id": "media-image",
+      "label": "映像・画像",
+      "icon": "▣",
+      "description": "スクリーン、古写真、復元画など"
+    },
+    {
+      "id": "unknown",
+      "label": "未判定",
+      "icon": "?",
+      "description": "まだ分類していない対象"
+    }
+  ],
+  "learningRoles": [
+    {
+      "id": "direct",
+      "label": "見た対象"
+    },
+    {
+      "id": "explains",
+      "label": "説明するもの"
+    },
+    {
+      "id": "comparison",
+      "label": "比較するもの"
+    },
+    {
+      "id": "context",
+      "label": "背景・文脈"
+    },
+    {
+      "id": "detail",
+      "label": "部分・細部"
+    },
+    {
+      "id": "route",
+      "label": "場所・経路"
+    },
+    {
+      "id": "memory",
+      "label": "体験・思い出"
+    },
+    {
+      "id": "evidence",
+      "label": "証拠・資料"
+    }
+  ],
+  "relationTypes": [
+    {
+      "id": "explains",
+      "label": "説明している"
+    },
+    {
+      "id": "part-of",
+      "label": "部分と全体"
+    },
+    {
+      "id": "same-object",
+      "label": "同じ物理対象"
+    },
+    {
+      "id": "same-exhibit",
+      "label": "同じ展示"
+    },
+    {
+      "id": "same-place",
+      "label": "同じ場所"
+    },
+    {
+      "id": "same-theme",
+      "label": "同じテーマ"
+    },
+    {
+      "id": "different-angle",
+      "label": "別角度"
+    },
+    {
+      "id": "compares",
+      "label": "比較している"
+    },
+    {
+      "id": "nearby-time",
+      "label": "撮影順が近い"
+    }
+  ]
+}
