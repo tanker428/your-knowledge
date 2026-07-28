@@ -19,6 +19,15 @@
  * @property {number} [rotation]
  * @property {ObservationRecord[]} observations
  * @property {boolean} [photoMissing] True when the image itself is not on this device.
+ * @property {string|null} [capturedAt]  Real capture time, from EXIF. Null until EXIF lands.
+ * @property {number|null} [fileLastModified] File.lastModified. NEVER a stand-in for capturedAt.
+ * @property {string|null} [importedAt]
+ * @property {string|null} [originalFileName]
+ * @property {string|null} [originalMimeType]
+ * @property {number|null} [originalBytes]
+ * @property {number|null} [originalWidth]   Dimensions before downscaling.
+ * @property {number|null} [originalHeight]
+ * @property {string} [experienceMemo] How the visit felt. Impressions, not knowledge.
  *
  * @typedef {object} ObservationRecord
  * @property {string} id
@@ -39,6 +48,9 @@
  * @typedef {object} Project
  * @property {string} id
  * @property {number} updatedAt
+ * @property {string} [schemaVersion]
+ * @property {import('../domain/visit.js').Visit[]} [visits]
+ * @property {string|null} [activeVisitId]
  * @property {PhotoRecord[]} photos
  * @property {object[]} relations
  * @property {{id:string,status:string}[]} facts
@@ -49,6 +61,8 @@
  * @property {Blob} thumbnail  Small image for grids and strips.
  * @property {number} width
  * @property {number} height
+ * @property {number} [originalWidth]
+ * @property {number} [originalHeight]
  * @property {string} type
  * @property {number} bytes
  *

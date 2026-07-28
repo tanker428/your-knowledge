@@ -90,6 +90,9 @@ export async function processImageFile(file) {
       thumbnail,
       width: size.width,
       height: size.height,
+      // 縮小前の寸法。元ファイルは保存しないので、ここだけが記録になる。
+      originalWidth: bitmap.width,
+      originalHeight: bitmap.height,
       type: "image/jpeg",
       bytes: display.size + thumbnail.size,
     };

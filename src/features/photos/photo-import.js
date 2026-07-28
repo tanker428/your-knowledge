@@ -99,6 +99,22 @@ export async function importPhotos(files, options) {
         status: /** @type {const} */ ("unorganized"),
         source: /** @type {const} */ ("upload"),
         domainHint,
+
+        // 撮影日時は EXIF からしか取れない。未実装のため null のままにする。
+        // file.lastModified はコピーで書き換わるので代わりに使わない。
+        capturedAt: null,
+        fileLastModified: Number.isFinite(file.lastModified) ? file.lastModified : null,
+        importedAt: new Date().toISOString(),
+
+        originalFileName: file.name,
+        originalMimeType: file.type || null,
+        originalBytes: Number.isFinite(file.size) ? file.size : null,
+        originalWidth: binary.originalWidth ?? null,
+        originalHeight: binary.originalHeight ?? null,
+
+        // 撮ったときの感想。整理画面で書く。知識ではない。
+        experienceMemo: "",
+
         observations: [],
       };
 
