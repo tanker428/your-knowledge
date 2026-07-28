@@ -65,6 +65,63 @@ export function createVisit(input) {
 }
 
 /**
+ * Project保存用にLearningFactを複製する。Factの契約フィールドを縮約しない。
+ *
+ * @param {any[]} facts
+ * @returns {any[]}
+ */
+export function copyFactsForProject(facts) {
+  return facts.map((fact) => ({ ...fact }));
+}
+
+/**
+ * 現在のVisitのObservationに接続されたLearningFactだけを返す。
+ * LearningFact自体にvisitIdを持たせず、Observationとの接続を正とする。
+ *
+ * @param {{photos: any[], facts: any[]}} project
+ * @param {string|null|undefined} visitId
+ * @returns {any[]}
+ */
+export function visitFacts(project, visitId) {
+  if (!visitId) return [];
+  const observationIds = new Set(
+    project.photos
+      .filter((photo) => photo.visitId === visitId)
+      .flatMap((photo) =>
+        (photo.observations || []).map((observation) => observation.id),
+      ),
+  );
+  return project.facts.filter(
+    (fact) =>
+      observationIds.has(fact.targetObservationId ?? fact.targetId) ||
+      observationIds.has(fact.sourceObservationId),
+  );
+}
+
+/**
+ * 既存の集計形式を保ったVisitスコープ付きquiz結果を作る。
+ *
+ * @param {object} result
+ * @param {string|null} visitId
+ * @param {string} [id]
+ * @returns {object}
+ */
+export function createQuizResult(result, visitId, id = newId("quiz-result")) {
+  return { ...result, id, visitId };
+}
+
+/**
+ * Core 5実装までは、同梱問題をデモVisitにだけ公開する。
+ *
+ * @param {Visit|null|undefined} visit
+ * @param {any[]} quizzes
+ * @returns {any[]}
+ */
+export function quizzesForVisit(visit, quizzes) {
+  return isDemoVisit(visit) ? quizzes : [];
+}
+
+/**
  * 同梱デモ訪問。ID は既存デモ写真の `visitId` と揃える。
  *
  * @param {{title?: string, placeName?: string, domainPackIds?: string[]}} [seed]

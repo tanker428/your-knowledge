@@ -1,14 +1,82 @@
 import { describe, expect, it } from "vitest";
 import {
   collectVisitCascade,
+  copyFactsForProject,
+  createQuizResult,
   createDemoVisit,
   createVisit,
   DEMO_VISIT_ID,
   isDemoVisit,
   pickNextActiveVisitId,
   updateVisit,
+  quizzesForVisit,
+  visitFacts,
   validateVisit,
 } from "../src/domain/visit.js";
+
+describe("Visit-scoped learning state", () => {
+  const photos = [
+    { id: "p-demo", visitId: "demo", observations: [{ id: "o-demo" }] },
+    { id: "p-user", visitId: "user", observations: [{ id: "o-user" }] },
+  ];
+  const facts = [
+    {
+      id: "f-demo",
+      targetId: "o-demo",
+      label: "デモ知識",
+      detail: "デモ詳細",
+      sourceType: "panel",
+      status: "learned",
+    },
+    {
+      id: "f-user",
+      targetId: "o-user",
+      label: "ユーザー知識",
+      detail: "ユーザー詳細",
+      sourceType: "user",
+      status: "learned",
+    },
+  ];
+
+  it("Fact全体を保存用に保持し、再読み込み相当の入力でも残す", () => {
+    const saved = copyFactsForProject(facts);
+    expect(saved).toEqual(facts);
+    expect(saved[0]).not.toBe(facts[0]);
+    expect(saved[0]).toMatchObject({
+      targetId: "o-demo",
+      label: "デモ知識",
+      detail: "デモ詳細",
+      sourceType: "panel",
+      status: "learned",
+    });
+  });
+
+  it("デモFactはユーザーVisitの概要件数へ混ざらない", () => {
+    expect(visitFacts({ photos, facts }, "user")).toEqual([facts[1]]);
+  });
+
+  it("ユーザーVisitではSAMPLE_QUIZZESを表示しない", () => {
+    const quizzes = [{ id: "sample-q" }];
+    expect(quizzesForVisit(createVisit({ title: "ユーザー訪問" }), quizzes)).toEqual([]);
+    expect(quizzesForVisit(createDemoVisit(), quizzes)).toEqual(quizzes);
+  });
+
+  it("集計形式を保ったquiz結果にidとvisitIdを付ける", () => {
+    const result = createQuizResult(
+      { deck: "observed", score: 1, total: 2, completedAt: "now" },
+      "demo",
+      "qr-demo",
+    );
+    expect(result).toEqual({
+      id: "qr-demo",
+      deck: "observed",
+      score: 1,
+      total: 2,
+      completedAt: "now",
+      visitId: "demo",
+    });
+  });
+});
 
 describe("createVisit", () => {
   it("作った訪問はユーザーのものになる", () => {
@@ -171,7 +239,11 @@ describe("collectVisitCascade", () => {
       { id: "f1", targetObservationId: "o1" },
       { id: "f2", targetObservationId: "o3" },
     ],
-    quizResults: [{ visitId: "v1" }, { visitId: "v2" }, { visitId: "v1" }],
+    quizResults: [
+      { id: "q1", visitId: "v1" },
+      { id: "q2", visitId: "v2" },
+      { id: "q3", visitId: "v1" },
+    ],
   });
 
   it("その訪問の写真と観察対象を集める", () => {
@@ -212,6 +284,10 @@ describe("collectVisitCascade", () => {
 
   it("その訪問の回答履歴を数える", () => {
     expect(collectVisitCascade(project(), "v1").quizResultCount).toBe(2);
+    expect(collectVisitCascade(project(), "v1").quizResultIds).toEqual([
+      "q1",
+      "q3",
+    ]);
   });
 
   it("visitId がない旧回答履歴も対象Observationから拾う", () => {

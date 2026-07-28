@@ -30,11 +30,15 @@ import {
 } from "../data/demo/sample-data.js";
 import {
   collectVisitCascade,
+  copyFactsForProject,
+  createQuizResult,
   createVisit,
   DEMO_VISIT_ID,
   isDemoVisit,
   pickNextActiveVisitId,
+  quizzesForVisit,
   updateVisit,
+  visitFacts,
   validateVisit,
 } from "../domain/visit.js";
 import {
@@ -354,10 +358,7 @@ export async function initApp(deps) {
         observations: photo.observations,
       })),
       relations: state.relations,
-      facts: state.facts.map((/** @type {any} */ fact) => ({
-        id: fact.id,
-        status: fact.status,
-      })),
+      facts: copyFactsForProject(state.facts),
       quizResults: state.quizResults,
     };
   }
@@ -490,7 +491,10 @@ export async function initApp(deps) {
 
   function renderOverview() {
     const observations = allObservations({ includedOnly: true });
-    const learned = state.facts.filter(factUnlocked).length;
+    const learned = visitFacts(
+      { photos: state.photos, facts: state.facts },
+      state.activeVisitId,
+    ).filter(factUnlocked).length;
     $("#statPhotos").textContent = visitPhotos().length;
     $("#statObservations").textContent = observations.length;
     $("#statConfirmed").textContent = countConfirmedObservations();
@@ -1206,12 +1210,13 @@ export async function initApp(deps) {
   }
 
   function deckQuizzes(/** @type {string} */ deck) {
+    const quizzes = quizzesForVisit(activeVisit(), SAMPLE_QUIZZES);
     if (deck === "observed")
-      return SAMPLE_QUIZZES.filter(
+      return quizzes.filter(
         (/** @type {any} */ quiz) =>
           quiz.level === "observed" && quizUsesConfirmedData(quiz),
       );
-    return SAMPLE_QUIZZES.filter(
+    return quizzes.filter(
       (/** @type {any} */ quiz) =>
         quiz.level === "learned" && factUnlocked(factById(quiz.requiredFactId)),
     );
@@ -1298,12 +1303,17 @@ export async function initApp(deps) {
     state.quizIndex += 1;
     if (state.quizIndex >= quizzes.length) {
       state.quizCompleted = true;
-      state.quizResults.push({
-        deck: state.deck,
-        score: state.quizScore,
-        total: quizzes.length,
-        completedAt: new Date().toISOString(),
-      });
+      state.quizResults.push(
+        createQuizResult(
+          {
+            deck: state.deck,
+            score: state.quizScore,
+            total: quizzes.length,
+            completedAt: new Date().toISOString(),
+          },
+          state.activeVisitId,
+        ),
+      );
       persist();
     }
     renderQuiz();
