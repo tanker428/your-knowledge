@@ -53,6 +53,10 @@ export function resetRegionDraft() {
   return { drawing: false, pointerId: null, start: null, region: null };
 }
 
+export function restoreRegionAfterCancel(region) {
+  return region ? { ...region } : null;
+}
+
 export function observationReferences(project, observationId) {
   return {
     relations: (project.relations || []).filter(

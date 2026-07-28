@@ -48,6 +48,7 @@ import {
   regionFromPoints,
   removeObservation,
   resetRegionDraft,
+  restoreRegionAfterCancel,
   updateObservation,
 } from "../domain/observation.js";
 import {
@@ -184,7 +185,13 @@ export async function initApp(deps) {
     regionDrawStart: null,
     regionDraft: null,
     observationDraft: null,
+    regionDrawingOriginalRegion: null,
+    regionDrawingObservationId: null,
   };
+
+  let imageSurfaceObserver = null;
+  let imageSurfaceResizeBound = false;
+  let imageSurfaceFrame = null;
 
   /**
    * The bundled demo photos, as records. The migration layers saved state on
@@ -641,11 +648,56 @@ export async function initApp(deps) {
       layer.style.zIndex = state.regionDrawing ? "4" : "2";
     }
     if (overlay) overlay.style.pointerEvents = state.regionDrawing ? "none" : "auto";
+    const controls = $("#regionDrawingControls");
+    if (controls) controls.classList.toggle("hidden", !state.regionDrawing);
+  }
+
+  function scheduleImageSurfaceAlignment() {
+    if (imageSurfaceFrame !== null) return;
+    imageSurfaceFrame = requestAnimationFrame(() => {
+      imageSurfaceFrame = null;
+      alignOrganizeSurfaces();
+      const modalImage = $("#modalImage");
+      alignImageSurface(
+        $("#modalOverlay"),
+        $("#photoModal .modal-image-wrap"),
+        modalImage,
+      );
+    });
+  }
+
+  function observeImageSurfaceSizes() {
+    const containers = [
+      $("#annotatedPhoto"),
+      $("#photoModal .modal-image-wrap"),
+    ].filter(Boolean);
+    if (typeof ResizeObserver !== "undefined") {
+      if (!imageSurfaceObserver) {
+        imageSurfaceObserver = new ResizeObserver(scheduleImageSurfaceAlignment);
+      }
+      imageSurfaceObserver.disconnect();
+      containers.forEach((container) => imageSurfaceObserver.observe(container));
+    } else if (!imageSurfaceResizeBound) {
+      window.addEventListener("resize", scheduleImageSurfaceAlignment);
+      window.addEventListener("orientationchange", scheduleImageSurfaceAlignment);
+      imageSurfaceResizeBound = true;
+    }
+  }
+
+  function cleanupImageSurfaceObserver() {
+    if (imageSurfaceFrame !== null) cancelAnimationFrame(imageSurfaceFrame);
+    imageSurfaceFrame = null;
+    imageSurfaceObserver?.disconnect();
+    if (imageSurfaceResizeBound) {
+      window.removeEventListener("resize", scheduleImageSurfaceAlignment);
+      window.removeEventListener("orientationchange", scheduleImageSurfaceAlignment);
+      imageSurfaceResizeBound = false;
+    }
   }
 
   function imagePointPercent(/** @type {PointerEvent} */ event) {
     const rect = $("#regionDrawLayer")?.getBoundingClientRect();
-    if (!rect.width || !rect.height) return null;
+    if (!rect || !rect.width || !rect.height) return null;
     return {
       x: Math.min(100, Math.max(0, ((event.clientX - rect.left) / rect.width) * 100)),
       y: Math.min(100, Math.max(0, ((event.clientY - rect.top) / rect.height) * 100)),
@@ -725,12 +777,17 @@ export async function initApp(deps) {
 
   function startRegionDrawing() {
     if (!state.observationDraft) return;
+    state.regionDrawingOriginalRegion = restoreRegionAfterCancel(
+      state.observationDraft.region,
+    );
+    state.regionDrawingObservationId = state.editingObservationId;
     state.regionDrawing = true;
     state.regionPointerId = null;
     state.regionDrawStart = null;
     state.regionDraft = null;
     closeModal("addObservationModal");
     renderOrganize();
+    observeImageSurfaceSizes();
     alignOrganizeSurfaces();
     showToast("写真上をドラッグして範囲を指定してください");
   }
@@ -747,9 +804,17 @@ export async function initApp(deps) {
       state.editingObservationId = null;
       state.pendingObservationRegion = null;
     } else if (state.observationDraft) {
-      state.observationDraft.region = null;
-      state.pendingObservationRegion = null;
+      const isExistingObservation =
+        state.regionDrawingObservationId === state.editingObservationId &&
+        state.editingObservationId !== null;
+      state.observationDraft.region = isExistingObservation
+        ? restoreRegionAfterCancel(state.regionDrawingOriginalRegion)
+        : null;
+      state.observationDraft.regionMode = "region";
+      state.pendingObservationRegion = state.observationDraft.region;
     }
+    state.regionDrawingOriginalRegion = null;
+    state.regionDrawingObservationId = null;
     renderRegionDraft();
     alignOrganizeSurfaces();
     if (restoreEditor && state.observationDraft) {
@@ -884,6 +949,7 @@ export async function initApp(deps) {
     $("#modalCount").textContent = `${observations.length}の観察対象`;
     $("#modalTitle").textContent = photo.title;
     renderOverlay($("#modalOverlay"), photo, { modal: true });
+    observeImageSurfaceSizes();
     const modalImage = $("#modalImage");
     modalImage.onload = () =>
       alignImageSurface($("#modalOverlay"), $("#photoModal .modal-image-wrap"), modalImage);
@@ -1094,6 +1160,7 @@ export async function initApp(deps) {
     renderOverlay($("#observationOverlay"), photo, { interactive: true });
     bindRegionDrawing();
     $("#organizeImage").onload = alignOrganizeSurfaces;
+    observeImageSurfaceSizes();
     alignOrganizeSurfaces();
     renderRegionDraft();
 
@@ -1270,7 +1337,6 @@ export async function initApp(deps) {
     );
     $("#redrawObservationRegionButton")?.addEventListener("click", () => {
       if (state.observationDraft) {
-        state.observationDraft.region = null;
         state.observationDraft.regionMode = "region";
       }
       state.pendingObservationRegion = null;
@@ -2213,6 +2279,7 @@ export async function initApp(deps) {
   }
 
   function bindGlobalEvents() {
+    window.addEventListener("pagehide", cleanupImageSurfaceObserver, { once: true });
     $$("[data-view]").forEach((button) =>
       button.addEventListener("click", () => switchView(button.dataset.view)),
     );
@@ -2296,6 +2363,9 @@ export async function initApp(deps) {
       openObservationEditor(null),
     );
     $("#saveObservationButton").addEventListener("click", saveObservation);
+    $("#cancelRegionDrawingButton")?.addEventListener("click", () =>
+      cancelRegionDrawing({ restoreEditor: true }),
+    );
     $("#previousStepButton").addEventListener("click", () => {
       if (state.organizeStep > 1) {
         state.organizeStep -= 1;

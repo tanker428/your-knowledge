@@ -7,6 +7,7 @@ import {
   regionFromPoints,
   removeObservation,
   resetRegionDraft,
+  restoreRegionAfterCancel,
   updateObservation,
 } from "../src/domain/observation.js";
 
@@ -65,8 +66,40 @@ describe("Observation region", () => {
     });
   });
 
+  it("表示領域のサイズ変更後も横長画像の枠基準を再計算できる", () => {
+    const resized = displayedImageRect({ left: 0, top: 0, width: 800, height: 400 }, 1600, 900);
+    expect(resized).toMatchObject({ left: 44.44444444444446, top: 0, width: 711.1111111111111, height: 400 });
+  });
+
+  it("縦横回転相当のサイズ変更後も縦長画像の枠基準を再計算できる", () => {
+    const rotated = displayedImageRect({ left: 0, top: 0, width: 400, height: 800 }, 900, 1600);
+    expect(rotated.left).toBeCloseTo(17.1875);
+    expect(rotated.top).toBe(75);
+    expect(rotated.width).toBe(365.625);
+    expect(rotated.height).toBe(650);
+  });
+
   it("描画キャンセルで下書きをリセットする", () => {
     expect(resetRegionDraft()).toEqual({ drawing: false, pointerId: null, start: null, region: null });
+  });
+
+  it("既存regionの描き直しをキャンセルすると元のregionを復元する", () => {
+    const original = { x: 11, y: 19, w: 32, h: 41 };
+    const canceled = restoreRegionAfterCancel(original);
+    expect(canceled).toEqual(original);
+    expect(canceled).not.toBe(original);
+    const observation = createObservation({
+      id: "o-existing",
+      photoId: "p-user",
+      label: "展示物",
+      observationType: "physical",
+      region: original,
+    });
+    expect(updateObservation(observation, { region: canceled }).region).toEqual(original);
+  });
+
+  it("新規region指定のキャンセルはregion未設定へ戻す", () => {
+    expect(restoreRegionAfterCancel(null)).toBeNull();
   });
 });
 
