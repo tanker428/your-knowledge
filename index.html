@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="theme-color" content="#171817" />
+  <title>Your Knowledge — 自分が見たものから知識を育てる</title>
+  <meta name="description" content="観光地や博物館で撮った写真から複数の観察対象を整理し、知識マップ・問題・コレクションへ育てるWebアプリのプロトタイプ。" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="icon" href="./pwa-icon-192.png" sizes="192x192" />
+  <link rel="apple-touch-icon" href="./pwa-icon-192.png" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="#" aria-label="Your Knowledge ホーム" data-jump="overview">
+        <span class="brand-mark" aria-hidden="true">Y</span>
+        <span><strong>Your Knowledge</strong><small>personal knowledge journey</small></span>
+      </a>
+      <nav class="desktop-nav" aria-label="主要メニュー">
+        <button class="nav-link active" data-view="overview">概要</button>
+        <button class="nav-link" data-view="photos">写真</button>
+        <button class="nav-link" data-view="organize">写真を整理</button>
+        <button class="nav-link" data-view="knowledge">知識マップ</button>
+        <button class="nav-link" data-view="learn">学ぶ</button>
+        <button class="nav-link" data-view="collection">コレクション</button>
+      </nav>
+      <button class="primary-button small" id="openUploadButton"><span aria-hidden="true">＋</span> 写真を追加</button>
+    </header>
+
+    <main>
+      <section class="view active" id="view-overview" aria-labelledby="overviewTitle">
+        <div class="hero-grid">
+          <div class="hero-copy">
+            <div class="eyebrow"><span></span> FROM MY PHOTO TO MY KNOWLEDGE</div>
+            <h1 id="overviewTitle">自分が見たものから、<br><em>知識を育てる。</em></h1>
+            <p class="hero-text">一枚の写真を一つの知識に決めつけません。写っている展示物、説明パネル、図表、空間を複数の「観察対象」として整理し、あとから詳しい知識を学び、問題とコレクションへつなげます。</p>
+            <div class="hero-actions">
+              <button class="primary-button" id="startOrganizeButton">写真整理を試す</button>
+              <button class="ghost-button" id="viewMapButton">知識マップを見る</button>
+            </div>
+            <div class="trust-row">
+              <span>✓ 写真と知識対象を分離</span>
+              <span>✓ 一枚から複数対象</span>
+              <span>✓ 詳細知識は後から学ぶ</span>
+            </div>
+          </div>
+
+          <div class="hero-collage" aria-label="一枚の写真から複数対象を抽出する例">
+            <figure class="collage-main observation-demo">
+              <img src="assets/43085_0.jpg" alt="複数の頭骨、骨格、説明パネルを含む人類進化展示" />
+              <span class="demo-marker marker-a">1</span>
+              <span class="demo-marker marker-b">2</span>
+              <span class="demo-marker marker-c">3</span>
+              <span class="demo-marker marker-d">4</span>
+              <figcaption><span>1 PHOTO → 5 OBSERVATIONS</span> 写真を複数の観察対象へ</figcaption>
+            </figure>
+            <figure class="collage-top"><img src="assets/43090_0.jpg" alt="展示説明パネル" /></figure>
+            <figure class="collage-bottom"><img src="assets/43097_0.jpg" alt="系統図と化石標本" /></figure>
+            <div class="floating-analysis-card">
+              <div class="pulse-dot"></div>
+              <div><strong id="heroObservationCount">60の観察対象</strong><small>20枚のサンプル写真</small></div>
+            </div>
+          </div>
+        </div>
+
+        <section class="stats-band" aria-label="現在の整理状況">
+          <article><strong id="statPhotos">20</strong><span>写真</span></article>
+          <article><strong id="statObservations">60</strong><span>観察対象</span></article>
+          <article><strong id="statConfirmed">—</strong><span>確認済み対象</span></article>
+          <article><strong id="statLearned">0</strong><span>後から学んだ知識</span></article>
+        </section>
+
+        <section class="section-block">
+          <div class="section-heading">
+            <div><p class="section-kicker">THREE CORE VALUES</p><h2>Your Knowledgeの3つの中心機能</h2></div>
+          </div>
+          <div class="pillar-grid">
+            <article class="pillar-card"><span>01</span><div class="pillar-icon">◎</div><h3>写真を丁寧に整理</h3><p>複数対象を抽出し、汎用分類から分野別の浅い分類へ段階的に確認します。</p></article>
+            <article class="pillar-card"><span>02</span><div class="pillar-icon">⌘</div><h3>知識の整理と拡大</h3><p>自分が触れた知識と、あとから学んだ知識を区別しながら視覚的に広げます。</p></article>
+            <article class="pillar-card"><span>03</span><div class="pillar-icon">✦</div><h3>問題とコレクション</h3><p>確認済みの写真・分類・関係から問題を作り、学習の進みを収集状態として残します。</p></article>
+          </div>
+        </section>
+
+        <section class="section-block">
+          <div class="section-heading">
+            <div><p class="section-kicker">GENERIC FIRST, DOMAIN NEXT</p><h2>同じ基盤で、さまざまな訪問を整理</h2></div>
+            <button class="text-button" data-jump="collection">対応分野を見る →</button>
+          </div>
+          <div class="visit-template-grid" id="visitTemplateGrid"></div>
+        </section>
+
+        <section class="split-feature section-block">
+          <div class="feature-image-stack observation-stack">
+            <img class="feature-back" src="assets/43090_0.jpg" alt="説明パネル" />
+            <img class="feature-front" src="assets/43089_0.jpg" alt="骨格標本" />
+            <div class="relation-arrow" aria-hidden="true">説明している</div>
+          </div>
+          <div class="feature-copy">
+            <p class="section-kicker">STRUCTURED DIALOGUE</p>
+            <h2>自由入力より、<br>短い確認を積み重ねる。</h2>
+            <p>チャットは会話文を長く書かせる場所ではなく、AI候補を一括承認し、曖昧な部分だけ修正するための操作面として使います。</p>
+            <ul class="feature-list">
+              <li><span>01</span> 写真内の複数対象を確認</li>
+              <li><span>02</span> 汎用分類を確認</li>
+              <li><span>03</span> 分野別の浅い分類を確認</li>
+              <li><span>04</span> 対象同士の関係を確認</li>
+            </ul>
+            <button class="ghost-button dark" data-jump="organize">整理画面を開く</button>
+          </div>
+        </section>
+      </section>
+
+      <section class="view" id="view-photos" aria-labelledby="photosTitle">
+        <div class="page-hero compact">
+          <div><p class="section-kicker">PHOTO LIBRARY</p><h1 id="photosTitle">訪問の写真</h1><p>写真は知識対象ではなく、観察したものへつながる入口です。カードには抽出された対象数と整理状態を表示します。</p></div>
+          <div class="page-actions"><button class="ghost-button dark" id="exportButton">JSONを書き出す</button><button class="primary-button" id="photosUploadButton">＋ 写真を追加</button></div>
+        </div>
+        <div class="filter-bar" id="photoFilterBar">
+          <button class="filter-chip active" data-photo-filter="all">すべて</button>
+          <button class="filter-chip" data-photo-filter="unorganized">未整理</button>
+          <button class="filter-chip" data-photo-filter="in-progress">整理中</button>
+          <button class="filter-chip" data-photo-filter="organized">整理済み</button>
+          <button class="filter-chip" data-photo-filter="multi">複数対象</button>
+        </div>
+        <div class="photo-grid" id="photoGrid"></div>
+      </section>
+
+      <section class="view" id="view-organize" aria-labelledby="organizeTitle">
+        <div class="page-hero compact organize-hero">
+          <div><p class="section-kicker">LABELING WORKSPACE</p><h1 id="organizeTitle">写真を知識の入口にする</h1><p>一つだけを選ぶ必要はありません。複数の観察対象とその関係を確認します。詳細な年代・大きさ・背景知識はここでは求めません。</p></div>
+          <div class="visit-pill"><span>現在の訪問</span><strong>恐竜博物館</strong></div>
+        </div>
+
+        <div class="organize-photo-strip" id="organizePhotoStrip" aria-label="整理する写真を選択"></div>
+
+        <div class="organize-workspace">
+          <section class="organize-image-panel">
+            <div class="panel-title"><span>PHOTO</span><strong id="organizePhotoTitle">写真を選択</strong></div>
+            <div class="annotated-photo" id="annotatedPhoto">
+              <img id="organizeImage" alt="整理対象の写真" />
+              <div id="observationOverlay"></div>
+            </div>
+            <div class="image-help"><span>番号を押すと対象を選択</span><button class="text-button" id="addObservationButton">＋ 対象を手動追加</button></div>
+          </section>
+
+          <section class="dialog-panel">
+            <div class="stepper" id="organizeStepper">
+              <button data-step="1" class="active"><span>1</span>対象</button>
+              <button data-step="2"><span>2</span>汎用</button>
+              <button data-step="3"><span>3</span>分野</button>
+              <button data-step="4"><span>4</span>関係</button>
+            </div>
+            <div class="chat-thread" id="organizeChat"></div>
+            <div class="dialog-actions">
+              <button class="ghost-button dark" id="previousStepButton">← 戻る</button>
+              <button class="primary-button" id="nextStepButton">次へ →</button>
+            </div>
+          </section>
+
+          <aside class="knowledge-preview-panel">
+            <div class="panel-title"><span>LIVE PREVIEW</span><strong>この写真から得た知識</strong></div>
+            <div class="preview-note">写真そのものではなく、確認した観察対象が知識マップへ追加されます。</div>
+            <div id="observationPreviewList" class="observation-preview-list"></div>
+            <div class="preview-summary" id="organizeSummary"></div>
+          </aside>
+        </div>
+      </section>
+
+      <section class="view" id="view-knowledge" aria-labelledby="knowledgeTitle">
+        <div class="page-hero compact">
+          <div><p class="section-kicker">KNOWLEDGE MAP</p><h1 id="knowledgeTitle">自分が触れた知識を中心に見る</h1><p>最初に表示するのは写真から確認した知識だけです。「詳しく学ぶ」を選んだときに、説明パネルや追加教材から細かな知識を広げます。</p></div>
+          <div class="segmented-control" id="knowledgeModeControl">
+            <button class="active" data-knowledge-mode="observed">📷 見た知識</button>
+            <button data-knowledge-mode="learned">📚 後から学んだ知識</button>
+          </div>
+        </div>
+        <div class="knowledge-layout">
+          <aside class="knowledge-index">
+            <div class="knowledge-search"><input id="knowledgeSearch" type="search" placeholder="対象を検索" /></div>
+            <div id="knowledgeObservationList"></div>
+          </aside>
+          <section class="knowledge-focus" id="knowledgeFocus"></section>
+        </div>
+      </section>
+
+      <section class="view" id="view-learn" aria-labelledby="learnTitle">
+        <div class="page-hero compact">
+          <div><p class="section-kicker">LEARN & REVIEW</p><h1 id="learnTitle">確認した知識から問題を作る</h1><p>入力時に確認した分類・関係をまず復習し、あとから追加した詳細知識は別の問題として扱います。</p></div>
+          <div class="deck-summary" id="deckSummary"></div>
+        </div>
+        <div class="learn-layout">
+          <aside class="quiz-sidebar">
+            <p class="section-kicker">PERSONAL REVIEW</p>
+            <h2>写真クイズ</h2>
+            <div class="deck-switch" id="deckSwitch">
+              <button class="active" data-deck="observed">見た知識</button>
+              <button data-deck="learned">追加学習</button>
+            </div>
+            <div class="quiz-progress-ring" id="quizRing"><span><strong id="quizScore">0</strong><small id="quizTotal">/ 5</small></span></div>
+            <button class="ghost-button dark full" id="resetQuizButton">最初からやり直す</button>
+          </aside>
+          <div class="quiz-stage" id="quizStage"></div>
+        </div>
+        <section class="section-block compact-section">
+          <div class="section-heading"><div><p class="section-kicker">LEARNING PATH</p><h2>知識を育てる3つのストーリー</h2></div></div>
+          <div class="story-grid" id="storyGrid"></div>
+        </section>
+      </section>
+
+      <section class="view" id="view-collection" aria-labelledby="collectionTitle">
+        <div class="page-hero compact">
+          <div><p class="section-kicker">COLLECTION</p><h1 id="collectionTitle">集めるのは写真だけではない</h1><p>「発見 → 整理 → 分類 → 関係付け → 学習」の進みを、テーマごとのコレクションとして残します。</p></div>
+        </div>
+        <div class="collection-grid" id="collectionGrid"></div>
+        <section class="section-block compact-section">
+          <div class="section-heading"><div><p class="section-kicker">EXPAND TO OTHER PLACES</p><h2>汎用分類の上に分野パックを重ねる</h2></div></div>
+          <div class="domain-pack-grid" id="domainPackGrid"></div>
+        </section>
+      </section>
+    </main>
+
+    <footer>
+      <div class="footer-brand"><span class="brand-mark">Y</span><strong>Your Knowledge</strong></div>
+      <p>自分が見たものを、続いていく学びへ。</p>
+      <small>Prototype: Photo ≠ Observation ≠ Entity ≠ LearningFact</small>
+    </footer>
+  </div>
+
+  <nav class="mobile-nav" aria-label="モバイルメニュー">
+    <button class="active" data-view="overview"><span>⌂</span>概要</button>
+    <button data-view="photos"><span>▣</span>写真</button>
+    <button data-view="organize"><span>◎</span>整理</button>
+    <button data-view="knowledge"><span>⌘</span>知識</button>
+    <button data-view="learn"><span>✦</span>学ぶ</button>
+    <button data-view="collection"><span>◇</span>収集</button>
+  </nav>
+
+  <div class="modal-backdrop" id="photoModal" aria-hidden="true">
+    <article class="photo-modal-card" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <button class="modal-close" data-close-modal="photoModal" aria-label="閉じる">×</button>
+      <div class="modal-image-wrap"><img id="modalImage" alt="" /><div id="modalOverlay"></div></div>
+      <div class="modal-content">
+        <div class="modal-meta-row"><span class="type-badge" id="modalStatus"></span><span class="confidence" id="modalCount"></span></div>
+        <h2 id="modalTitle"></h2>
+        <p>この写真から抽出された観察対象です。具体名が未確定でも、汎用分類と分野別分類だけで保存できます。</p>
+        <div class="modal-section"><h3>観察対象</h3><div id="modalObservations" class="modal-observation-list"></div></div>
+        <div class="modal-actions"><button class="primary-button" id="organizeFromModalButton">この写真を整理</button></div>
+      </div>
+    </article>
+  </div>
+
+  <div class="modal-backdrop" id="uploadModal" aria-hidden="true">
+    <article class="upload-modal-card" role="dialog" aria-modal="true" aria-labelledby="uploadTitle">
+      <button class="modal-close" data-close-modal="uploadModal" aria-label="閉じる">×</button>
+      <div class="upload-header"><p class="section-kicker">ADD A VISIT</p><h2 id="uploadTitle">訪問写真を追加する</h2><p>場所の種類は候補生成にだけ使います。写真内の対象はあとで複数確認できます。</p></div>
+      <div class="upload-field"><label for="visitTypeSelect">訪問の種類</label><select id="visitTypeSelect"></select></div>
+      <label class="drop-zone" id="dropZone">
+        <input id="fileInput" type="file" accept="image/*" multiple />
+        <span class="drop-icon">＋</span><strong>写真をここにドロップ</strong><small>またはクリックして選択</small>
+      </label>
+      <div class="upload-preview" id="uploadPreview"></div>
+      <div class="pwa-share-note">
+        <div><strong>スマートフォンでまとめて追加</strong><p>ChromeからYour Knowledgeをホーム画面へ追加すると、ギャラリーで複数選択して「共有 → Your Knowledge」を利用できます。</p></div>
+        <button class="ghost-button dark hidden" id="installPwaButton" type="button">ホーム画面へ追加</button>
+      </div>
+      <div class="api-note"><strong>このプロトタイプの動作</strong><p>既存20枚には複数対象の候補を用意しています。新しい写真は「未整理」として追加でき、手動で対象を追加できます。AI候補生成はサーバー連携時だけ実行します。</p></div>
+      <div class="modal-actions"><button class="ghost-button dark" id="addWithoutAnalysisButton" disabled>未整理で追加</button><button class="primary-button" id="analyzeUploadButton" disabled>AI解析は未接続</button></div>
+    </article>
+  </div>
+
+  <div class="modal-backdrop" id="addObservationModal" aria-hidden="true">
+    <article class="small-modal-card" role="dialog" aria-modal="true" aria-labelledby="addObservationTitle">
+      <button class="modal-close" data-close-modal="addObservationModal" aria-label="閉じる">×</button>
+      <p class="section-kicker">MANUAL OBSERVATION</p><h2 id="addObservationTitle">観察対象を追加</h2>
+      <p>写真全体に関わる概念や、AIが見落とした対象も追加できます。</p>
+      <label class="form-label">短い名前<input id="newObservationLabel" type="text" placeholder="例：右側の説明パネル" /></label>
+      <label class="form-label">対象の種類<select id="newObservationType"><option value="physical">実体</option><option value="information">情報表現</option><option value="space">場所・空間</option><option value="concept">概念</option><option value="feature">部分・特徴</option></select></label>
+      <div class="modal-actions"><button class="ghost-button dark" data-close-modal="addObservationModal">キャンセル</button><button class="primary-button" id="saveObservationButton">追加する</button></div>
+    </article>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="sample-data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
