@@ -395,7 +395,7 @@
   <script type="module" src="src/main.js"></script>
   <style>
     .annotated-photo #observationOverlay { z-index: 3; }
-    #regionDrawLayer { position: absolute; inset: 0; z-index: 2; touch-action: none; cursor: crosshair; }
+    #regionDrawLayer { position: absolute; inset: 0; z-index: 2; pointer-events: none; touch-action: none; cursor: crosshair; }
     #regionDraftBox { position: absolute; border: 2px dashed var(--accent-2); background: rgba(232,111,54,.2); pointer-events: none; }
     .candidate-card { width: 100%; border: 1px solid var(--line); border-radius: 14px; background: white; padding: 0; display: grid; grid-template-columns: 1fr auto; gap: 5px; align-items: center; text-align: left; color: inherit; }
     .candidate-main { border: 0; background: transparent; padding: 11px; display: grid; grid-template-columns: 26px 27px 1fr; gap: 9px; align-items: center; text-align: left; color: inherit; min-width: 0; }

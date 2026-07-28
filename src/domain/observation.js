@@ -11,10 +11,14 @@ export const MIN_REGION_PERCENT = 3;
  */
 export function normalizeRegion(region, minimum = MIN_REGION_PERCENT) {
   if (!region) return null;
-  const startX = clamp(Number(region.x), 0, 100);
-  const startY = clamp(Number(region.y), 0, 100);
-  const endX = clamp(startX + Math.max(0, Number(region.w)), 0, 100);
-  const endY = clamp(startY + Math.max(0, Number(region.h)), 0, 100);
+  const rawLeft = Number(region.x);
+  const rawTop = Number(region.y);
+  const rawRight = rawLeft + Math.max(0, Number(region.w));
+  const rawBottom = rawTop + Math.max(0, Number(region.h));
+  const startX = clamp(rawLeft, 0, 100);
+  const startY = clamp(rawTop, 0, 100);
+  const endX = clamp(rawRight, 0, 100);
+  const endY = clamp(rawBottom, 0, 100);
   const normalized = {
     x: round(startX),
     y: round(startY),
@@ -22,6 +26,45 @@ export function normalizeRegion(region, minimum = MIN_REGION_PERCENT) {
     h: round(endY - startY),
   };
   return normalized.w < minimum || normalized.h < minimum ? null : normalized;
+}
+
+/**
+ * Return the actual image content rectangle inside an object-fit: contain box.
+ * Coordinates are in the same viewport space as the container rectangle.
+ */
+export function displayedImageRect(container, naturalWidth, naturalHeight, maxHeight = 650) {
+  const width = Number(container?.width) || 0;
+  const height = Number(container?.height) || 0;
+  const imageWidth = Number(naturalWidth) || 0;
+  const imageHeight = Number(naturalHeight) || 0;
+  if (!width || !height || !imageWidth || !imageHeight) return { ...container };
+  const scale = Math.min(width / imageWidth, Math.min(height, maxHeight) / imageHeight);
+  const contentWidth = imageWidth * scale;
+  const contentHeight = imageHeight * scale;
+  return {
+    left: Number(container.left) + (width - contentWidth) / 2,
+    top: Number(container.top) + (height - contentHeight) / 2,
+    width: contentWidth,
+    height: contentHeight,
+  };
+}
+
+export function resetRegionDraft() {
+  return { drawing: false, pointerId: null, start: null, region: null };
+}
+
+export function observationReferences(project, observationId) {
+  return {
+    relations: (project.relations || []).filter(
+      (relation) => relation.sourceId === observationId || relation.targetId === observationId,
+    ),
+    facts: (project.facts || []).filter(
+      (fact) =>
+        fact.targetId === observationId ||
+        fact.targetObservationId === observationId ||
+        fact.sourceObservationId === observationId,
+    ),
+  };
 }
 
 /**
