@@ -155,7 +155,12 @@
             <div class="panel-title"><span>PHOTO</span><strong id="organizePhotoTitle">写真を選択</strong></div>
             <div class="annotated-photo" id="annotatedPhoto">
               <img id="organizeImage" alt="整理対象の写真" />
+              <div id="regionDrawLayer" aria-hidden="true"><div id="regionDraftBox" class="hidden"></div></div>
               <div id="observationOverlay"></div>
+              <div id="regionDrawingControls" class="region-drawing-controls hidden" role="status">
+                <span>範囲を指定してください</span>
+                <button type="button" id="cancelRegionDrawingButton">キャンセル</button>
+              </div>
             </div>
             <div class="image-help"><span>番号を押すと対象を選択</span><button class="text-button" id="addObservationButton">＋ 対象を手動追加</button></div>
             <div class="experience-memo">
@@ -306,9 +311,16 @@
     <article class="small-modal-card" role="dialog" aria-modal="true" aria-labelledby="addObservationTitle">
       <button class="modal-close" data-close-modal="addObservationModal" aria-label="閉じる">×</button>
       <p class="section-kicker">MANUAL OBSERVATION</p><h2 id="addObservationTitle">観察対象を追加</h2>
-      <p>写真全体に関わる概念や、AIが見落とした対象も追加できます。</p>
+      <p>写真全体に関わる対象や、写真内の特定領域を別々のObservationとして保存できます。</p>
       <label class="form-label">短い名前<input id="newObservationLabel" type="text" placeholder="例：右側の説明パネル" /></label>
       <label class="form-label">対象の種類<select id="newObservationType"><option value="physical">実体</option><option value="information">情報表現</option><option value="space">場所・空間</option><option value="concept">概念</option><option value="feature">部分・特徴</option></select></label>
+      <fieldset class="form-label" id="newObservationRegion">
+        <legend>対象の範囲</legend>
+        <label><input type="radio" name="observation-region" value="whole" checked /> 写真全体</label>
+        <label><input type="radio" name="observation-region" value="region" /> 写真内の範囲</label>
+        <button type="button" class="text-button hidden" id="redrawObservationRegionButton">写真上で範囲を描き直す</button>
+        <small id="observationRegionHelp">写真全体を指すObservationとして保存します。</small>
+      </fieldset>
       <div class="modal-actions"><button class="ghost-button dark" data-close-modal="addObservationModal">キャンセル</button><button class="primary-button" id="saveObservationButton">追加する</button></div>
     </article>
   </div>
@@ -385,5 +397,17 @@
   </div>
 
   <script type="module" src="src/main.js"></script>
+  <style>
+    .annotated-photo #observationOverlay { z-index: 3; }
+    #regionDrawLayer { position: absolute; inset: 0; z-index: 2; pointer-events: none; touch-action: none; cursor: crosshair; }
+    #regionDraftBox { position: absolute; border: 2px dashed var(--accent-2); background: rgba(232,111,54,.2); pointer-events: none; }
+    .region-drawing-controls { position:absolute; left:12px; right:12px; bottom:12px; z-index:6; display:flex; align-items:center; justify-content:space-between; gap:10px; padding:9px 11px; border:1px solid rgba(255,255,255,.35); border-radius:10px; background:rgba(20,21,19,.86); color:white; font-size:10px; font-weight:800; pointer-events:auto; }
+    .region-drawing-controls button { border:1px solid rgba(255,255,255,.5); border-radius:7px; background:transparent; color:white; padding:6px 9px; font-size:10px; font-weight:800; }
+    .candidate-card { width: 100%; border: 1px solid var(--line); border-radius: 14px; background: white; padding: 0; display: grid; grid-template-columns: 1fr auto; gap: 5px; align-items: center; text-align: left; color: inherit; }
+    .candidate-main { border: 0; background: transparent; padding: 11px; display: grid; grid-template-columns: 26px 27px 1fr; gap: 9px; align-items: center; text-align: left; color: inherit; min-width: 0; }
+    .candidate-actions { display: flex; gap: 4px; padding-right: 8px; }
+    .candidate-actions button { border: 1px solid var(--line); background: white; border-radius: 7px; padding: 5px 7px; color: var(--muted); font-size: 8px; font-weight: 800; }
+    .candidate-actions button:hover { border-color: var(--accent); color: var(--accent); }
+  </style>
 </body>
 </html>

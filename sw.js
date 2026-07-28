@@ -29,6 +29,7 @@ const SHELL_ASSETS = [
   "./src/ui/app.js",
   "./src/domain/registry.js",
   "./src/domain/visit.js",
+  "./src/domain/observation.js",
   "./src/features/project/migrate.js",
   "./src/data/demo/sample-data.js",
   "./src/repositories/knowledge-repository.js",
