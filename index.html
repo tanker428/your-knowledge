@@ -26,7 +26,12 @@
         <button class="nav-link" data-view="learn">学ぶ</button>
         <button class="nav-link" data-view="collection">コレクション</button>
       </nav>
-      <button class="primary-button small" id="openUploadButton"><span aria-hidden="true">＋</span> 写真を追加</button>
+      <div class="topbar-actions">
+        <button class="visit-switch" id="visitSwitchButton" aria-haspopup="dialog">
+          <small>訪問</small><strong id="visitSwitchLabel">読み込み中…</strong><i aria-hidden="true">▾</i>
+        </button>
+        <button class="primary-button small" id="openUploadButton"><span aria-hidden="true">＋</span> 写真を追加</button>
+      </div>
     </header>
 
     <main>
@@ -135,12 +140,17 @@
       <section class="view" id="view-organize" aria-labelledby="organizeTitle">
         <div class="page-hero compact organize-hero">
           <div><p class="section-kicker">LABELING WORKSPACE</p><h1 id="organizeTitle">写真を知識の入口にする</h1><p>一つだけを選ぶ必要はありません。複数の観察対象とその関係を確認します。詳細な年代・大きさ・背景知識はここでは求めません。</p></div>
-          <div class="visit-pill"><span>現在の訪問</span><strong>恐竜博物館</strong></div>
+          <div class="visit-pill"><span id="organizeVisitKind">現在の訪問</span><strong id="organizeVisitName">—</strong></div>
         </div>
 
         <div class="organize-photo-strip" id="organizePhotoStrip" aria-label="整理する写真を選択"></div>
 
-        <div class="organize-workspace">
+        <div class="empty-state large hidden" id="organizeEmpty">
+          <strong>この訪問にはまだ写真がありません</strong>
+          <p>「＋ 写真を追加」から、この訪問で撮った写真を読み込んでください。</p>
+        </div>
+
+        <div class="organize-workspace" id="organizeWorkspace">
           <section class="organize-image-panel">
             <div class="panel-title"><span>PHOTO</span><strong id="organizePhotoTitle">写真を選択</strong></div>
             <div class="annotated-photo" id="annotatedPhoto">
@@ -148,6 +158,11 @@
               <div id="observationOverlay"></div>
             </div>
             <div class="image-help"><span>番号を押すと対象を選択</span><button class="text-button" id="addObservationButton">＋ 対象を手動追加</button></div>
+            <div class="experience-memo">
+              <label for="experienceMemoInput">この写真を撮ったときの感想</label>
+              <textarea id="experienceMemoInput" rows="2" placeholder="例：実物は想像より大きかった／クジラの仲間とは思わなかった"></textarea>
+              <small>体験のメモです。あとから学んだ知識は、知識マップの「詳しく学ぶ」に書きます。</small>
+            </div>
           </section>
 
           <section class="dialog-panel">
@@ -295,6 +310,60 @@
       <label class="form-label">短い名前<input id="newObservationLabel" type="text" placeholder="例：右側の説明パネル" /></label>
       <label class="form-label">対象の種類<select id="newObservationType"><option value="physical">実体</option><option value="information">情報表現</option><option value="space">場所・空間</option><option value="concept">概念</option><option value="feature">部分・特徴</option></select></label>
       <div class="modal-actions"><button class="ghost-button dark" data-close-modal="addObservationModal">キャンセル</button><button class="primary-button" id="saveObservationButton">追加する</button></div>
+    </article>
+  </div>
+
+  <div class="modal-backdrop" id="visitSheet" aria-hidden="true">
+    <article class="visit-sheet-card" role="dialog" aria-modal="true" aria-labelledby="visitSheetTitle">
+      <button class="modal-close" data-close-modal="visitSheet" aria-label="閉じる">×</button>
+      <p class="section-kicker">VISITS</p>
+      <h2 id="visitSheetTitle">訪問を切り替える</h2>
+      <p class="muted-copy">写真・整理・知識マップ・問題・コレクションは、選んだ訪問のものだけが表示されます。</p>
+      <div class="visit-list" id="visitList"></div>
+      <div class="visit-sheet-actions">
+        <button class="ghost-button dark" id="restoreDemoButton" type="button">デモ訪問を表示</button>
+        <button class="ghost-button dark" id="editVisitButton" type="button">この訪問を編集</button>
+        <button class="primary-button" id="newVisitButton" type="button">＋ 自分の訪問を作る</button>
+      </div>
+    </article>
+  </div>
+
+  <div class="modal-backdrop" id="visitEditorModal" aria-hidden="true">
+    <article class="small-modal-card" role="dialog" aria-modal="true" aria-labelledby="visitEditorTitle">
+      <button class="modal-close" data-close-modal="visitEditorModal" aria-label="閉じる">×</button>
+      <p class="section-kicker">VISIT</p>
+      <h2 id="visitEditorTitle">自分の訪問を作る</h2>
+      <label class="form-label">訪問名<input id="visitTitleInput" type="text" placeholder="例：恐竜博物館テスト" /></label>
+      <label class="form-label">場所名（任意）<input id="visitPlaceInput" type="text" placeholder="例：福井県立恐竜博物館" /></label>
+      <label class="form-label">訪問日（任意）<input id="visitDateInput" type="date" /></label>
+      <fieldset class="form-label pack-fieldset">
+        <legend>分野パック</legend>
+        <div class="pack-list" id="visitPackList"></div>
+      </fieldset>
+      <p class="muted-copy" id="visitEditorHint"></p>
+      <div class="modal-actions">
+        <button class="ghost-button dark hidden" id="deleteVisitButton" type="button">この訪問を削除</button>
+        <button class="ghost-button dark" data-close-modal="visitEditorModal" type="button">キャンセル</button>
+        <button class="primary-button" id="saveVisitButton" type="button">保存する</button>
+      </div>
+    </article>
+  </div>
+
+  <div class="modal-backdrop" id="firstRunModal" aria-hidden="true">
+    <article class="small-modal-card" role="dialog" aria-modal="true" aria-labelledby="firstRunTitle">
+      <p class="section-kicker">WELCOME</p>
+      <h2 id="firstRunTitle">どちらから始めますか</h2>
+      <p class="muted-copy">自分の写真とデモの写真は、別々の訪問として分けて扱います。混ざることはありません。</p>
+      <div class="first-run-choices">
+        <button class="first-run-choice" id="firstRunDemoButton" type="button">
+          <strong>デモを見る</strong>
+          <small>恐竜博物館の写真20枚で、整理から問題までの流れを試す</small>
+        </button>
+        <button class="first-run-choice primary" id="firstRunCreateButton" type="button">
+          <strong>自分の訪問を作る</strong>
+          <small>自分で撮った写真から、知識を育てはじめる</small>
+        </button>
+      </div>
     </article>
   </div>
 

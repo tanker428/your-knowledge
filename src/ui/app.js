@@ -28,6 +28,23 @@ import {
   SAMPLE_STORIES,
   SAMPLE_VISIT,
 } from "../data/demo/sample-data.js";
+import {
+  collectVisitCascade,
+  copyFactsForProject,
+  createQuizResult,
+  createVisit,
+  DEMO_VISIT_ID,
+  isDemoVisit,
+  pickNextActiveVisitId,
+  quizzesForVisit,
+  updateVisit,
+  visitFacts,
+  validateVisit,
+} from "../domain/visit.js";
+import {
+  migrateProjectDocument,
+  PROJECT_SCHEMA_VERSION,
+} from "../features/project/migrate.js";
 
 const MAX_UPLOAD_BATCH = 120;
 const STATUS_LABELS = {
@@ -116,6 +133,12 @@ export async function initApp(deps) {
   // ---------------------------------------------------------------- state ---
 
   const state = {
+    /** @type {import('../domain/visit.js').Visit[]} */
+    visits: [],
+    /** @type {string|null} */
+    activeVisitId: null,
+    /** @type {string|null} */
+    editingVisitId: null,
     /** @type {any[]} */
     photos: [],
     /** @type {any[]} */
@@ -148,16 +171,14 @@ export async function initApp(deps) {
   };
 
   /**
-   * The demo visit, always present. Saved state is layered on top of it rather
-   * than replacing it, so the 20 sample photos survive any storage mishap.
+   * The bundled demo photos, as records. The migration layers saved state on
+   * top of these, so the 20 samples survive any storage mishap.
    * @returns {any[]}
    */
   function demoPhotos() {
     return clone(SAMPLE_PHOTOS).map((/** @type {any} */ photo) => ({
       ...photo,
-      visitId: SAMPLE_VISIT.id,
-      src: `assets/${photo.file}`,
-      thumbSrc: `assets/${photo.file}`,
+      visitId: DEMO_VISIT_ID,
       source: "sample",
       observations: photo.observations.map(
         (/** @type {any} */ observation) => ({
@@ -170,51 +191,51 @@ export async function initApp(deps) {
     }));
   }
 
+  /** Everything the migration needs to rebuild the demo visit. */
+  function migrationContext() {
+    return {
+      demoPhotos: demoPhotos(),
+      demoRelations: clone(SAMPLE_RELATIONS),
+      demoFacts: clone(LEARNING_FACTS),
+      demoVisitSeed: {
+        title: SAMPLE_VISIT.title,
+        placeName: SAMPLE_VISIT.place,
+        domainPackIds: SAMPLE_VISIT.domainHints,
+      },
+    };
+  }
+
   /**
-   * @param {import('../repositories/knowledge-repository.js').Project|null} saved
+   * Load a stored project into state, migrating it if needed.
+   *
+   * Migration goes through the shared `migrateProjectDocument()` — there is no
+   * second migration path in this file (see Issue #9).
+   *
+   * @param {any} saved
+   * @returns {Promise<{ok: boolean, reason?: string, notes?: string[]}>}
    */
   async function applyProject(saved) {
-    const photos = demoPhotos();
-    const relations = clone(SAMPLE_RELATIONS);
-    const facts = clone(LEARNING_FACTS);
-
-    if (saved) {
-      for (const savedPhoto of saved.photos || []) {
-        const target = photos.find((photo) => photo.id === savedPhoto.id);
-        if (target) {
-          target.status = savedPhoto.status || target.status;
-          if (Array.isArray(savedPhoto.observations)) {
-            target.observations = savedPhoto.observations.map(
-              (/** @type {any} */ observation) => ({
-                photoId: target.id,
-                ...observation,
-              }),
-            );
-          }
-        } else if (savedPhoto.source === "upload") {
-          photos.push({
-            ...savedPhoto,
-            observations: savedPhoto.observations || [],
-          });
-        }
-      }
-      if (Array.isArray(saved.relations) && saved.relations.length) {
-        relations.splice(0, relations.length, ...saved.relations);
-      }
-      for (const savedFact of saved.facts || []) {
-        const target = facts.find(
-          (/** @type {any} */ fact) => fact.id === savedFact.id,
-        );
-        if (target) target.status = savedFact.status;
-      }
-      state.quizResults = saved.quizResults || [];
+    const result = migrateProjectDocument(saved, migrationContext());
+    if (!result.ok) {
+      // Leave whatever is on screen alone; the caller reports the reason.
+      return { ok: false, reason: result.reason };
     }
 
-    state.photos = photos;
-    state.relations = relations;
-    state.facts = facts;
+    const project = result.project;
+    state.visits = project.visits;
+    state.activeVisitId = project.activeVisitId;
+    state.photos = project.photos.map((/** @type {any} */ photo) => ({
+      ...photo,
+      src: photo.source === "sample" ? `assets/${photo.file}` : photo.src,
+      thumbSrc: photo.source === "sample" ? `assets/${photo.file}` : photo.thumbSrc,
+    }));
+    state.relations = project.relations;
+    state.facts = project.facts;
+    state.quizResults = project.quizResults || [];
+
     await attachImportedPhotoUrls();
     normaliseSelection();
+    return { ok: true, notes: result.notes };
   }
 
   /** Resolve Blob URLs for every imported photo, flagging any that went missing. */
@@ -258,10 +279,34 @@ export async function initApp(deps) {
     photo.photoMissing = false;
   }
 
-  /** Keep the "currently selected" ids pointing at something that still exists. */
+  // ---------------------------------------------------------------- visit ---
+
+  /** @returns {import('../domain/visit.js').Visit|null} */
+  function activeVisit() {
+    return state.visits.find((visit) => visit.id === state.activeVisitId) || null;
+  }
+
+  /**
+   * The photos of the current visit. **Every screen renders from this, never
+   * from `state.photos`** — that is what keeps demo and user data apart.
+   * @returns {any[]}
+   */
+  function visitPhotos() {
+    if (!state.activeVisitId) return [];
+    return state.photos.filter((photo) => photo.visitId === state.activeVisitId);
+  }
+
+  /** True while the demo visit is open. Demo-only content keys off this. */
+  function viewingDemo() {
+    return isDemoVisit(activeVisit());
+  }
+
+  /** Keep the "currently selected" ids pointing at something in this visit. */
   function normaliseSelection() {
-    if (!photoById(state.organizePhotoId))
-      state.organizePhotoId = state.photos[0]?.id || null;
+    const photos = visitPhotos();
+    if (!photos.some((photo) => photo.id === state.organizePhotoId)) {
+      state.organizePhotoId = photos[0]?.id || null;
+    }
     const photo = photoById(state.organizePhotoId);
     if (
       photo &&
@@ -285,7 +330,10 @@ export async function initApp(deps) {
   function toProject() {
     return {
       id: DEFAULT_PROJECT_ID,
+      schemaVersion: PROJECT_SCHEMA_VERSION,
       updatedAt: Date.now(),
+      visits: state.visits,
+      activeVisitId: state.activeVisitId,
       photos: state.photos.map((photo) => ({
         id: photo.id,
         visitId: photo.visitId,
@@ -296,13 +344,21 @@ export async function initApp(deps) {
         source: photo.source,
         domainHint: photo.domainHint,
         rotation: photo.rotation,
+
+        capturedAt: photo.capturedAt ?? null,
+        fileLastModified: photo.fileLastModified ?? null,
+        importedAt: photo.importedAt ?? null,
+        originalFileName: photo.originalFileName ?? null,
+        originalMimeType: photo.originalMimeType ?? null,
+        originalBytes: photo.originalBytes ?? null,
+        originalWidth: photo.originalWidth ?? null,
+        originalHeight: photo.originalHeight ?? null,
+        experienceMemo: photo.experienceMemo ?? "",
+
         observations: photo.observations,
       })),
       relations: state.relations,
-      facts: state.facts.map((/** @type {any} */ fact) => ({
-        id: fact.id,
-        status: fact.status,
-      })),
+      facts: copyFactsForProject(state.facts),
       quizResults: state.quizResults,
     };
   }
@@ -361,8 +417,12 @@ export async function initApp(deps) {
 
   // -------------------------------------------------------------- helpers ---
 
+  /**
+   * Observations of the current visit only. Knowledge map, quizzes and
+   * collections all read through here, so none of them can leak across visits.
+   */
   function allObservations({ includedOnly = false } = {}) {
-    return state.photos.flatMap((photo) =>
+    return visitPhotos().flatMap((photo) =>
       photo.observations
         .filter(
           (/** @type {any} */ observation) =>
@@ -431,8 +491,11 @@ export async function initApp(deps) {
 
   function renderOverview() {
     const observations = allObservations({ includedOnly: true });
-    const learned = state.facts.filter(factUnlocked).length;
-    $("#statPhotos").textContent = state.photos.length;
+    const learned = visitFacts(
+      { photos: state.photos, facts: state.facts },
+      state.activeVisitId,
+    ).filter(factUnlocked).length;
+    $("#statPhotos").textContent = visitPhotos().length;
     $("#statObservations").textContent = observations.length;
     $("#statConfirmed").textContent = countConfirmedObservations();
     $("#statLearned").textContent = learned;
@@ -451,7 +514,7 @@ export async function initApp(deps) {
   }
 
   function renderPhotos() {
-    const filtered = state.photos.filter((photo) => {
+    const filtered = visitPhotos().filter((photo) => {
       if (state.photoFilter === "all") return true;
       if (state.photoFilter === "multi")
         return (
@@ -589,7 +652,7 @@ export async function initApp(deps) {
   }
 
   function renderOrganizeStrip() {
-    $("#organizePhotoStrip").innerHTML = state.photos
+    $("#organizePhotoStrip").innerHTML = visitPhotos()
       .map(
         (photo) => `
       <button class="strip-photo ${photo.id === state.organizePhotoId ? "active" : ""}" data-organize-photo="${escapeHtml(photo.id)}" title="${escapeHtml(photo.title)}">
@@ -727,10 +790,27 @@ export async function initApp(deps) {
   }
 
   function renderOrganize() {
+    renderVisitBar();
     const photo = currentOrganizePhoto();
-    if (!photo) return;
+    const empty = $("#organizeEmpty");
+    const workspace = $("#organizeWorkspace");
+    if (!photo) {
+      empty?.classList.remove("hidden");
+      workspace?.classList.add("hidden");
+      $("#organizePhotoStrip").innerHTML = "";
+      return;
+    }
+    empty?.classList.add("hidden");
+    workspace?.classList.remove("hidden");
+
     renderOrganizeStrip();
     $("#organizePhotoTitle").textContent = photo.title;
+    // 体験メモは写真のもの。ここだけで入力する。
+    const memoInput = $("#experienceMemoInput");
+    if (memoInput && memoInput.dataset.photoId !== photo.id) {
+      memoInput.value = photo.experienceMemo ?? "";
+      memoInput.dataset.photoId = photo.id;
+    }
     $("#organizeImage").src = photo.src;
     $("#organizeImage").style.transform = photo.rotation
       ? `rotate(${photo.rotation}deg) scale(.82)`
@@ -940,7 +1020,9 @@ export async function initApp(deps) {
       region: null,
       genericCategories: ["unknown"],
       learningRoles: ["direct"],
-      domainPacks: [photo.domainHint || SAMPLE_VISIT.domainHints[0] || "other"],
+      domainPacks: [
+        photo.domainHint || activeVisit()?.domainPackIds?.[0] || "other",
+      ],
       domainCategories: [],
       confidence: 1,
       status: "confirmed",
@@ -1128,12 +1210,13 @@ export async function initApp(deps) {
   }
 
   function deckQuizzes(/** @type {string} */ deck) {
+    const quizzes = quizzesForVisit(activeVisit(), SAMPLE_QUIZZES);
     if (deck === "observed")
-      return SAMPLE_QUIZZES.filter(
+      return quizzes.filter(
         (/** @type {any} */ quiz) =>
           quiz.level === "observed" && quizUsesConfirmedData(quiz),
       );
-    return SAMPLE_QUIZZES.filter(
+    return quizzes.filter(
       (/** @type {any} */ quiz) =>
         quiz.level === "learned" && factUnlocked(factById(quiz.requiredFactId)),
     );
@@ -1220,12 +1303,17 @@ export async function initApp(deps) {
     state.quizIndex += 1;
     if (state.quizIndex >= quizzes.length) {
       state.quizCompleted = true;
-      state.quizResults.push({
-        deck: state.deck,
-        score: state.quizScore,
-        total: quizzes.length,
-        completedAt: new Date().toISOString(),
-      });
+      state.quizResults.push(
+        createQuizResult(
+          {
+            deck: state.deck,
+            score: state.quizScore,
+            total: quizzes.length,
+            completedAt: new Date().toISOString(),
+          },
+          state.activeVisitId,
+        ),
+      );
       persist();
     }
     renderQuiz();
@@ -1240,6 +1328,13 @@ export async function initApp(deps) {
   }
 
   function renderStories() {
+    // Demo-only content. A user's own visit gets nothing pre-authored.
+    if (!viewingDemo()) {
+      $("#storyGrid").innerHTML = "";
+      $("#storyGrid").closest(".section-block")?.classList.add("hidden");
+      return;
+    }
+    $("#storyGrid").closest(".section-block")?.classList.remove("hidden");
     $("#storyGrid").innerHTML = SAMPLE_STORIES.map(
       (/** @type {any} */ story, /** @type {number} */ index) => {
         const photos = story.photoIds.map(photoById).filter(Boolean);
@@ -1320,7 +1415,12 @@ export async function initApp(deps) {
   }
 
   function renderCollections() {
-    $("#collectionGrid").innerHTML = SAMPLE_COLLECTIONS.map(
+    // The bundled collections are hand-authored around the demo photos. Until
+    // Core 6 (#8) generates them from real data, a user's visit shows none.
+    const collections = viewingDemo() ? SAMPLE_COLLECTIONS : [];
+
+    $("#collectionGrid").innerHTML = collections.length
+      ? collections.map(
       (/** @type {any} */ collection) => {
         const progress = collectionProgress(collection);
         return `<article class="collection-card"><div class="collection-cover">${progress.photos
@@ -1333,7 +1433,8 @@ export async function initApp(deps) {
             "",
           )}<span>${escapeHtml(collection.icon)}</span></div><div class="collection-body"><div class="collection-title-row"><div><small>COLLECTION</small><h3>${escapeHtml(collection.title)}</h3></div><strong>${progress.percent}%</strong></div><div class="collection-progress"><span style="width:${progress.percent}%"></span></div><div class="stage-row">${progress.stages.map((stage) => `<span class="${stage.complete ? "complete" : ""} ${stage.optional ? "optional" : ""}"><i>${stage.complete ? "✓" : stage.optional ? "—" : "○"}</i>${escapeHtml(stage.label)}</span>`).join("")}</div></div></article>`;
       },
-    ).join("");
+        ).join("")
+      : '<div class="empty-state"><strong>この訪問のコレクションはこれからです</strong><p>写真を追加して整理を進めると、集めた記録がここに並びます。</p></div>';
 
     $("#domainPackGrid").innerHTML = registry.packs
       .filter((item) => item.id !== "other")
@@ -1342,6 +1443,278 @@ export async function initApp(deps) {
         return `<article class="domain-pack-card"><span class="domain-pack-icon">${escapeHtml(pack.icon)}</span><h3>${escapeHtml(pack.label)}</h3><p>${escapeHtml(pack.description)}</p><div class="mini-tag-list">${categories.map((item) => `<span>${escapeHtml(item.label)}</span>`).join("")}</div></article>`;
       })
       .join("");
+  }
+
+  // ---------------------------------------------------------- visit UI ---
+
+  /** Header title, organise-screen pill, and the switcher list. */
+  function renderVisitBar() {
+    const visit = activeVisit();
+    const title = visit ? visit.title : "訪問を選ぶ";
+    $("#visitSwitchLabel").textContent = title;
+    $("#organizeVisitName").textContent = title;
+    $("#organizeVisitKind").textContent = visit
+      ? isDemoVisit(visit)
+        ? "デモ訪問"
+        : "自分の訪問"
+      : "未選択";
+
+    $("#visitList").innerHTML = state.visits
+      .map((item) => {
+        const count = state.photos.filter((p) => p.visitId === item.id).length;
+        const meta = [
+          isDemoVisit(item) ? "デモ" : "自分の訪問",
+          `写真${count}枚`,
+          item.placeName || null,
+          item.visitedAt || null,
+        ]
+          .filter(Boolean)
+          .join("・");
+        return `<button class="visit-row ${item.id === state.activeVisitId ? "active" : ""}" data-switch-visit="${escapeHtml(item.id)}">
+          <span><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(meta)}</small></span>
+          <i>${item.id === state.activeVisitId ? "✓" : ""}</i>
+        </button>`;
+      })
+      .join("");
+
+    $$("[data-switch-visit]").forEach((button) =>
+      button.addEventListener("click", () =>
+        switchVisit(button.dataset.switchVisit),
+      ),
+    );
+  }
+
+  /** @param {string} visitId */
+  function switchVisit(visitId) {
+    if (visitId === state.activeVisitId) {
+      closeModal("visitSheet");
+      return;
+    }
+    state.activeVisitId = visitId;
+    // Selections belong to the old visit; drop them before rendering.
+    state.organizePhotoId = null;
+    state.activeObservationId = null;
+    state.knowledgeObservationId = null;
+    state.photoFilter = "all";
+    resetQuiz();
+    normaliseSelection();
+    persist();
+    closeModal("visitSheet");
+    renderAll();
+    renderVisitBar();
+    renderOrganize();
+    renderKnowledge();
+    renderLearn();
+    showToast(`${activeVisit()?.title ?? ""} へ切り替えました`);
+  }
+
+  /** @param {string|null} visitId  null なら新規作成 */
+  function openVisitEditor(visitId) {
+    state.editingVisitId = visitId;
+    const visit = visitId ? state.visits.find((v) => v.id === visitId) : null;
+
+    $("#visitEditorTitle").textContent = visit ? "訪問を編集" : "自分の訪問を作る";
+    $("#visitTitleInput").value = visit?.title ?? "";
+    $("#visitPlaceInput").value = visit?.placeName ?? "";
+    $("#visitDateInput").value = visit?.visitedAt ?? "";
+
+    const selected = new Set(visit?.domainPackIds ?? ["other"]);
+    $("#visitPackList").innerHTML = registry.packs
+      .map(
+        (pack) => `<label class="pack-choice">
+          <input type="checkbox" value="${escapeHtml(pack.id)}" ${selected.has(pack.id) ? "checked" : ""} />
+          <span>${escapeHtml(pack.icon)} ${escapeHtml(pack.label)}</span>
+        </label>`,
+      )
+      .join("");
+
+    // Deleting is offered for every visit, demo included: the demo is a
+    // regenerable sample, not something to protect (Issue #3 revision).
+    $("#deleteVisitButton").classList.toggle("hidden", !visit);
+    $("#visitEditorHint").textContent = visit && isDemoVisit(visit)
+      ? "デモ訪問です。削除しても、次に「デモを見る」を選べば作り直せます。"
+      : "分野パックを変えても、すでに付けた分類は消えません。";
+
+    closeModal("visitSheet");
+    openModal("visitEditorModal");
+    $("#visitTitleInput").focus();
+  }
+
+  function readVisitEditor() {
+    return {
+      title: $("#visitTitleInput").value,
+      placeName: $("#visitPlaceInput").value,
+      visitedAt: $("#visitDateInput").value || null,
+      domainPackIds: $$("#visitPackList input:checked").map(
+        (input) => input.value,
+      ),
+    };
+  }
+
+  async function saveVisitFromEditor() {
+    const input = readVisitEditor();
+    const check = validateVisit(input);
+    if (!check.ok) {
+      showToast(check.reason);
+      return;
+    }
+
+    if (state.editingVisitId) {
+      const index = state.visits.findIndex((v) => v.id === state.editingVisitId);
+      if (index >= 0) state.visits[index] = updateVisit(state.visits[index], input);
+    } else {
+      const visit = createVisit(input);
+      state.visits.push(visit);
+      state.activeVisitId = visit.id;
+      state.organizePhotoId = null;
+      state.activeObservationId = null;
+      normaliseSelection();
+    }
+
+    closeModal("visitEditorModal");
+    await flushPersist();
+    renderAll();
+    renderVisitBar();
+    renderOrganize();
+    renderKnowledge();
+    renderLearn();
+    showToast(state.editingVisitId ? "訪問を更新しました" : "訪問を作りました");
+    state.editingVisitId = null;
+  }
+
+  /**
+   * Delete a visit and everything that only makes sense inside it.
+   * The cascade exists so nothing is left pointing at a deleted observation.
+   */
+  async function deleteVisit() {
+    const visitId = state.editingVisitId;
+    const visit = state.visits.find((v) => v.id === visitId);
+    if (!visit) return;
+
+    const cascade = collectVisitCascade(
+      { photos: state.photos, relations: state.relations, facts: state.facts, quizResults: state.quizResults },
+      visit.id,
+    );
+
+    const summary = [
+      `写真 ${cascade.photoIds.length}枚`,
+      `観察対象 ${cascade.observationIds.length}件`,
+      `関係 ${cascade.relationIds.length}件`,
+      `回答履歴 ${cascade.quizResultCount}件`,
+    ].join(" / ");
+
+    const proceed = window.confirm(
+      `「${visit.title}」を削除します。\n\n${summary} が消えます。\n` +
+        (isDemoVisit(visit)
+          ? "デモ訪問は、次に「デモを見る」を選べば作り直せます。\n"
+          : "この操作は元に戻せません。\n") +
+        "\n続けますか？",
+    );
+    if (!proceed) return;
+
+    const removedPhotos = new Set(cascade.photoIds);
+    const removedRelations = new Set(cascade.relationIds);
+    const removedFacts = new Set(cascade.factIds);
+
+    for (const photoId of cascade.photoIds) {
+      const urls = objectUrls.get(photoId);
+      if (urls) {
+        URL.revokeObjectURL(urls.src);
+        URL.revokeObjectURL(urls.thumbSrc);
+        objectUrls.delete(photoId);
+      }
+      try {
+        await repository.deletePhotoBinary(photoId);
+      } catch {
+        // 画像が消せなくてもレコードは消す。孤児は次回の起動で拾える。
+      }
+    }
+
+    state.photos = state.photos.filter((photo) => !removedPhotos.has(photo.id));
+    state.relations = state.relations.filter(
+      (/** @type {any} */ relation) => !removedRelations.has(relation.id),
+    );
+    state.facts = state.facts.filter(
+      (/** @type {any} */ fact) => !removedFacts.has(fact.id),
+    );
+    state.quizResults = state.quizResults.filter(
+      (/** @type {any} */ result) =>
+        result.visitId !== visit.id &&
+        !cascade.quizResultIds.includes(result.id),
+    );
+    state.visits = state.visits.filter((item) => item.id !== visit.id);
+    state.activeVisitId = pickNextActiveVisitId(state.visits);
+
+    state.organizePhotoId = null;
+    state.activeObservationId = null;
+    state.knowledgeObservationId = null;
+    resetQuiz();
+    normaliseSelection();
+
+    closeModal("visitEditorModal");
+    state.editingVisitId = null;
+    await flushPersist();
+
+    if (!state.activeVisitId) {
+      openModal("firstRunModal");
+    }
+    renderAll();
+    renderVisitBar();
+    renderOrganize();
+    renderKnowledge();
+    renderLearn();
+    showToast(`「${visit.title}」を削除しました`);
+  }
+
+  /** Rebuild the demo visit from the bundled sample data. */
+  async function restoreDemoVisit() {
+    if (!state.visits.some((visit) => visit.id === DEMO_VISIT_ID)) {
+      const context = migrationContext();
+      state.visits.push(
+        createVisit({
+          id: DEMO_VISIT_ID,
+          title: context.demoVisitSeed.title,
+          placeName: context.demoVisitSeed.placeName,
+          domainPackIds: context.demoVisitSeed.domainPackIds,
+          source: "demo",
+        }),
+      );
+      state.photos.push(
+        ...context.demoPhotos.map((photo) => ({
+          ...photo,
+          src: `assets/${photo.file}`,
+          thumbSrc: `assets/${photo.file}`,
+          experienceMemo: "",
+        })),
+      );
+      const existing = new Set(
+        state.relations.map((/** @type {any} */ r) => r.id),
+      );
+      state.relations.push(
+        ...context.demoRelations.filter(
+          (/** @type {any} */ r) => !existing.has(r.id),
+        ),
+      );
+      const existingFacts = new Set(
+        state.facts.map((/** @type {any} */ f) => f.id),
+      );
+      state.facts.push(
+        ...context.demoFacts.filter(
+          (/** @type {any} */ f) => !existingFacts.has(f.id),
+        ),
+      );
+    }
+    state.activeVisitId = DEMO_VISIT_ID;
+    state.organizePhotoId = null;
+    state.activeObservationId = null;
+    normaliseSelection();
+    await flushPersist();
+  }
+
+  /** Only shown when no visit is selected — the very first run, or after deleting the last one. */
+  function maybeShowFirstRun() {
+    if (state.activeVisitId) return;
+    openModal("firstRunModal");
   }
 
   // ------------------------------------------------------------ importing ---
@@ -1410,6 +1783,11 @@ export async function initApp(deps) {
 
   async function runImport() {
     if (state.importing) return;
+    const visit = activeVisit();
+    if (!visit) {
+      showToast("先に訪問を選んでください");
+      return;
+    }
     const files = state.selectedFiles.splice(0);
     if (!files.length) return;
 
@@ -1420,9 +1798,11 @@ export async function initApp(deps) {
 
     const outcome = await importPhotos(files, {
       repository,
-      visitId: SAMPLE_VISIT.id,
-      domainHint: $("#visitTypeSelect").value || "other",
-      startOrder: state.photos.length + 1,
+      // Photos land in the visit the user is actually looking at — this is the
+      // bug Core 1 exists to fix.
+      visitId: visit.id,
+      domainHint: $("#visitTypeSelect").value || visit.domainPackIds[0] || "other",
+      startOrder: visitPhotos().length + 1,
       createId: () => uid("photo"),
       signal: state.importAbort.signal,
       onProgress: renderImportProgress,
@@ -1558,6 +1938,7 @@ export async function initApp(deps) {
   // ---------------------------------------------------------------- events ---
 
   function renderAll() {
+    renderVisitBar();
     renderOverview();
     renderPhotos();
     renderCollections();
@@ -1727,6 +2108,48 @@ export async function initApp(deps) {
     );
 
     // Never lose a pending write when the tab goes away.
+    // ---- visit ----
+    $("#visitSwitchButton")?.addEventListener("click", () => {
+      renderVisitBar();
+      openModal("visitSheet");
+    });
+    $("#newVisitButton")?.addEventListener("click", () => openVisitEditor(null));
+    $("#editVisitButton")?.addEventListener("click", () =>
+      openVisitEditor(state.activeVisitId),
+    );
+    $("#restoreDemoButton")?.addEventListener("click", async () => {
+      await restoreDemoVisit();
+      closeModal("visitSheet");
+      renderAll();
+      renderOrganize();
+      renderKnowledge();
+      renderLearn();
+      showToast("デモ訪問を表示しました");
+    });
+    $("#saveVisitButton")?.addEventListener("click", () => void saveVisitFromEditor());
+    $("#deleteVisitButton")?.addEventListener("click", () => void deleteVisit());
+
+    $("#firstRunDemoButton")?.addEventListener("click", async () => {
+      await restoreDemoVisit();
+      closeModal("firstRunModal");
+      renderAll();
+      renderOrganize();
+      renderKnowledge();
+      renderLearn();
+    });
+    $("#firstRunCreateButton")?.addEventListener("click", () => {
+      closeModal("firstRunModal");
+      openVisitEditor(null);
+    });
+
+    // ---- experience memo (belongs to the Photo, not to an Observation) ----
+    $("#experienceMemoInput")?.addEventListener("input", (/** @type {any} */ event) => {
+      const photo = currentOrganizePhoto();
+      if (!photo) return;
+      photo.experienceMemo = event.target.value;
+      persist();
+    });
+
     window.addEventListener("pagehide", () => void flushPersist());
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "hidden") void flushPersist();
@@ -1781,7 +2204,12 @@ export async function initApp(deps) {
     );
   }
 
-  await applyProject(saved);
+  const applied = await applyProject(saved);
+  if (!applied.ok) {
+    // 移行に失敗したときは旧データを保持したまま、デモだけで起動する。
+    showStorageAlert(applied.reason || "保存データを読み込めませんでした。");
+    await applyProject(null);
+  }
 
   bindGlobalEvents();
   setupInstallPrompt();
@@ -1789,6 +2217,7 @@ export async function initApp(deps) {
   renderOrganize();
   renderKnowledge();
   renderLearn();
+  maybeShowFirstRun();
   void renderStorageNote();
   void consumeSharedPhotos();
 }
