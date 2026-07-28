@@ -1,0 +1,94 @@
+/**
+ * The storage boundary for Your Knowledge.
+ *
+ * The UI must never talk to IndexedDB (or, later, to an HTTP API or Neo4j)
+ * directly — it goes through this interface. Swapping the implementation is the
+ * single seam a future `ApiKnowledgeRepository` plugs into.
+ *
+ * Implemented today by `IndexedDbKnowledgeRepository`.
+ *
+ * @typedef {object} PhotoRecord
+ * @property {string} id
+ * @property {string} visitId
+ * @property {string} file           Original filename, for display only.
+ * @property {number} order
+ * @property {string} title
+ * @property {'unorganized'|'in-progress'|'organized'} status
+ * @property {'sample'|'upload'} source
+ * @property {string} [domainHint]
+ * @property {number} [rotation]
+ * @property {ObservationRecord[]} observations
+ * @property {boolean} [photoMissing] True when the image itself is not on this device.
+ *
+ * @typedef {object} ObservationRecord
+ * @property {string} id
+ * @property {string} photoId
+ * @property {string} label
+ * @property {string} observationType
+ * @property {{x:number,y:number,w:number,h:number}|null} region
+ * @property {string[]} genericCategories
+ * @property {string[]} learningRoles
+ * @property {string[]} domainPacks
+ * @property {string[]} domainCategories
+ * @property {string|null} entityId    Stays null while the concrete name is unknown.
+ * @property {number} confidence
+ * @property {string} status
+ * @property {boolean} [included]
+ * @property {'ai'|'user'} [origin]    Who produced this record.
+ *
+ * @typedef {object} Project
+ * @property {string} id
+ * @property {number} updatedAt
+ * @property {PhotoRecord[]} photos
+ * @property {object[]} relations
+ * @property {{id:string,status:string}[]} facts
+ * @property {object[]} [quizResults]
+ *
+ * @typedef {object} PhotoBinary
+ * @property {Blob} display    Downscaled image actually shown in the app.
+ * @property {Blob} thumbnail  Small image for grids and strips.
+ * @property {number} width
+ * @property {number} height
+ * @property {string} type
+ * @property {number} bytes
+ *
+ * @typedef {object} KnowledgeRepository
+ * @property {(projectId: string) => Promise<Project|null>} loadProject
+ * @property {(project: Project) => Promise<void>} saveProject
+ * @property {(projectId: string) => Promise<Blob>} exportProject
+ * @property {(photoId: string, binary: PhotoBinary) => Promise<void>} savePhotoBinary
+ * @property {(photoId: string) => Promise<PhotoBinary|null>} loadPhotoBinary
+ * @property {(photoId: string) => Promise<void>} deletePhotoBinary
+ * @property {() => Promise<string[]>} listPhotoBinaryIds
+ * @property {() => Promise<void>} clear
+ */
+
+export const DEFAULT_PROJECT_ID = "default";
+
+/**
+ * Thrown when the browser refused to store data — almost always a full quota.
+ * The UI must surface this instead of silently dropping the write.
+ */
+export class StorageWriteError extends Error {
+  /**
+   * @param {string} message
+   * @param {{cause?: unknown, quotaExceeded?: boolean}} [options]
+   */
+  constructor(message, options = {}) {
+    super(message);
+    this.name = "StorageWriteError";
+    this.cause = options.cause;
+    this.quotaExceeded = options.quotaExceeded === true;
+  }
+}
+
+/**
+ * Recognise the several ways browsers report "out of space".
+ * @param {unknown} error
+ * @returns {boolean}
+ */
+export function isQuotaExceeded(error) {
+  if (!error || typeof error !== "object") return false;
+  const name = /** @type {{name?: string}} */ (error).name;
+  return name === "QuotaExceededError" || name === "NS_ERROR_DOM_QUOTA_REACHED";
+}

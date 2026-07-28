@@ -1,0 +1,155 @@
+# データモデル
+
+## 中心にある区別
+
+写真と知識対象を同一視しない。この区別がアプリ全体の前提になっている。
+
+```
+1枚の写真  ≠  1件の知識
+```
+
+博物館で撮った1枚には、展示物・説明パネル・系統図・展示空間が同時に写っている。
+それぞれを別の **Observation** として保存する。
+
+```
+Photo (43085_0.jpg)
+ ├─ Observation「複数の頭骨標本」      展示物・現物 / 骨格標本
+ ├─ Observation「中央の全身骨格」      展示物・現物 / 骨格標本
+ ├─ Observation「右側の説明パネル」    説明パネル・ラベル
+ ├─ Observation「脳容量のグラフ」      図表・地図
+ └─ Observation「展示室全体」          場所・景観
+```
+
+## レコード
+
+| レコード | 役割 |
+|---------|------|
+| `Visit` | 訪問（恐竜博物館、故宮、屋久島…） |
+| `Photo` | 撮った写真。知識ではなく入口 |
+| `Observation` | 写真の中で観察した対象 |
+| `ObservationRelation` | Observation 同士の関係 |
+| `Entity` | 具体的な実体（ティラノサウルス等）。**任意** |
+| `LearningFact` | あとから学ぶ詳しい知識 |
+| `Collection` | 発見→整理→分類→関係付け→学習 の進み |
+| `Question` | 問題 |
+
+## Photo
+
+```js
+{
+  id: 'p01',
+  visitId: 'visit-fukui',
+  file: '43083_0.jpg',
+  order: 1,
+  title: '脊椎動物の系統展示',
+  status: 'unorganized' | 'in-progress' | 'organized',
+  source: 'sample' | 'upload',
+  domainHint: 'paleontology',
+  observations: [ /* 0件以上 */ ],
+  photoMissing: false   // JSON だけ読み込んで写真本体が無いとき true
+}
+```
+
+写真の追加時に年代・大きさ・産地・詳細分類を要求しない。要求するのは写真だけ。
+
+## Observation
+
+```js
+{
+  id: 'o01a',
+  photoId: 'p01',
+  label: '爬虫類・鳥類・哺乳類の系統図',
+  observationType: 'physical' | 'information' | 'space' | 'concept' | 'feature',
+  region: { x: 5, y: 6, w: 83, h: 84 } | null,   // 写真内の位置（%）
+  genericCategories: ['diagram-map'],            // 汎用分類（全分野共通）
+  learningRoles: ['comparison', 'context'],
+  domainPacks: ['paleontology'],                 // 分野
+  domainCategories: ['phylogeny', 'evolution'],  // 分野別の浅い分類
+  entityId: null,          // ← 具体名が不明なら null のまま保存できる
+  confidence: 0.94,
+  status: 'suggested' | 'confirmed' | 'rejected',
+  included: true,
+  origin: 'ai' | 'user'    // AIの候補か、自分で追加したか
+}
+```
+
+### 守っているルール
+
+| ルール | 実装 |
+|-------|------|
+| 1枚のPhotoは複数のObservationを持てる | `Photo.observations[]` |
+| PhotoとObservationを同一視しない | 別レコード。JSON出力時も別配列 |
+| Observationと具体的なEntityを同一視しない | `entityId` は任意の参照 |
+| 具体名が不明でも保存できる | `entityId: null` のまま `status: 'confirmed'` になれる |
+| 写真入力時に詳細を要求しない | 追加時は `observations: []` の未整理 |
+| AI推定とユーザー確認を区別する | `status` と `origin` と `confidence` |
+
+## 分類の2段階
+
+```
+① 汎用分類 ── 全分野共通。domain/core/vocabulary.json
+     展示物・現物 / 模型・複製・復元 / 説明パネル・ラベル / 図表・地図 /
+     場所・景観 / 生物・自然物 / 人物・活動 / 映像・画像 / 未判定
+                    ↓
+② 分野別分類 ── 分野ごと。domain/packs/<pack>.json
+     自然史・古生物 → 骨格標本 / 化石・標本 / 系統図 / 翼竜 …
+     美術・文化財   → 絵画 / 書 / 陶磁器 / 青銅器 / 玉器 …
+     自然・生態     → 樹木 / コケ・シダ / 森林 / 登山道 …
+     歴史・考古     → 古文書 / 地図 / 武具 / 年表 …
+```
+
+②は①のあとに適用する。年代・寸法のような細かい知識はここでは扱わず、
+`LearningFact` として「詳しく学ぶ」段階に回す。
+
+## LearningFact
+
+```js
+{
+  id: 'f1',
+  targetId: 'o07a',        // どのObservationの知識か
+  label: '…',
+  sourceType: 'panel' | 'learning' | 'external' | 'user',
+  status: 'locked' | 'learned'
+}
+```
+
+`locked` の間は知識マップに件数だけが出る。「詳しく学ぶ」で `learned` になり、
+追加学習デッキの問題が解放される。
+
+## 保存先
+
+| データ | 保存先 |
+|-------|-------|
+| Photo メタ・Observation・関係・学習状態・クイズ結果 | IndexedDB `projects` |
+| 写真の Blob と サムネイル | IndexedDB `photoBinaries` |
+| サンプル20枚の画像 | `assets/*.jpg`（リポジトリ同梱） |
+| 分類語彙 | `domain/**/*.json`（リポジトリ同梱） |
+
+**ユーザーの写真は端末から出ない。** 外部送信も、リポジトリへの保存も、
+ビルド成果物への同梱もしない。
+
+## JSON 入出力
+
+```json
+{
+  "format": "your-knowledge-project",
+  "schemaVersion": "1.0.0",
+  "exportedAt": "2026-07-28T03:00:00.000Z",
+  "project": { "id": "default", "visit": {...}, "photoStorage": "indexeddb" },
+  "photos": [ { "id": "p01", "title": "…", "status": "organized", … } ],
+  "observations": [ { "id": "o01a", "photoId": "p01", … } ],
+  "relations": [ … ],
+  "entities": [ … ],
+  "learningFacts": [ … ],
+  "collections": [ … ],
+  "quizResults": [ { "deck": "observed", "score": 3, "total": 5, "completedAt": "…" } ]
+}
+```
+
+- **写真のバイナリは入れない。** Base64にすると数百MBの読めないファイルになる。
+  JSONが持つのは写真のIDとメタデータだけで、実体はIndexedDBに残る。
+- 読み込み時に写真が見つからない場合、そのPhotoは `photoMissing: true` として
+  「写真未接続」で表示する。壊れた画像は出さない。
+- `schemaVersion` のメジャーが未対応なら、無理に読まずに理由を表示して中止する。
+- 読み込みは**すべて検証してから**適用する。壊れたJSONで既存データが消えることはない。
+- 読み込み前に現在のデータを自動で書き出し、控えを残す。
