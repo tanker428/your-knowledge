@@ -73,6 +73,15 @@ describe("domain configuration files", () => {
     }
   });
 
+  it("declares directed state for every relation type", () => {
+    expect(core.relationTypes).toHaveLength(9);
+    expect(core.relationTypes.filter((term) => term.directed).map((term) => term.id)).toEqual([
+      "explains",
+      "part-of",
+    ]);
+    expect(core.relationTypes.filter((term) => !term.directed)).toHaveLength(7);
+  });
+
   it("keeps the generic vocabulary free of any field-specific term", () => {
     // The whole point of the split: nothing dinosaur-shaped may live in core.
     const coreIds = [

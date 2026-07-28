@@ -52,6 +52,15 @@ import {
   updateObservation,
 } from "../domain/observation.js";
 import {
+  createRelation,
+  isDirectedRelation,
+  relationCandidates,
+  RELATION_SCOPES,
+  removeRelation,
+  updateRelation,
+  validateRelationInput,
+} from "../domain/relation.js";
+import {
   migrateProjectDocument,
   PROJECT_SCHEMA_VERSION,
 } from "../features/project/migrate.js";
@@ -187,6 +196,10 @@ export async function initApp(deps) {
     observationDraft: null,
     regionDrawingOriginalRegion: null,
     regionDrawingObservationId: null,
+    editingRelationId: null,
+    relationDraft: null,
+    /** @type {string} */
+    relationScope: RELATION_SCOPES.PHOTO,
   };
 
   let imageSurfaceObserver = null;
@@ -1105,10 +1118,35 @@ export async function initApp(deps) {
     const ids = new Set(
       photo.observations.map((/** @type {any} */ item) => item.id),
     );
+    const visitIds = activeVisitObservationIds();
     return state.relations.filter(
       (/** @type {any} */ relation) =>
-        ids.has(relation.sourceId) || ids.has(relation.targetId),
+        visitIds.has(relation.sourceId) &&
+        visitIds.has(relation.targetId) &&
+        (ids.has(relation.sourceId) || ids.has(relation.targetId)),
     );
+  }
+
+  function activeVisitObservationIds() {
+    return new Set(
+      visitPhotos().flatMap((/** @type {any} */ item) =>
+        item.observations.map((/** @type {any} */ observation) => observation.id),
+      ),
+    );
+  }
+
+  function relationType(/** @type {string} */ type) {
+    return registry.relationTypes.find((item) => item.id === type) || null;
+  }
+
+  function relationConnector(/** @type {any} */ relation) {
+    return isDirectedRelation(registry.relationTypes, relation.type) ? "→" : "↔";
+  }
+
+  function relationEndpoint(/** @type {any} */ found) {
+    if (!found) return "";
+    const photo = found.photo;
+    return `<div class="relation-endpoint"><img src="${escapeHtml(photo.thumbSrc || photo.src)}" alt="" /><span><strong>${escapeHtml(found.observation.label)}</strong><small>#${escapeHtml(photo.order)} ${escapeHtml(photo.title)}</small></span></div>`;
   }
 
   function relationCard(/** @type {any} */ relation) {
@@ -1116,10 +1154,10 @@ export async function initApp(deps) {
     const target = observationById(relation.targetId);
     if (!source || !target) return "";
     return `
-      <article class="relation-candidate ${relation.status === "confirmed" ? "confirmed" : relation.status === "rejected" ? "rejected" : ""}">
-        <div class="relation-objects"><span>${escapeHtml(source.observation.label)}</span><b>${escapeHtml(relationLabel(relation.type))}</b><span>${escapeHtml(target.observation.label)}</span></div>
-        <small>${escapeHtml(source.photo.title)} → ${escapeHtml(target.photo.title)}・候補 ${Math.round((relation.confidence || 0) * 100)}%</small>
-        <div><button data-relation-action="confirm" data-relation-id="${escapeHtml(relation.id)}">✓ 採用</button><button data-relation-action="reject" data-relation-id="${escapeHtml(relation.id)}">× 外す</button></div>
+      <article class="relation-card ${relation.status === "confirmed" ? "confirmed" : relation.status === "rejected" ? "rejected" : ""}">
+        <div class="relation-card-main">${relationEndpoint(source)}<b class="relation-connector" title="${escapeHtml(relationLabel(relation.type))}">${relationConnector(relation)}</b>${relationEndpoint(target)}</div>
+        <div class="relation-card-meta"><span>${escapeHtml(relationLabel(relation.type))}</span><span>${relation.origin === "user" ? "手動作成" : `候補 ${Math.round((relation.confidence || 0) * 100)}%`}</span></div>
+        <div class="relation-card-actions"><button data-edit-relation="${escapeHtml(relation.id)}">編集</button><button data-delete-relation="${escapeHtml(relation.id)}">削除</button>${relation.status !== "confirmed" ? `<button data-relation-action="confirm" data-relation-id="${escapeHtml(relation.id)}">✓ 採用</button>` : ""}${relation.status !== "rejected" ? `<button data-relation-action="reject" data-relation-id="${escapeHtml(relation.id)}">× 却下</button>` : ""}</div>
       </article>`;
   }
 
@@ -1127,8 +1165,135 @@ export async function initApp(deps) {
     const relations = relevantRelations(photo);
     return `
       <div class="assistant-message"><span class="assistant-avatar">Y</span><div><strong>最後に、対象同士の関係だけを確認します。</strong><p>同じ展示、説明している、部分と全体、同じテーマなどを複数設定できます。</p></div></div>
-      <div class="relation-list">${relations.length ? relations.map(relationCard).join("") : '<div class="empty-state"><strong>関係候補はまだありません</strong><p>この写真は対象の分類だけで保存できます。</p></div>'}</div>
+      <div class="quick-action-row"><button class="primary-button inline" id="addRelationButton" type="button">＋ 関係を追加</button><span>現在の訪問内のObservationだけを結べます</span></div>
+      <div class="relation-list">${relations.length ? relations.map(relationCard).join("") : '<div class="empty-state"><strong>関係候補はまだありません</strong><p>「＋ 関係を追加」から手動で作成できます。</p></div>'}</div>
       ${relations.length ? '<div class="quick-action-row"><button class="primary-button inline" data-bulk-action="confirm-relations">候補を一括承認</button><span>誤った候補だけ外してください</span></div>' : ""}`;
+  }
+
+  function relationEntriesForVisit() {
+    return visitPhotos().flatMap((photo) =>
+      photo.observations
+        .filter((observation) => observation.included !== false)
+        .map((observation) => ({ observation, photo })),
+    );
+  }
+
+  function relationEntryOption(entry) {
+    return `<option value="${escapeHtml(entry.observation.id)}">#${escapeHtml(entry.photo.order)} ${escapeHtml(entry.photo.title)} / ${escapeHtml(entry.observation.label)}</option>`;
+  }
+
+  function renderRelationEditor() {
+    const draft = state.relationDraft;
+    if (!draft) return;
+    const entries = relationEntriesForVisit();
+    const sourceSelect = $("#relationSourceSelect");
+    const typeSelect = $("#relationTypeSelect");
+    const targetSelect = $("#relationTargetSelect");
+    sourceSelect.innerHTML = entries.map(relationEntryOption).join("");
+    sourceSelect.value = draft.sourceId;
+    typeSelect.innerHTML = registry.relationTypes
+      .map((type) => `<option value="${escapeHtml(type.id)}">${escapeHtml(type.label)}${type.directed ? "（方向あり）" : "（方向なし）"}</option>`)
+      .join("");
+    typeSelect.value = draft.type;
+    const candidates = relationCandidates({
+      photos: state.photos,
+      activeVisitId: state.activeVisitId,
+      sourceId: draft.sourceId,
+      scope: state.relationScope,
+    });
+    targetSelect.innerHTML = candidates.length
+      ? candidates.map(relationEntryOption).join("")
+      : '<option value="">候補がありません</option>';
+    targetSelect.value = candidates.some(
+      (item) => item.observation.id === draft.targetId,
+    )
+      ? draft.targetId
+      : "";
+    $$("[data-relation-scope]").forEach((button) =>
+      button.classList.toggle(
+        "active",
+        button.dataset.relationScope === state.relationScope,
+      ),
+    );
+    const selectedType = relationType(draft.type);
+    $("#relationDirectionNote").textContent = selectedType
+      ? selectedType.directed
+        ? "有向Relation：関係元が関係先へ向かう方向で保存します。"
+        : "無向Relation：関係元と関係先を入れ替えても同じ関係として扱います。"
+      : "";
+  }
+
+  function openRelationEditor(/** @type {string|null} */ relationId = null) {
+    const existing = relationId
+      ? state.relations.find((relation) => relation.id === relationId)
+      : null;
+    const current = currentObservation();
+    const first = relationEntriesForVisit()[0];
+    const sourceId = existing?.sourceId || current?.id || first?.observation.id || "";
+    state.editingRelationId = existing?.id || null;
+    state.relationScope = RELATION_SCOPES.PHOTO;
+    state.relationDraft = {
+      sourceId,
+      targetId: existing?.targetId || "",
+      type: existing?.type || registry.relationTypes[0]?.id || "",
+    };
+    const source = observationById(sourceId);
+    const target = existing ? observationById(existing.targetId) : null;
+    if (existing && source && target && source.photo.id !== target.photo.id) {
+      const distance = Math.abs(Number(source.photo.order || 0) - Number(target.photo.order || 0));
+      state.relationScope = distance <= 2 ? RELATION_SCOPES.NEARBY : RELATION_SCOPES.VISIT;
+    }
+    $("#relationEditorTitle").textContent = existing ? "関係を編集" : "関係を追加";
+    renderRelationEditor();
+    openModal("relationEditorModal");
+  }
+
+  function saveRelation() {
+    const wasEditing = Boolean(state.editingRelationId);
+    const candidate = {
+      sourceId: $("#relationSourceSelect").value,
+      targetId: $("#relationTargetSelect").value,
+      type: $("#relationTypeSelect").value,
+    };
+    const reason = validateRelationInput(
+      state.relations,
+      candidate,
+      registry.relationTypes,
+      state.editingRelationId,
+    );
+    if (reason) {
+      showToast(reason);
+      return;
+    }
+    if (state.editingRelationId) {
+      const index = state.relations.findIndex(
+        (relation) => relation.id === state.editingRelationId,
+      );
+      if (index >= 0)
+        state.relations[index] = updateRelation(state.relations[index], candidate);
+    } else {
+      state.relations.push({ ...createRelation({ ...candidate, id: uid("relation") }) });
+    }
+    closeModal("relationEditorModal");
+    state.editingRelationId = null;
+    state.relationDraft = null;
+    persist();
+    renderOrganize();
+    renderKnowledge();
+    renderCollections();
+    showToast(wasEditing ? "関係を更新しました" : "関係を保存しました");
+  }
+
+  function deleteRelation(/** @type {string} */ relationId) {
+    const relation = state.relations.find((item) => item.id === relationId);
+    if (!relation) return;
+    if (!window.confirm(`「${relationLabel(relation.type)}」を削除しますか？`)) return;
+    state.relations = removeRelation(state.relations, relationId);
+    persist();
+    renderOrganize();
+    renderKnowledge();
+    renderCollections();
+    showToast("関係を削除しました");
   }
 
   function renderOrganize() {
@@ -1335,6 +1500,19 @@ export async function initApp(deps) {
     $("#stepAddObservation")?.addEventListener("click", () =>
       openObservationEditor(null),
     );
+    $("#addRelationButton")?.addEventListener("click", () =>
+      openRelationEditor(null),
+    );
+    $$('[data-edit-relation]').forEach((button) =>
+      button.addEventListener("click", () =>
+        openRelationEditor(button.dataset.editRelation),
+      ),
+    );
+    $$('[data-delete-relation]').forEach((button) =>
+      button.addEventListener("click", () =>
+        deleteRelation(button.dataset.deleteRelation),
+      ),
+    );
     $("#redrawObservationRegionButton")?.addEventListener("click", () => {
       if (state.observationDraft) {
         state.observationDraft.regionMode = "region";
@@ -1432,9 +1610,12 @@ export async function initApp(deps) {
       return;
     }
     const { observation, photo } = found;
+    const activeObservationIds = activeVisitObservationIds();
     const relations = state.relations.filter(
       (/** @type {any} */ relation) =>
         relation.status === "confirmed" &&
+        activeObservationIds.has(relation.sourceId) &&
+        activeObservationIds.has(relation.targetId) &&
         (relation.sourceId === observation.id ||
           relation.targetId === observation.id),
     );
@@ -1483,7 +1664,9 @@ export async function initApp(deps) {
                       ? relation.targetId
                       : relation.sourceId;
                   const other = observationById(otherId);
-                  return `<button class="relation-link" data-focus-related="${escapeHtml(otherId)}"><span>${escapeHtml(relationLabel(relation.type))}</span><strong>${escapeHtml(other?.observation.label || "")}</strong><small>${escapeHtml(other?.photo.title || "")}</small></button>`;
+                  const source = observationById(relation.sourceId);
+                  const target = observationById(relation.targetId);
+                  return `<button class="relation-link" data-focus-related="${escapeHtml(otherId)}"><span>${escapeHtml(source?.observation.label || "")} ${relationConnector(relation)} ${escapeHtml(target?.observation.label || "")}</span><strong>${escapeHtml(relationLabel(relation.type))}</strong><small>${escapeHtml(other?.photo.title || "")}</small></button>`;
                 })
                 .join("")
             : '<p class="muted-copy">確認済みの関係はまだありません。</p>'
@@ -2363,6 +2546,26 @@ export async function initApp(deps) {
       openObservationEditor(null),
     );
     $("#saveObservationButton").addEventListener("click", saveObservation);
+    $("#saveRelationButton")?.addEventListener("click", saveRelation);
+    $("#relationSourceSelect")?.addEventListener("change", (event) => {
+      if (!state.relationDraft) return;
+      state.relationDraft.sourceId = event.target.value;
+      state.relationDraft.targetId = "";
+      renderRelationEditor();
+    });
+    $("#relationTypeSelect")?.addEventListener("change", (event) => {
+      if (state.relationDraft) state.relationDraft.type = event.target.value;
+      renderRelationEditor();
+    });
+    $("#relationTargetSelect")?.addEventListener("change", (event) => {
+      if (state.relationDraft) state.relationDraft.targetId = event.target.value;
+    });
+    $$("[data-relation-scope]").forEach((button) =>
+      button.addEventListener("click", () => {
+        state.relationScope = button.dataset.relationScope;
+        renderRelationEditor();
+      }),
+    );
     $("#cancelRegionDrawingButton")?.addEventListener("click", () =>
       cancelRegionDrawing({ restoreEditor: true }),
     );

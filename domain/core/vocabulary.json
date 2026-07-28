@@ -94,39 +94,48 @@
   "relationTypes": [
     {
       "id": "explains",
-      "label": "説明している"
+      "label": "説明している",
+      "directed": true
     },
     {
       "id": "part-of",
-      "label": "部分と全体"
+      "label": "部分と全体",
+      "directed": true
     },
     {
       "id": "same-object",
-      "label": "同じ物理対象"
+      "label": "同じ物理対象",
+      "directed": false
     },
     {
       "id": "same-exhibit",
-      "label": "同じ展示"
+      "label": "同じ展示",
+      "directed": false
     },
     {
       "id": "same-place",
-      "label": "同じ場所"
+      "label": "同じ場所",
+      "directed": false
     },
     {
       "id": "same-theme",
-      "label": "同じテーマ"
+      "label": "同じテーマ",
+      "directed": false
     },
     {
       "id": "different-angle",
-      "label": "別角度"
+      "label": "別角度",
+      "directed": false
     },
     {
       "id": "compares",
-      "label": "比較している"
+      "label": "比較している",
+      "directed": false
     },
     {
       "id": "nearby-time",
-      "label": "撮影順が近い"
+      "label": "撮影順が近い",
+      "directed": false
     }
   ]
 }
