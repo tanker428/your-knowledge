@@ -42,6 +42,12 @@ import {
   validateVisit,
 } from "../domain/visit.js";
 import {
+  createObservation,
+  regionFromPoints,
+  removeObservation,
+  updateObservation,
+} from "../domain/observation.js";
+import {
   migrateProjectDocument,
   PROJECT_SCHEMA_VERSION,
 } from "../features/project/migrate.js";
@@ -168,6 +174,12 @@ export async function initApp(deps) {
     importing: false,
     /** @type {AbortController|null} */
     importAbort: null,
+    editingObservationId: null,
+    pendingObservationRegion: null,
+    regionDrawing: false,
+    regionPointerId: null,
+    regionDrawStart: null,
+    regionDraft: null,
   };
 
   /**
@@ -600,6 +612,199 @@ export async function initApp(deps) {
     if (modal) root.classList.add("modal-overlay-active");
   }
 
+  function imagePointPercent(/** @type {PointerEvent} */ event) {
+    const image = $("#organizeImage");
+    const rect = image.getBoundingClientRect();
+    if (!rect.width || !rect.height) return null;
+    return {
+      x: Math.min(100, Math.max(0, ((event.clientX - rect.left) / rect.width) * 100)),
+      y: Math.min(100, Math.max(0, ((event.clientY - rect.top) / rect.height) * 100)),
+    };
+  }
+
+  function renderRegionDraft() {
+    const box = $("#regionDraftBox");
+    const region = state.regionDraft;
+    if (!box) return;
+    box.classList.toggle("hidden", !region);
+    if (region) {
+      box.style.left = `${region.x}%`;
+      box.style.top = `${region.y}%`;
+      box.style.width = `${region.w}%`;
+      box.style.height = `${region.h}%`;
+    }
+  }
+
+  function bindRegionDrawing() {
+    const layer = $("#regionDrawLayer");
+    if (!layer || layer.dataset.bound) return;
+    layer.dataset.bound = "true";
+    layer.addEventListener("pointerdown", (/** @type {PointerEvent} */ event) => {
+      if (!state.regionDrawing) return;
+      const point = imagePointPercent(event);
+      if (!point) return;
+      state.regionPointerId = event.pointerId;
+      state.regionDrawStart = point;
+      state.regionDraft = { x: point.x, y: point.y, w: 0, h: 0 };
+      layer.setPointerCapture(event.pointerId);
+      event.preventDefault();
+      renderRegionDraft();
+    });
+    layer.addEventListener("pointermove", (/** @type {PointerEvent} */ event) => {
+      if (event.pointerId !== state.regionPointerId || !state.regionDrawStart)
+        return;
+      const point = imagePointPercent(event);
+      if (!point) return;
+      state.regionDraft = {
+        x: Math.min(state.regionDrawStart.x, point.x),
+        y: Math.min(state.regionDrawStart.y, point.y),
+        w: Math.abs(point.x - state.regionDrawStart.x),
+        h: Math.abs(point.y - state.regionDrawStart.y),
+      };
+      event.preventDefault();
+      renderRegionDraft();
+    });
+    layer.addEventListener("pointerup", (/** @type {PointerEvent} */ event) => {
+      if (event.pointerId !== state.regionPointerId || !state.regionDrawStart)
+        return;
+      const point = imagePointPercent(event);
+      const region = point
+        ? regionFromPoints(state.regionDrawStart, point)
+        : null;
+      state.regionPointerId = null;
+      state.regionDrawStart = null;
+      state.regionDraft = null;
+      renderRegionDraft();
+      if (!region) {
+        showToast("範囲が小さすぎます。幅と高さを3%以上にしてください");
+        return;
+      }
+      state.regionDrawing = false;
+      state.pendingObservationRegion = region;
+      openObservationEditor(state.editingObservationId);
+    });
+    layer.addEventListener("pointercancel", () => {
+      state.regionPointerId = null;
+      state.regionDrawStart = null;
+      state.regionDraft = null;
+      renderRegionDraft();
+    });
+  }
+
+  function startRegionDrawing() {
+    state.regionDrawing = true;
+    state.regionPointerId = null;
+    state.regionDrawStart = null;
+    state.regionDraft = null;
+    closeModal("addObservationModal");
+    renderOrganize();
+    showToast("写真上をドラッグして範囲を指定してください");
+  }
+
+  function openObservationEditor(/** @type {string|null} */ observationId) {
+    const photo = currentOrganizePhoto();
+    if (!photo) return;
+    const observation = observationId
+      ? photo.observations.find((item) => item.id === observationId)
+      : null;
+    state.editingObservationId = observation?.id || null;
+    state.pendingObservationRegion = observation?.region || null;
+    $("#newObservationLabel").value = observation?.label || "";
+    $("#newObservationType").value = observation?.observationType || "physical";
+    const mode =
+      observation?.region || (!observation && state.pendingObservationRegion)
+        ? "region"
+        : "whole";
+    const radio = $(`#newObservationRegion input[value="${mode}"]`);
+    if (radio) radio.checked = true;
+    $("#addObservationTitle").textContent = observation
+      ? "観察対象を編集"
+      : "観察対象を追加";
+    $("#saveObservationButton").textContent = observation ? "保存する" : "追加する";
+    $("#redrawObservationRegionButton")?.classList.toggle("hidden", !observation);
+    openModal("addObservationModal");
+  }
+
+  function saveObservation() {
+    const wasEditing = Boolean(state.editingObservationId);
+    const label = $("#newObservationLabel").value.trim();
+    if (!label) {
+      showToast("短い名前を入力してください");
+      return;
+    }
+    const photo = currentOrganizePhoto();
+    if (!photo) return;
+    const mode = $("#newObservationRegion input:checked")?.value || "whole";
+    if (mode === "region" && !state.pendingObservationRegion) {
+      startRegionDrawing();
+      return;
+    }
+    if (state.editingObservationId) {
+      const observation = photo.observations.find(
+        (item) => item.id === state.editingObservationId,
+      );
+      if (observation) {
+        Object.assign(
+          observation,
+          updateObservation(observation, {
+            label,
+            observationType: $("#newObservationType").value,
+            region: mode === "region" ? state.pendingObservationRegion : null,
+          }),
+        );
+      }
+    } else {
+      photo.observations.push(
+        createObservation({
+          id: uid("observation"),
+          photoId: photo.id,
+          label,
+          observationType: $("#newObservationType").value,
+          region: mode === "region" ? state.pendingObservationRegion : null,
+          domainPackId:
+            photo.domainHint || activeVisit()?.domainPackIds?.[0] || "other",
+        }),
+      );
+      state.activeObservationId = photo.observations.at(-1).id;
+    }
+    photo.status = "in-progress";
+    state.editingObservationId = null;
+    state.pendingObservationRegion = null;
+    $("#newObservationLabel").value = "";
+    closeModal("addObservationModal");
+    persist();
+    renderOrganize();
+    showToast(wasEditing ? "観察対象を更新しました" : "観察対象を保存しました");
+  }
+
+  function deleteObservation(/** @type {string} */ observationId) {
+    const photo = currentOrganizePhoto();
+    const observation = photo?.observations.find((item) => item.id === observationId);
+    if (!photo || !observation) return;
+    if (!window.confirm(`「${observation.label}」を削除しますか？`)) return;
+    const result = removeObservation(photo, observationId);
+    photo.observations = result.photo.observations;
+    state.relations = state.relations.filter(
+      (relation) =>
+        relation.sourceId !== observationId && relation.targetId !== observationId,
+    );
+    state.facts = state.facts.filter(
+      (fact) =>
+        fact.targetId !== observationId &&
+        fact.targetObservationId !== observationId &&
+        fact.sourceObservationId !== observationId,
+    );
+    state.quizResults = state.quizResults.filter(
+      (result) => result.targetId !== observationId,
+    );
+    state.activeObservationId =
+      photo.observations.find((item) => item.included !== false)?.id || null;
+    photo.status = "in-progress";
+    persist();
+    renderOrganize();
+    showToast("観察対象を削除しました");
+  }
+
   function openPhotoModal(/** @type {string} */ photoId) {
     const photo = photoById(photoId);
     if (!photo) return;
@@ -704,11 +909,14 @@ export async function initApp(deps) {
       <div class="candidate-list">${photo.observations
         .map(
           (/** @type {any} */ observation, /** @type {number} */ index) => `
-        <button class="candidate-card ${observation.included !== false ? "selected" : ""} ${observation.id === state.activeObservationId ? "focused" : ""}" data-toggle-observation="${escapeHtml(observation.id)}">
-          <span class="candidate-check">${observation.included !== false ? "✓" : "+"}</span>
-          <span class="observation-number">${index + 1}</span>
-          <span><strong>${escapeHtml(observation.label)}</strong><small>${escapeHtml(OBSERVATION_TYPE_LABELS[observation.observationType] || "")}・${observation.origin === "user" ? "自分で追加" : `AI候補 ${Math.round((observation.confidence || 0) * 100)}%`}</small></span>
-        </button>`,
+        <article class="candidate-card ${observation.included !== false ? "selected" : ""} ${observation.id === state.activeObservationId ? "focused" : ""}">
+          <button class="candidate-main" data-toggle-observation="${escapeHtml(observation.id)}">
+            <span class="candidate-check">${observation.included !== false ? "✓" : "+"}</span>
+            <span class="observation-number">${index + 1}</span>
+            <span><strong>${escapeHtml(observation.label)}</strong><small>${escapeHtml(OBSERVATION_TYPE_LABELS[observation.observationType] || "")}・${observation.origin === "user" ? "自分で追加" : `AI候補 ${Math.round((observation.confidence || 0) * 100)}%`}</small></span>
+          </button>
+          <span class="candidate-actions"><button type="button" data-edit-observation="${escapeHtml(observation.id)}" aria-label="${escapeHtml(observation.label)}を編集">編集</button><button type="button" data-delete-observation="${escapeHtml(observation.id)}" aria-label="${escapeHtml(observation.label)}を削除">削除</button></span>
+        </article>`,
         )
         .join("")}</div>
       ${photo.observations.length ? "" : '<div class="empty-state"><strong>対象がまだありません</strong><p>下のボタンから、写真に写っているものを追加してください。</p></div>'}
@@ -816,6 +1024,8 @@ export async function initApp(deps) {
       ? `rotate(${photo.rotation}deg) scale(.82)`
       : "";
     renderOverlay($("#observationOverlay"), photo, { interactive: true });
+    bindRegionDrawing();
+    renderRegionDraft();
 
     $$("#organizeStepper [data-step]").forEach((button) =>
       button.classList.toggle(
@@ -886,6 +1096,20 @@ export async function initApp(deps) {
         found.photo.status = "in-progress";
         persist();
         renderOrganize();
+      }),
+    );
+
+    $$("[data-edit-observation]").forEach((button) =>
+      button.addEventListener("click", (event) => {
+        event.stopPropagation();
+        openObservationEditor(button.dataset.editObservation);
+      }),
+    );
+
+    $$("[data-delete-observation]").forEach((button) =>
+      button.addEventListener("click", (event) => {
+        event.stopPropagation();
+        deleteObservation(button.dataset.deleteObservation);
       }),
     );
 
@@ -972,8 +1196,12 @@ export async function initApp(deps) {
     );
 
     $("#stepAddObservation")?.addEventListener("click", () =>
-      openModal("addObservationModal"),
+      openObservationEditor(null),
     );
+    $("#redrawObservationRegionButton")?.addEventListener("click", () => {
+      state.pendingObservationRegion = null;
+      startRegionDrawing();
+    });
   }
 
   function completeOrganizePhoto() {
@@ -1003,42 +1231,6 @@ export async function initApp(deps) {
         : "途中状態として保存しました",
     );
     switchView("knowledge");
-  }
-
-  function saveManualObservation() {
-    const label = $("#newObservationLabel").value.trim();
-    if (!label) {
-      showToast("短い名前を入力してください");
-      return;
-    }
-    const photo = currentOrganizePhoto();
-    const observation = {
-      id: uid("observation"),
-      photoId: photo.id,
-      label,
-      observationType: $("#newObservationType").value,
-      region: null,
-      genericCategories: ["unknown"],
-      learningRoles: ["direct"],
-      domainPacks: [
-        photo.domainHint || activeVisit()?.domainPackIds?.[0] || "other",
-      ],
-      domainCategories: [],
-      confidence: 1,
-      status: "confirmed",
-      visibleText: [],
-      included: true,
-      origin: "user",
-      entityId: null,
-    };
-    photo.observations.push(observation);
-    photo.status = "in-progress";
-    state.activeObservationId = observation.id;
-    $("#newObservationLabel").value = "";
-    closeModal("addObservationModal");
-    persist();
-    renderOrganize();
-    showToast("観察対象を追加しました");
   }
 
   function renderKnowledge() {
@@ -1999,12 +2191,9 @@ export async function initApp(deps) {
       switchView("organize");
     });
     $("#addObservationButton").addEventListener("click", () =>
-      openModal("addObservationModal"),
+      openObservationEditor(null),
     );
-    $("#saveObservationButton").addEventListener(
-      "click",
-      saveManualObservation,
-    );
+    $("#saveObservationButton").addEventListener("click", saveObservation);
     $("#previousStepButton").addEventListener("click", () => {
       if (state.organizeStep > 1) {
         state.organizeStep -= 1;
