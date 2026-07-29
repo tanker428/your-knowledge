@@ -13,7 +13,7 @@
  */
 
 /**
- * @typedef {{id: string, label: string, icon?: string, description?: string}} Term
+ * @typedef {{id: string, label: string, icon?: string, description?: string, directed?: boolean}} Term
  * @typedef {object} DomainPack
  * @property {string} id
  * @property {string} label
