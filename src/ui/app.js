@@ -53,9 +53,12 @@ import {
 } from "../domain/observation.js";
 import {
   createRelation,
+  isApprovableRelation,
   isDirectedRelation,
+  isSelectableObservation,
   relationCandidates,
   RELATION_SCOPES,
+  relationReviewActions,
   removeRelation,
   updateRelation,
   validateRelationInput,
@@ -1153,27 +1156,29 @@ export async function initApp(deps) {
     const source = observationById(relation.sourceId);
     const target = observationById(relation.targetId);
     if (!source || !target) return "";
+    const reviewActions = relationReviewActions(relation);
     return `
       <article class="relation-card ${relation.status === "confirmed" ? "confirmed" : relation.status === "rejected" ? "rejected" : ""}">
         <div class="relation-card-main">${relationEndpoint(source)}<b class="relation-connector" title="${escapeHtml(relationLabel(relation.type))}">${relationConnector(relation)}</b>${relationEndpoint(target)}</div>
         <div class="relation-card-meta"><span>${escapeHtml(relationLabel(relation.type))}</span><span>${relation.origin === "user" ? "手動作成" : `候補 ${Math.round((relation.confidence || 0) * 100)}%`}</span></div>
-        <div class="relation-card-actions"><button data-edit-relation="${escapeHtml(relation.id)}">編集</button><button data-delete-relation="${escapeHtml(relation.id)}">削除</button>${relation.status !== "confirmed" ? `<button data-relation-action="confirm" data-relation-id="${escapeHtml(relation.id)}">✓ 採用</button>` : ""}${relation.status !== "rejected" ? `<button data-relation-action="reject" data-relation-id="${escapeHtml(relation.id)}">× 却下</button>` : ""}</div>
+        <div class="relation-card-actions"><button data-edit-relation="${escapeHtml(relation.id)}">編集</button><button data-delete-relation="${escapeHtml(relation.id)}">削除</button>${reviewActions.includes("confirm") ? `<button data-relation-action="confirm" data-relation-id="${escapeHtml(relation.id)}">✓ 採用</button>` : ""}${reviewActions.includes("reject") ? `<button data-relation-action="reject" data-relation-id="${escapeHtml(relation.id)}">× 却下</button>` : ""}</div>
       </article>`;
   }
 
   function renderStepFour(/** @type {any} */ photo) {
     const relations = relevantRelations(photo);
+    const approvableRelations = relations.filter(isApprovableRelation);
     return `
       <div class="assistant-message"><span class="assistant-avatar">Y</span><div><strong>最後に、対象同士の関係だけを確認します。</strong><p>同じ展示、説明している、部分と全体、同じテーマなどを複数設定できます。</p></div></div>
       <div class="quick-action-row"><button class="primary-button inline" id="addRelationButton" type="button">＋ 関係を追加</button><span>現在の訪問内のObservationだけを結べます</span></div>
       <div class="relation-list">${relations.length ? relations.map(relationCard).join("") : '<div class="empty-state"><strong>関係候補はまだありません</strong><p>「＋ 関係を追加」から手動で作成できます。</p></div>'}</div>
-      ${relations.length ? '<div class="quick-action-row"><button class="primary-button inline" data-bulk-action="confirm-relations">候補を一括承認</button><span>誤った候補だけ外してください</span></div>' : ""}`;
+      ${approvableRelations.length ? '<div class="quick-action-row"><button class="primary-button inline" data-bulk-action="confirm-relations">候補を一括承認</button><span>誤った候補だけ外してください</span></div>' : ""}`;
   }
 
   function relationEntriesForVisit() {
     return visitPhotos().flatMap((photo) =>
       photo.observations
-        .filter((observation) => observation.included !== false)
+        .filter(isSelectableObservation)
         .map((observation) => ({ observation, photo })),
     );
   }
@@ -1229,7 +1234,10 @@ export async function initApp(deps) {
       : null;
     const current = currentObservation();
     const first = relationEntriesForVisit()[0];
-    const sourceId = existing?.sourceId || current?.id || first?.observation.id || "";
+    const sourceId =
+      existing?.sourceId ||
+      (isSelectableObservation(current) ? current.id : first?.observation.id) ||
+      "";
     state.editingRelationId = existing?.id || null;
     state.relationScope = RELATION_SCOPES.PHOTO;
     state.relationDraft = {
@@ -1472,9 +1480,11 @@ export async function initApp(deps) {
             item.domainConfirmed = true;
           });
         if (action === "confirm-relations")
-          relevantRelations(photo).forEach((/** @type {any} */ relation) => {
-            relation.status = "confirmed";
-          });
+          relevantRelations(photo)
+            .filter(isApprovableRelation)
+            .forEach((/** @type {any} */ relation) => {
+              relation.status = "confirmed";
+            });
         photo.status = "in-progress";
         persist();
         renderOrganize();

@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   createRelation,
+  isApprovableRelation,
   isDirectedRelation,
+  isSelectableObservation,
   relationCandidates,
   relationDuplicate,
   relationKey,
+  relationReviewActions,
   removeRelation,
   updateRelation,
   validateRelationInput,
@@ -40,6 +43,29 @@ const photos = [
 ];
 
 describe("Relation data contract", () => {
+  it("候補Observationはincludedとstatusで選別する", () => {
+    expect(isSelectableObservation({ id: "ok", included: true, status: "confirmed" })).toBe(true);
+    expect(isSelectableObservation({ id: "excluded", included: false, status: "confirmed" })).toBe(false);
+    expect(isSelectableObservation({ id: "rejected", included: true, status: "rejected" })).toBe(false);
+  });
+
+  it("手動Relationには採用・却下操作を出さない", () => {
+    const relation = createRelation({ id: "r-user", sourceId: "o1", targetId: "o2", type: "explains" });
+    expect(relationReviewActions(relation)).toEqual([]);
+  });
+
+  it("候補Relationの状態ごとのレビュー操作を分ける", () => {
+    expect(relationReviewActions({ origin: "ai", status: "suggested" })).toEqual(["confirm", "reject"]);
+    expect(relationReviewActions({ origin: "ai", status: "confirmed" })).toEqual(["reject"]);
+    expect(relationReviewActions({ origin: "ai", status: "rejected" })).toEqual(["confirm"]);
+  });
+
+  it("一括承認対象はuser以外のsuggestedだけに限定する", () => {
+    expect(isApprovableRelation({ origin: "ai", status: "suggested" })).toBe(true);
+    expect(isApprovableRelation({ origin: "user", status: "suggested" })).toBe(false);
+    expect(isApprovableRelation({ origin: "ai", status: "confirmed" })).toBe(false);
+    expect(isApprovableRelation({ origin: "ai", status: "rejected" })).toBe(false);
+  });
   it("手動Relationの初期値を確定値で作る", () => {
     expect(createRelation({ id: "r1", sourceId: "o1", targetId: "o2", type: "explains" })).toEqual({
       id: "r1",
@@ -96,6 +122,21 @@ describe("Relation candidates", () => {
     expect(relationCandidates({ photos, activeVisitId: "v1", sourceId: "o1" }).map((item) => item.observation.id)).toEqual(["o2"]);
   });
 
+  it("除外・却下Observationを関係元と関係先の両方から外す", () => {
+    const filteredPhotos = [
+      {
+        ...photos[0],
+        observations: [
+          ...photos[0].observations,
+          { id: "o-excluded", included: false, status: "confirmed" },
+          { id: "o-rejected", included: true, status: "rejected" },
+        ],
+      },
+    ];
+    expect(relationCandidates({ photos: filteredPhotos, activeVisitId: "v1", sourceId: "o-excluded", scope: "visit" })).toEqual([]);
+    expect(relationCandidates({ photos: filteredPhotos, activeVisitId: "v1", sourceId: "o1", scope: "photo" }).map((item) => item.observation.id)).not.toEqual(expect.arrayContaining(["o-excluded", "o-rejected"]));
+  });
+
   it("近い写真と訪問全体へ段階的に広げる", () => {
     expect(relationCandidates({ photos, activeVisitId: "v1", sourceId: "o1", scope: "nearby" }).map((item) => item.observation.id)).toEqual(["o2", "o3"]);
     expect(relationCandidates({ photos, activeVisitId: "v1", sourceId: "o1", scope: "visit" }).map((item) => item.observation.id)).toEqual(["o2", "o3"]);
@@ -103,6 +144,12 @@ describe("Relation candidates", () => {
 
   it("activeVisit外のObservationを候補から除外する", () => {
     expect(relationCandidates({ photos, activeVisitId: "v1", sourceId: "o1", scope: "visit" }).map((item) => item.observation.id)).not.toContain("o4");
+  });
+
+  it("却下済み候補は一括承認対象へ戻らない", () => {
+    const rejected = { origin: "ai", status: "rejected" };
+    expect(isApprovableRelation(rejected)).toBe(false);
+    expect({ ...rejected, status: rejected.status }).toMatchObject({ status: "rejected" });
   });
 
   it("別写真のObservation同士を接続できる", () => {

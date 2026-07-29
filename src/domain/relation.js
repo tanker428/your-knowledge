@@ -10,6 +10,22 @@ export const RELATION_SCOPES = Object.freeze({
   VISIT: "visit",
 });
 
+export function isSelectableObservation(observation) {
+  return observation?.included !== false && observation?.status !== "rejected";
+}
+
+export function relationReviewActions(relation) {
+  if (relation?.origin === "user") return [];
+  if (relation?.status === "suggested") return ["confirm", "reject"];
+  if (relation?.status === "confirmed") return ["reject"];
+  if (relation?.status === "rejected") return ["confirm"];
+  return [];
+}
+
+export function isApprovableRelation(relation) {
+  return relation?.origin !== "user" && relation?.status === "suggested";
+}
+
 export function relationTypeInfo(relationTypes, type) {
   return (relationTypes || []).find((item) => item.id === type) || null;
 }
@@ -96,7 +112,9 @@ export function relationCandidates(input) {
   );
   const source = visitPhotos
     .flatMap((photo) =>
-      (photo.observations || []).map((observation) => ({ observation, photo })),
+      (photo.observations || [])
+        .filter(isSelectableObservation)
+        .map((observation) => ({ observation, photo })),
     )
     .find(({ observation }) => observation.id === sourceId);
   if (!source) return [];
@@ -112,7 +130,10 @@ export function relationCandidates(input) {
   return eligiblePhotos
     .flatMap((photo) =>
       (photo.observations || [])
-        .filter((observation) => observation.id !== sourceId)
+        .filter(
+          (observation) =>
+            observation.id !== sourceId && isSelectableObservation(observation),
+        )
         .map((observation) => ({ observation, photo })),
     )
     .sort(
