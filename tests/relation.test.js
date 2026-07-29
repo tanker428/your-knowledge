@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   createRelation,
+  endpointSelectionLabel,
   isApprovableRelation,
   isDirectedRelation,
   isSelectableObservation,
@@ -8,6 +9,7 @@ import {
   relationDuplicate,
   relationKey,
   relationReviewActions,
+  relationTypeDisplay,
   removeRelation,
   endpointPresentation,
   scopeForRelationEndpoints,
@@ -47,6 +49,35 @@ const photos = [
 ];
 
 describe("Relation data contract", () => {
+  it("未選択と選択済みで端点ボタン文言を切り替える", () => {
+    expect(endpointSelectionLabel("source", false)).toBe("関係元を選ぶ");
+    expect(endpointSelectionLabel("target", false)).toBe("関係先を選ぶ");
+    expect(endpointSelectionLabel("source", true)).toBe("選び直す");
+    expect(endpointSelectionLabel("target", true)).toBe("選び直す");
+  });
+
+  it("Relation種別の方向アイコンと補助表示をdirected属性から生成する", () => {
+    expect(relationTypeDisplay({ label: "説明している", directed: true })).toEqual({
+      icon: "→",
+      directionLabel: "方向あり",
+      label: "→ 説明している",
+      optionLabel: "→ 説明している（方向あり）",
+    });
+    expect(relationTypeDisplay({ label: "同じ展示", directed: false })).toEqual({
+      icon: "↔",
+      directionLabel: "方向なし",
+      label: "↔ 同じ展示",
+      optionLabel: "↔ 同じ展示（方向なし）",
+    });
+  });
+
+  it("方向表示はvocabularyのdirected属性に追従し省略記号を含めない", () => {
+    const displays = relationTypes.map(relationTypeDisplay);
+    expect(displays.find((item) => item.label.includes("説明している"))).toMatchObject({ icon: "→", directionLabel: "方向あり" });
+    expect(displays.find((item) => item.label.includes("同じ展示"))).toMatchObject({ icon: "↔", directionLabel: "方向なし" });
+    expect(displays.every((item) => !item.optionLabel.includes("…"))).toBe(true);
+  });
+
   it("候補Observationはincludedとstatusで選別する", () => {
     expect(isSelectableObservation({ id: "ok", included: true, status: "confirmed" })).toBe(true);
     expect(isSelectableObservation({ id: "excluded", included: false, status: "confirmed" })).toBe(false);

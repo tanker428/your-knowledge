@@ -331,7 +331,7 @@
       <p class="section-kicker">MANUAL RELATION</p><h2 id="relationEditorTitle">関係を追加</h2>
       <p class="muted-copy">Observation同士の関係を、現在の訪問内で保存します。</p>
       <div class="form-label endpoint-picker" id="relationSourcePicker"><span>関係元Observation</span><div id="relationSourceCard"></div><button type="button" class="text-button" id="chooseRelationSourceButton">選び直す</button><div id="relationSourceOptions" class="endpoint-options hidden"></div></div>
-      <label class="form-label">関係種別<select id="relationTypeSelect"></select></label>
+      <label class="form-label">関係種別<select id="relationTypeSelect" class="relation-type-select"></select><small id="relationTypeDirectionHint" class="relation-type-direction-hint"></small></label>
       <button type="button" class="swap-relation-button hidden" id="swapRelationEndpointsButton">⇅ 向きを逆にする</button>
       <fieldset class="form-label relation-scope-field">
         <legend>関係先の範囲</legend>
@@ -435,6 +435,8 @@
     .relation-scope-controls button { border:1px solid var(--line); border-radius:8px; background:white; color:var(--muted); padding:8px 9px; font-size:9px; font-weight:800; }
     .relation-scope-controls button.active { background:var(--ink); border-color:var(--ink); color:white; }
     .relation-direction-note { margin:12px 0 0; color:var(--accent); font-size:10px; font-weight:800; }
+    .relation-type-select { width:100%; min-width:0; }
+    .relation-type-direction-hint { display:block; margin-top:5px; color:var(--muted); font-size:10px; font-weight:800; white-space:normal; }
     .swap-relation-button { width:100%; margin-top:12px; border:1px solid var(--accent); border-radius:8px; background:white; color:var(--accent); padding:9px; font-size:10px; font-weight:900; }
     .endpoint-picker { display:block; }
     .endpoint-picker>span { display:block; }

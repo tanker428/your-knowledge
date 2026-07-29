@@ -61,6 +61,8 @@ import {
   relationReviewActions,
   removeRelation,
   endpointPresentation,
+  endpointSelectionLabel,
+  relationTypeDisplay,
   scopeForRelationEndpoints,
   searchRelationEntries,
   swapRelationEndpoints,
@@ -1229,13 +1231,19 @@ export async function initApp(deps) {
     const targetEntry = relationEntryById(draft.targetId);
     $("#relationSourceCard").innerHTML = endpointMarkup(sourceEntry);
     $("#relationTargetCard").innerHTML = endpointMarkup(targetEntry);
+    $("#chooseRelationSourceButton").textContent = endpointSelectionLabel("source", Boolean(sourceEntry));
+    $("#chooseRelationTargetButton").textContent = endpointSelectionLabel("target", Boolean(targetEntry));
     $("#relationTypeSelect").innerHTML = registry.relationTypes
-      .map((type) => `<option value="${escapeHtml(type.id)}">${escapeHtml(type.label)}${type.directed ? "（方向あり）" : "（方向なし）"}</option>`)
+      .map((type) => `<option value="${escapeHtml(type.id)}">${escapeHtml(relationTypeDisplay(type).optionLabel)}</option>`)
       .join("");
     $("#relationTypeSelect").value = draft.type;
+    const selectedType = relationType(draft.type);
+    const selectedTypeDisplay = relationTypeDisplay(selectedType);
+    $("#relationTypeDirectionHint").textContent = selectedType
+      ? `${selectedTypeDisplay.label}・${selectedTypeDisplay.directionLabel}`
+      : "";
     renderRelationOptions("source");
     renderRelationOptions("target");
-    const selectedType = relationType(draft.type);
     const swapButton = $("#swapRelationEndpointsButton");
     swapButton.classList.toggle("hidden", !selectedType?.directed);
     $("#relationDirectionNote").textContent = selectedType

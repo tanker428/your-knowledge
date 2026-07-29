@@ -26,6 +26,23 @@ export function isApprovableRelation(relation) {
   return relation?.origin !== "user" && relation?.status === "suggested";
 }
 
+export function endpointSelectionLabel(kind, selected) {
+  if (selected) return "選び直す";
+  return kind === "source" ? "関係元を選ぶ" : "関係先を選ぶ";
+}
+
+export function relationTypeDisplay(type) {
+  const directed = type?.directed === true;
+  const icon = directed ? "→" : "↔";
+  const directionLabel = directed ? "方向あり" : "方向なし";
+  return {
+    icon,
+    directionLabel,
+    label: `${icon} ${type?.label || ""}`.trim(),
+    optionLabel: `${icon} ${type?.label || ""}（${directionLabel}）`.trim(),
+  };
+}
+
 export function swapRelationEndpoints(draft) {
   return { ...draft, sourceId: draft.targetId, targetId: draft.sourceId };
 }
