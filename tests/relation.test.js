@@ -9,6 +9,10 @@ import {
   relationKey,
   relationReviewActions,
   removeRelation,
+  endpointPresentation,
+  scopeForRelationEndpoints,
+  searchRelationEntries,
+  swapRelationEndpoints,
   updateRelation,
   validateRelationInput,
 } from "../src/domain/relation.js";
@@ -115,6 +119,14 @@ describe("Relation data contract", () => {
     expect(isDirectedRelation(relationTypes, "explains")).toBe(true);
     expect(isDirectedRelation(relationTypes, "same-exhibit")).toBe(false);
   });
+
+  it("有向Relationの端点を入れ替えて種別を維持する", () => {
+    expect(swapRelationEndpoints({ sourceId: "o1", targetId: "o3", type: "explains" })).toEqual({
+      sourceId: "o3",
+      targetId: "o1",
+      type: "explains",
+    });
+  });
 });
 
 describe("Relation candidates", () => {
@@ -170,5 +182,32 @@ describe("Relation candidates", () => {
       "o1",
     );
     expect(references.relations.map((relation) => relation.id)).toEqual(["r1"]);
+  });
+
+  it("端点の写真関係から候補scopeを判定する", () => {
+    expect(scopeForRelationEndpoints(photos, "o1", "o2")).toBe("photo");
+    expect(scopeForRelationEndpoints(photos, "o1", "o3")).toBe("nearby");
+    expect(scopeForRelationEndpoints([
+      photos[0],
+      { ...photos[1], order: 5 },
+    ], "o1", "o3")).toBe("visit");
+  });
+
+  it("region付き端点と写真全体端点を表示情報へ変換する", () => {
+    expect(endpointPresentation({ observation: { region: { x: 10, y: 20, w: 30, h: 40 } } })).toEqual({
+      region: { x: 10, y: 20, w: 30, h: 40 },
+      wholePhoto: false,
+    });
+    expect(endpointPresentation({ observation: { region: null } })).toEqual({ region: null, wholePhoto: true });
+  });
+
+  it("候補検索は写真タイトルとObservation名の両方に対応する", () => {
+    const entries = [
+      { photo: { title: "展示室A" }, observation: { label: "説明パネル" } },
+      { photo: { title: "展示室B" }, observation: { label: "標本" } },
+    ];
+    expect(searchRelationEntries(entries, "展示室A")).toHaveLength(1);
+    expect(searchRelationEntries(entries, "標本")).toHaveLength(1);
+    expect(searchRelationEntries(entries, "")).toHaveLength(2);
   });
 });

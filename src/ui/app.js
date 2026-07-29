@@ -60,6 +60,10 @@ import {
   RELATION_SCOPES,
   relationReviewActions,
   removeRelation,
+  endpointPresentation,
+  scopeForRelationEndpoints,
+  searchRelationEntries,
+  swapRelationEndpoints,
   updateRelation,
   validateRelationInput,
 } from "../domain/relation.js";
@@ -203,6 +207,8 @@ export async function initApp(deps) {
     relationDraft: null,
     /** @type {string} */
     relationScope: RELATION_SCOPES.PHOTO,
+    relationPicker: null,
+    relationSearch: { source: "", target: "" },
   };
 
   let imageSurfaceObserver = null;
@@ -1183,49 +1189,80 @@ export async function initApp(deps) {
     );
   }
 
-  function relationEntryOption(entry) {
-    return `<option value="${escapeHtml(entry.observation.id)}">#${escapeHtml(entry.photo.order)} ${escapeHtml(entry.photo.title)} / ${escapeHtml(entry.observation.label)}</option>`;
+  function relationEntryById(/** @type {string} */ id) {
+    return relationEntriesForVisit().find((entry) => entry.observation.id === id) || null;
+  }
+
+  function endpointMarkup(entry) {
+    if (!entry) return '<div class="empty-state"><strong>未選択</strong><p>候補から選択してください。</p></div>';
+    const presentation = endpointPresentation(entry);
+    const regionStyle = presentation.region
+      ? `left:${presentation.region.x}%;top:${presentation.region.y}%;width:${presentation.region.w}%;height:${presentation.region.h}%;`
+      : "";
+    return `<button type="button" class="endpoint-card" data-endpoint-id="${escapeHtml(entry.observation.id)}"><span class="endpoint-card-inner"><span class="endpoint-image"><img src="${escapeHtml(entry.photo.thumbSrc || entry.photo.src)}" alt="" />${presentation.region ? `<i class="endpoint-region" style="${regionStyle}"></i>` : '<em class="endpoint-whole-label">写真全体</em>'}</span><span><strong>${escapeHtml(entry.observation.label)}</strong><small>${escapeHtml(OBSERVATION_TYPE_LABELS[entry.observation.observationType] || "観察対象")}・#${escapeHtml(entry.photo.order)} ${escapeHtml(entry.photo.title)}</small></span></span></button>`;
+  }
+
+  function optionMarkup(entry) {
+    const presentation = endpointPresentation(entry);
+    const regionStyle = presentation.region
+      ? `left:${presentation.region.x}%;top:${presentation.region.y}%;width:${presentation.region.w}%;height:${presentation.region.h}%;`
+      : "";
+    return `<button type="button" class="endpoint-option" data-endpoint-option="${escapeHtml(entry.observation.id)}"><span class="endpoint-image"><img src="${escapeHtml(entry.photo.thumbSrc || entry.photo.src)}" alt="" />${presentation.region ? `<i class="endpoint-region" style="${regionStyle}"></i>` : '<em class="endpoint-whole-label">写真全体</em>'}</span><span><strong>${escapeHtml(entry.observation.label)}</strong><small>${escapeHtml(entry.photo.title)}・#${escapeHtml(entry.photo.order)}・${escapeHtml(OBSERVATION_TYPE_LABELS[entry.observation.observationType] || "観察対象")}</small></span></button>`;
+  }
+
+  function renderRelationOptions(/** @type {"source"|"target"} */ kind) {
+    const options = $(kind === "source" ? "#relationSourceOptions" : "#relationTargetOptions");
+    if (!options) return;
+    const query = state.relationSearch[kind];
+    const entries = kind === "source"
+      ? relationEntriesForVisit()
+      : relationCandidates({ photos: state.photos, activeVisitId: state.activeVisitId, sourceId: state.relationDraft.sourceId, scope: state.relationScope });
+    const filtered = searchRelationEntries(entries, query);
+    options.innerHTML = `<input class="endpoint-search" type="search" placeholder="写真名・Observation名で検索" value="${escapeHtml(query)}" data-endpoint-search="${kind}" />${filtered.length ? filtered.map(optionMarkup).join("") : '<p class="muted-copy">該当する候補はありません。</p>'}`;
+    options.classList.toggle("hidden", state.relationPicker !== kind);
   }
 
   function renderRelationEditor() {
     const draft = state.relationDraft;
     if (!draft) return;
-    const entries = relationEntriesForVisit();
-    const sourceSelect = $("#relationSourceSelect");
-    const typeSelect = $("#relationTypeSelect");
-    const targetSelect = $("#relationTargetSelect");
-    sourceSelect.innerHTML = entries.map(relationEntryOption).join("");
-    sourceSelect.value = draft.sourceId;
-    typeSelect.innerHTML = registry.relationTypes
+    const sourceEntry = relationEntryById(draft.sourceId);
+    const targetEntry = relationEntryById(draft.targetId);
+    $("#relationSourceCard").innerHTML = endpointMarkup(sourceEntry);
+    $("#relationTargetCard").innerHTML = endpointMarkup(targetEntry);
+    $("#relationTypeSelect").innerHTML = registry.relationTypes
       .map((type) => `<option value="${escapeHtml(type.id)}">${escapeHtml(type.label)}${type.directed ? "（方向あり）" : "（方向なし）"}</option>`)
       .join("");
-    typeSelect.value = draft.type;
-    const candidates = relationCandidates({
-      photos: state.photos,
-      activeVisitId: state.activeVisitId,
-      sourceId: draft.sourceId,
-      scope: state.relationScope,
-    });
-    targetSelect.innerHTML = candidates.length
-      ? candidates.map(relationEntryOption).join("")
-      : '<option value="">候補がありません</option>';
-    targetSelect.value = candidates.some(
-      (item) => item.observation.id === draft.targetId,
-    )
-      ? draft.targetId
-      : "";
-    $$("[data-relation-scope]").forEach((button) =>
-      button.classList.toggle(
-        "active",
-        button.dataset.relationScope === state.relationScope,
-      ),
-    );
+    $("#relationTypeSelect").value = draft.type;
+    renderRelationOptions("source");
+    renderRelationOptions("target");
     const selectedType = relationType(draft.type);
+    const swapButton = $("#swapRelationEndpointsButton");
+    swapButton.classList.toggle("hidden", !selectedType?.directed);
     $("#relationDirectionNote").textContent = selectedType
       ? selectedType.directed
         ? "有向Relation：関係元が関係先へ向かう方向で保存します。"
         : "無向Relation：関係元と関係先を入れ替えても同じ関係として扱います。"
       : "";
+    $$("[data-relation-scope]").forEach((button) =>
+      button.classList.toggle("active", button.dataset.relationScope === state.relationScope),
+    );
+  }
+
+  function showRelationPicker(/** @type {"source"|"target"} */ kind) {
+    state.relationPicker = kind;
+    renderRelationEditor();
+  }
+
+  function chooseRelationEndpoint(/** @type {"source"|"target"} */ kind, /** @type {string} */ id) {
+    if (kind === "source") {
+      state.relationDraft.sourceId = id;
+      state.relationDraft.targetId = "";
+    } else {
+      state.relationDraft.targetId = id;
+    }
+    state.relationPicker = null;
+    state.relationSearch = { source: "", target: "" };
+    renderRelationEditor();
   }
 
   function openRelationEditor(/** @type {string|null} */ relationId = null) {
@@ -1240,29 +1277,40 @@ export async function initApp(deps) {
       "";
     state.editingRelationId = existing?.id || null;
     state.relationScope = RELATION_SCOPES.PHOTO;
+    state.relationPicker = null;
+    state.relationSearch = { source: "", target: "" };
     state.relationDraft = {
       sourceId,
       targetId: existing?.targetId || "",
       type: existing?.type || registry.relationTypes[0]?.id || "",
     };
-    const source = observationById(sourceId);
-    const target = existing ? observationById(existing.targetId) : null;
-    if (existing && source && target && source.photo.id !== target.photo.id) {
-      const distance = Math.abs(Number(source.photo.order || 0) - Number(target.photo.order || 0));
-      state.relationScope = distance <= 2 ? RELATION_SCOPES.NEARBY : RELATION_SCOPES.VISIT;
-    }
+    if (existing)
+      state.relationScope = scopeForRelationEndpoints(
+        state.photos,
+        existing.sourceId,
+        existing.targetId,
+        state.relationScope,
+      );
     $("#relationEditorTitle").textContent = existing ? "関係を編集" : "関係を追加";
     renderRelationEditor();
     openModal("relationEditorModal");
   }
 
+  function swapRelationEditorEndpoints() {
+    if (!state.relationDraft || !isDirectedRelation(registry.relationTypes, state.relationDraft.type)) return;
+    state.relationDraft = swapRelationEndpoints(state.relationDraft);
+    state.relationScope = scopeForRelationEndpoints(
+      state.photos,
+      state.relationDraft.sourceId,
+      state.relationDraft.targetId,
+      state.relationScope,
+    );
+    renderRelationEditor();
+  }
+
   function saveRelation() {
     const wasEditing = Boolean(state.editingRelationId);
-    const candidate = {
-      sourceId: $("#relationSourceSelect").value,
-      targetId: $("#relationTargetSelect").value,
-      type: $("#relationTypeSelect").value,
-    };
+    const candidate = { ...state.relationDraft, type: $("#relationTypeSelect").value };
     const reason = validateRelationInput(
       state.relations,
       candidate,
@@ -2557,18 +2605,40 @@ export async function initApp(deps) {
     );
     $("#saveObservationButton").addEventListener("click", saveObservation);
     $("#saveRelationButton")?.addEventListener("click", saveRelation);
-    $("#relationSourceSelect")?.addEventListener("change", (event) => {
-      if (!state.relationDraft) return;
-      state.relationDraft.sourceId = event.target.value;
-      state.relationDraft.targetId = "";
-      renderRelationEditor();
+    $("#chooseRelationSourceButton")?.addEventListener("click", () => showRelationPicker("source"));
+    $("#chooseRelationTargetButton")?.addEventListener("click", () => showRelationPicker("target"));
+    $("#relationSourceCard")?.addEventListener("click", (event) => {
+      const id = event.target.closest("[data-endpoint-id]")?.dataset.endpointId;
+      if (id) showRelationPicker("source");
     });
+    $("#relationTargetCard")?.addEventListener("click", (event) => {
+      const id = event.target.closest("[data-endpoint-id]")?.dataset.endpointId;
+      if (id) showRelationPicker("target");
+    });
+    $("#relationSourceOptions")?.addEventListener("click", (event) => {
+      const id = event.target.closest("[data-endpoint-option]")?.dataset.endpointOption;
+      if (id) chooseRelationEndpoint("source", id);
+    });
+    $("#relationTargetOptions")?.addEventListener("click", (event) => {
+      const id = event.target.closest("[data-endpoint-option]")?.dataset.endpointOption;
+      if (id) chooseRelationEndpoint("target", id);
+    });
+    $("#relationSourceOptions")?.addEventListener("input", (event) => {
+      if (event.target.dataset.endpointSearch !== "source") return;
+      state.relationSearch.source = event.target.value;
+      renderRelationOptions("source");
+      $("#relationSourceOptions input")?.focus();
+    });
+    $("#relationTargetOptions")?.addEventListener("input", (event) => {
+      if (event.target.dataset.endpointSearch !== "target") return;
+      state.relationSearch.target = event.target.value;
+      renderRelationOptions("target");
+      $("#relationTargetOptions input")?.focus();
+    });
+    $("#swapRelationEndpointsButton")?.addEventListener("click", swapRelationEditorEndpoints);
     $("#relationTypeSelect")?.addEventListener("change", (event) => {
       if (state.relationDraft) state.relationDraft.type = event.target.value;
       renderRelationEditor();
-    });
-    $("#relationTargetSelect")?.addEventListener("change", (event) => {
-      if (state.relationDraft) state.relationDraft.targetId = event.target.value;
     });
     $$("[data-relation-scope]").forEach((button) =>
       button.addEventListener("click", () => {

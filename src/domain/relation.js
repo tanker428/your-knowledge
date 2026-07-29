@@ -26,6 +26,37 @@ export function isApprovableRelation(relation) {
   return relation?.origin !== "user" && relation?.status === "suggested";
 }
 
+export function swapRelationEndpoints(draft) {
+  return { ...draft, sourceId: draft.targetId, targetId: draft.sourceId };
+}
+
+/** @param {string} fallback */
+export function scopeForRelationEndpoints(photos, sourceId, targetId, fallback = RELATION_SCOPES.PHOTO) {
+  const entries = (photos || []).flatMap((photo) =>
+    (photo.observations || []).map((observation) => ({ observation, photo })),
+  );
+  const source = entries.find((entry) => entry.observation.id === sourceId);
+  const target = entries.find((entry) => entry.observation.id === targetId);
+  if (!source || !target) return fallback;
+  if (source.photo.id === target.photo.id) return RELATION_SCOPES.PHOTO;
+  return Math.abs(Number(source.photo.order || 0) - Number(target.photo.order || 0)) <= 2
+    ? RELATION_SCOPES.NEARBY
+    : RELATION_SCOPES.VISIT;
+}
+
+export function endpointPresentation(entry) {
+  const region = entry?.observation?.region ?? null;
+  return { region, wholePhoto: region === null };
+}
+
+export function searchRelationEntries(entries, query) {
+  const normalized = String(query || "").trim().toLocaleLowerCase();
+  if (!normalized) return entries || [];
+  return (entries || []).filter(({ observation, photo }) =>
+    `${photo.title} ${observation.label}`.toLocaleLowerCase().includes(normalized),
+  );
+}
+
 export function relationTypeInfo(relationTypes, type) {
   return (relationTypes || []).find((item) => item.id === type) || null;
 }
