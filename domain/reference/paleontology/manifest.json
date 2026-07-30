@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "1.0.0",
+  "id": "reference-data:paleontology",
+  "label": "自然史・古生物の参照データ",
+  "domainPackId": "paleontology",
+  "referenceDataVersion": "2026-07-30.1",
+  "files": {
+    "geologicalTime": "geological-time.json",
+    "taxonomy": "taxonomy.json",
+    "geologicalTimeSchema": "schemas/geological-time.schema.json",
+    "taxonomySchema": "schemas/taxonomy.schema.json"
+  },
+  "displayRootIds": [
+    "geo:era:paleozoic",
+    "geo:era:mesozoic",
+    "geo:era:cenozoic"
+  ],
+  "sourceType": "curated",
+  "status": "verified",
+  "drawioJsonVersion": "2026-07-30.1",
+  "notes": "Draw.ioはレビュー資料であり、アプリ実行時の正本はこの配下のJSONです。"
+}

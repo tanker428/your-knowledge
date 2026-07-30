@@ -118,6 +118,23 @@ Photo (43085_0.jpg)
 
 ## 保存先
 
+## Reference DataとReferenceGraph
+
+分類・時代の参照構造は、`domain/reference/paleontology/`に保存する。Draw.ioは人間による
+分類階層・時系列のレビュー資料であり、保存用KGや実行時データの正本ではない。レビュー後に
+stable ID付きJSONへ変換し、`manifest.json`でDraw.io版とJSON版の対応を記録する。
+
+```text
+ReferenceGraph
+ ├─ ReferenceNode（taxonomy / geological-time）
+ └─ ReferenceEdge（SUBCLASS_OF / PART_OF / PRECEDES）
+```
+
+`ReferenceGraph`は分類・時代そのものの参照構造である。一方、`ReferenceFact`はEntityと
+分類・時代などを結ぶ、クイズの正解根拠となる確認済み知識であり、両者は同じデータとして
+重複保存しない。参照ノードは`sourceType`と`status`を持ち、verifiedだけを利用対象にできる。
+顕生代は親ノードとして保存するが、通常の表示ルートには出さない。
+
 | データ | 保存先 |
 |-------|-------|
 | Photo メタ・Observation・関係・学習状態・クイズ結果 | IndexedDB `projects` |
