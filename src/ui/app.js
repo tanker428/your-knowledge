@@ -52,6 +52,18 @@ import {
   updateObservation,
 } from "../domain/observation.js";
 import {
+  createLearningFact,
+  normalizeLearningFact,
+  removeLearningFact,
+  updateLearningFact,
+} from "../domain/learning-fact.js";
+import {
+  focusRelatedObservation,
+  learningFactsForObservation,
+  observationEntriesForVisit,
+  oneHopRelations,
+} from "../domain/knowledge.js";
+import {
   createRelation,
   isApprovableRelation,
   isDirectedRelation,
@@ -211,6 +223,8 @@ export async function initApp(deps) {
     relationScope: RELATION_SCOPES.PHOTO,
     relationPicker: null,
     relationSearch: { source: "", target: "" },
+    editingLearningFactId: null,
+    learningFactDraft: null,
   };
 
   let imageSurfaceObserver = null;
@@ -277,7 +291,7 @@ export async function initApp(deps) {
       thumbSrc: photo.source === "sample" ? `assets/${photo.file}` : photo.thumbSrc,
     }));
     state.relations = project.relations;
-    state.facts = project.facts;
+    state.facts = project.facts.map(normalizeLearningFact);
     state.quizResults = project.quizResults || [];
 
     await attachImportedPhotoUrls();
@@ -1630,7 +1644,7 @@ export async function initApp(deps) {
       const learnedTargets = new Set(
         state.facts
           .filter(factUnlocked)
-          .map((/** @type {any} */ fact) => fact.targetId),
+          .map((/** @type {any} */ fact) => fact.targetObservationId ?? fact.targetId),
       );
       observations = observations.filter((item) => learnedTargets.has(item.id));
     }
@@ -1668,26 +1682,99 @@ export async function initApp(deps) {
     renderKnowledgeFocus();
   }
 
+  function renderLearningFactSourceOptions() {
+    const container = $("#learningFactSourceOptions");
+    if (!container || !state.learningFactDraft) return;
+    const entries = observationEntriesForVisit(state.photos, state.activeVisitId);
+    container.innerHTML = entries.length
+      ? entries.map(({ observation, photo }) => `
+        <button type="button" class="learning-source-option ${observation.id === state.learningFactDraft.sourceObservationId ? "selected" : ""}" data-learning-source-observation="${escapeHtml(observation.id)}">
+          <img src="${escapeHtml(photo.thumbSrc || photo.src)}" alt="" />
+          <span><strong>${escapeHtml(observation.label)}</strong><small>#${escapeHtml(photo.order)} ${escapeHtml(photo.title)}</small></span>
+          <i>${observation.id === state.learningFactDraft.sourceObservationId ? "✓" : ""}</i>
+        </button>`).join("")
+      : '<p class="muted-copy">この訪問には根拠にできるObservationがありません。</p>';
+  }
+
+  function openLearningFactEditor(/** @type {string|null} */ factId = null) {
+    const target = state.knowledgeObservationId;
+    const existing = factId ? factById(factId) : null;
+    if (!target || !observationById(target)) return;
+    const sourceIds = new Set(
+      observationEntriesForVisit(state.photos, state.activeVisitId).map(
+        ({ observation }) => observation.id,
+      ),
+    );
+    state.editingLearningFactId = existing?.id || null;
+    state.learningFactDraft = {
+      targetObservationId: existing?.targetObservationId ?? existing?.targetId ?? target,
+      label: existing?.label || "",
+      detail: existing?.detail || "",
+      sourceType: existing?.sourceType || "user",
+      sourceNote: existing?.sourceNote || "",
+      sourceObservationId: sourceIds.has(existing?.sourceObservationId)
+        ? existing.sourceObservationId
+        : null,
+      quizPrompt: existing?.quizPrompt || "",
+    };
+    $("#learningFactEditorTitle").textContent = existing ? "学習Factを編集" : "後から学んだ知識を追加";
+    $("#learningFactLabel").value = state.learningFactDraft.label;
+    $("#learningFactDetail").value = state.learningFactDraft.detail;
+    $("#learningFactSourceType").value = state.learningFactDraft.sourceType;
+    $("#learningFactSourceNote").value = state.learningFactDraft.sourceNote;
+    $("#learningFactQuizPrompt").value = state.learningFactDraft.quizPrompt;
+    renderLearningFactSourceOptions();
+    openModal("learningFactEditorModal");
+  }
+
+  async function saveLearningFact() {
+    const draft = state.learningFactDraft;
+    if (!draft) return;
+    if (!draft.label.trim()) {
+      showToast("学んだことの短い名称を入力してください");
+      return;
+    }
+    const existing = state.editingLearningFactId ? factById(state.editingLearningFactId) : null;
+    if (existing) Object.assign(existing, updateLearningFact(existing, { ...draft, status: "learned" }));
+    else state.facts.push(createLearningFact({ ...draft, status: "learned" }));
+    await flushPersist();
+    closeModal("learningFactEditorModal");
+    state.editingLearningFactId = null;
+    state.learningFactDraft = null;
+    renderAll();
+    renderKnowledge();
+    showToast(existing ? "学習Factを更新しました" : "学習Factを追加しました");
+  }
+
+  async function deleteLearningFact(/** @type {string} */ factId) {
+    const fact = factById(factId);
+    if (!fact || !window.confirm(`「${fact.label}」を削除しますか？`)) return;
+    state.facts = removeLearningFact(state.facts, factId);
+    await flushPersist();
+    renderAll();
+    renderKnowledge();
+    showToast("学習Factを削除しました");
+  }
+
   function renderKnowledgeFocus() {
-    const found = observationById(state.knowledgeObservationId);
+    const found = observationEntriesForVisit(
+      state.photos,
+      state.activeVisitId,
+      false,
+    ).find(({ observation }) => observation.id === state.knowledgeObservationId) || null;
     if (!found) {
       $("#knowledgeFocus").innerHTML =
         '<div class="empty-state large"><strong>観察対象を選択してください</strong></div>';
       return;
     }
     const { observation, photo } = found;
-    const activeObservationIds = activeVisitObservationIds();
-    const relations = state.relations.filter(
-      (/** @type {any} */ relation) =>
-        relation.status === "confirmed" &&
-        activeObservationIds.has(relation.sourceId) &&
-        activeObservationIds.has(relation.targetId) &&
-        (relation.sourceId === observation.id ||
-          relation.targetId === observation.id),
+    const relations = oneHopRelations(
+      state.relations,
+      state.photos,
+      state.activeVisitId,
+      observation.id,
     );
-    const facts = state.facts.filter(
-      (/** @type {any} */ fact) => fact.targetId === observation.id,
-    );
+    const facts = learningFactsForObservation(state.facts, observation.id);
     const unlocked = facts.filter(factUnlocked);
     const locked = facts.filter(
       (/** @type {any} */ fact) => !factUnlocked(fact),
@@ -1738,8 +1825,9 @@ export async function initApp(deps) {
             : '<p class="muted-copy">確認済みの関係はまだありません。</p>'
         }</section>
         <section class="detail-panel learning-panel"><div class="detail-heading"><span>LEARNING FACTS</span><h3>後から学ぶ知識</h3></div>
-          ${unlocked.map((/** @type {any} */ fact) => `<article class="learned-fact"><span>📚</span><div><strong>${escapeHtml(fact.label)}</strong><small>${escapeHtml(FACT_SOURCE_LABELS[fact.sourceType] || "")}</small></div></article>`).join("")}
-          ${locked.length ? `<div class="locked-facts"><span>＋${locked.length}</span><p>入力時には要求しなかった細かな知識があります。</p><button class="primary-button" id="learnMoreButton">詳しく学ぶ</button></div>` : !facts.length ? '<p class="muted-copy">この対象には追加学習カードがまだありません。</p>' : ""}
+          ${unlocked.map((/** @type {any} */ fact) => `<article class="learned-fact"><span>📚</span><div><strong>${escapeHtml(fact.label)}</strong><small>${escapeHtml(FACT_SOURCE_LABELS[fact.sourceType] || "")}${fact.sourceNote ? `・${escapeHtml(fact.sourceNote)}` : ""}</small>${fact.detail ? `<p>${escapeHtml(fact.detail)}</p>` : ""}</div>${!viewingDemo() ? `<button type="button" class="icon-button" data-edit-learning-fact="${escapeHtml(fact.id)}" aria-label="編集">✎</button><button type="button" class="icon-button danger" data-delete-learning-fact="${escapeHtml(fact.id)}" aria-label="削除">×</button>` : ""}</article>`).join("")}
+          ${locked.length ? `<div class="locked-facts"><span>＋${locked.length}</span><p>入力時には要求しなかった細かな知識があります。</p><button class="primary-button" id="learnMoreButton">詳しく学ぶ</button></div>` : ""}
+          ${!viewingDemo() ? `<button type="button" class="primary-button learning-fact-add" id="learnMoreButton">詳しく学ぶ</button>` : !facts.length ? '<p class="muted-copy">この対象には追加学習カードがまだありません。</p>' : ""}
         </section>
       </div>`;
 
@@ -1750,19 +1838,30 @@ export async function initApp(deps) {
     );
     $$("[data-focus-related]").forEach((button) =>
       button.addEventListener("click", () => {
-        state.knowledgeObservationId = button.dataset.focusRelated;
+        state.knowledgeObservationId = focusRelatedObservation(
+          state.knowledgeObservationId,
+          button.dataset.focusRelated,
+        );
         renderKnowledge();
       }),
     );
     $("#learnMoreButton")?.addEventListener("click", () => {
-      facts.forEach((/** @type {any} */ fact) => {
-        fact.status = "learned";
-      });
-      persist();
-      renderAll();
-      renderKnowledge();
-      showToast(`${facts.length}件の知識を学習カードへ追加しました`);
+      if (viewingDemo() && locked.length) {
+        facts.forEach((/** @type {any} */ fact) => { fact.status = "learned"; });
+        persist();
+        renderAll();
+        renderKnowledge();
+        showToast(`${facts.length}件の知識を学習カードへ追加しました`);
+        return;
+      }
+      openLearningFactEditor();
     });
+    $$(`[data-edit-learning-fact]`).forEach((button) =>
+      button.addEventListener("click", () => openLearningFactEditor(button.dataset.editLearningFact)),
+    );
+    $$(`[data-delete-learning-fact]`).forEach((button) =>
+      button.addEventListener("click", () => void deleteLearningFact(button.dataset.deleteLearningFact)),
+    );
   }
 
   function quizUsesConfirmedData(/** @type {any} */ quiz) {
@@ -2689,6 +2788,26 @@ export async function initApp(deps) {
         renderKnowledge();
       },
     );
+    $("#saveLearningFactButton")?.addEventListener("click", () => void saveLearningFact());
+    $("#clearLearningFactSourceButton")?.addEventListener("click", () => {
+      if (!state.learningFactDraft) return;
+      state.learningFactDraft.sourceObservationId = null;
+      renderLearningFactSourceOptions();
+    });
+    $("#learningFactSourceOptions")?.addEventListener("click", (/** @type {any} */ event) => {
+      const button = event.target.closest("[data-learning-source-observation]");
+      if (!button || !state.learningFactDraft) return;
+      state.learningFactDraft.sourceObservationId = button.dataset.learningSourceObservation;
+      renderLearningFactSourceOptions();
+    });
+    $("#learningFactEditorModal")?.addEventListener("input", (/** @type {any} */ event) => {
+      const field = event.target.dataset.learningFactField;
+      if (field && state.learningFactDraft) state.learningFactDraft[field] = event.target.value;
+    });
+    $("#learningFactEditorModal")?.addEventListener("change", (/** @type {any} */ event) => {
+      const field = event.target.dataset.learningFactField;
+      if (field && state.learningFactDraft) state.learningFactDraft[field] = event.target.value;
+    });
 
     $$("#deckSwitch [data-deck]").forEach((button) =>
       button.addEventListener("click", () => {

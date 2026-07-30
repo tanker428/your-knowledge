@@ -347,6 +347,25 @@
     </article>
   </div>
 
+  <div class="modal-backdrop" id="learningFactEditorModal" aria-hidden="true">
+    <article class="small-modal-card learning-fact-editor-card" role="dialog" aria-modal="true" aria-labelledby="learningFactEditorTitle">
+      <button class="modal-close" data-close-modal="learningFactEditorModal" aria-label="閉じる">×</button>
+      <p class="section-kicker">LEARNING FACT</p><h2 id="learningFactEditorTitle">後から学んだ知識を追加</h2>
+      <p class="muted-copy">写真撮影時の感想ではなく、後から確認した知識を保存します。</p>
+      <label class="form-label">学んだことの短い名称<input id="learningFactLabel" data-learning-fact-field="label" type="text" placeholder="例：初期のクジラ類" /></label>
+      <label class="form-label">詳細<textarea id="learningFactDetail" data-learning-fact-field="detail" rows="3" placeholder="学んだ内容の詳細"></textarea></label>
+      <label class="form-label">情報源<select id="learningFactSourceType" data-learning-fact-field="sourceType"><option value="panel">説明パネル</option><option value="learning">追加学習</option><option value="external">外部資料</option><option value="user">自分で確認</option></select></label>
+      <label class="form-label">情報源についてのメモ<textarea id="learningFactSourceNote" data-learning-fact-field="sourceNote" rows="2" placeholder="資料名、展示位置など"></textarea></label>
+      <fieldset class="form-label learning-source-field">
+        <legend>根拠となるObservation（任意）</legend>
+        <div id="learningFactSourceOptions" class="learning-source-options"></div>
+        <button type="button" class="text-button" id="clearLearningFactSourceButton">根拠を外す</button>
+      </fieldset>
+      <label class="form-label">後から問題化するための質問文（任意）<textarea id="learningFactQuizPrompt" data-learning-fact-field="quizPrompt" rows="2" placeholder="例：バシロサウルスは何類に含まれる？"></textarea></label>
+      <div class="modal-actions"><button class="ghost-button dark" data-close-modal="learningFactEditorModal">キャンセル</button><button class="primary-button" id="saveLearningFactButton">保存する</button></div>
+    </article>
+  </div>
+
   <div class="modal-backdrop" id="visitSheet" aria-hidden="true">
     <article class="visit-sheet-card" role="dialog" aria-modal="true" aria-labelledby="visitSheetTitle">
       <button class="modal-close" data-close-modal="visitSheet" aria-label="閉じる">×</button>
@@ -471,7 +490,22 @@
     .relation-card-meta { display:flex; justify-content:space-between; gap:8px; margin-top:8px; color:var(--muted); font-size:8px; }
     .relation-card-actions { display:flex; gap:6px; margin-top:8px; }
     .relation-card-actions button { border:1px solid var(--line); border-radius:7px; background:white; padding:5px 8px; color:var(--muted); font-size:8px; font-weight:800; }
-    @media(max-width:520px){ .relation-card-main { grid-template-columns:1fr; gap:5px; } .relation-connector { text-align:left; padding-left:41px; } .relation-scope-controls button { flex:1 1 30%; } .endpoint-card-inner { grid-template-columns:68px 1fr; } .endpoint-image { width:68px; } }
+    .learning-fact-editor-card { max-height:92vh; overflow:auto; }
+    .learning-source-options { display:grid; gap:6px; max-height:220px; overflow:auto; margin-top:8px; }
+    .learning-source-option { display:grid; grid-template-columns:52px 1fr auto; gap:8px; align-items:center; width:100%; border:1px solid var(--line); border-radius:8px; background:white; padding:7px; text-align:left; }
+    .learning-source-option.selected { border-color:var(--accent); background:#fff7ef; }
+    .learning-source-option img { width:52px; height:40px; object-fit:cover; border-radius:6px; background:#ddd; }
+    .learning-source-option strong,.learning-source-option small { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .learning-source-option strong { font-size:9px; }
+    .learning-source-option small { margin-top:3px; color:var(--muted); font-size:8px; }
+    .learning-source-option i { color:var(--accent); font-weight:900; }
+    .learning-source-field { min-width:0; }
+    .learned-fact { display:grid; grid-template-columns:auto minmax(0,1fr) auto auto; gap:8px; align-items:start; }
+    .learned-fact p { margin:5px 0 0; color:var(--muted); font-size:10px; line-height:1.5; }
+    .learning-fact-add { width:100%; margin-top:8px; }
+    .icon-button { border:1px solid var(--line); border-radius:6px; background:white; color:var(--muted); padding:4px 7px; font-size:12px; line-height:1; }
+    .icon-button.danger:hover { color:#b44d42; border-color:#b44d42; }
+    @media(max-width:520px){ .relation-card-main { grid-template-columns:1fr; gap:5px; } .relation-connector { text-align:left; padding-left:41px; } .relation-scope-controls button { flex:1 1 30%; } .endpoint-card-inner { grid-template-columns:68px 1fr; } .endpoint-image { width:68px; } .learned-fact { grid-template-columns:auto minmax(0,1fr) auto auto; } .learning-source-option { grid-template-columns:48px minmax(0,1fr) auto; } }
   </style>
 </body>
 </html>
