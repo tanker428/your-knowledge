@@ -1,5 +1,7 @@
 import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
+import Ajv2020 from "ajv/dist/2020.js";
 import { describe, expect, it } from "vitest";
 import {
   buildReferenceGraph,
@@ -10,10 +12,15 @@ import {
   getReferenceNodeById,
   getReferenceParents,
   getVerifiedReferenceGraph,
+  getVerifiedQuizEligibleReferenceGraph,
+  getVerifiedQuizEligibleReferenceNodes,
   getVisibleReferenceRoots,
   loadReferenceData,
 } from "../src/domain/reference-registry.js";
 import { validateReferenceData } from "../src/domain/reference-validation.js";
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const referenceRoot = path.join(root, "domain/reference/paleontology");
 
 
 /** @param {URL} url */
@@ -30,6 +37,15 @@ describe("paleontology reference data", () => {
     expect(loaded.geologicalTime.nodes.length).toBe(32);
     expect(loaded.taxonomy.nodes.length).toBe(147);
     expect(loaded.graph.nodes.length).toBe(179);
+  });
+
+  it("passes actual Ajv JSON Schema validation", async () => {
+    const loaded = await data();
+    const ajv = new Ajv2020({ strict: false });
+    const timeSchema = JSON.parse(await readFile(`${referenceRoot}/schemas/geological-time.schema.json`, "utf8"));
+    const taxonomySchema = JSON.parse(await readFile(`${referenceRoot}/schemas/taxonomy.schema.json`, "utf8"));
+    expect(ajv.compile(timeSchema)(loaded.geologicalTime)).toBe(true);
+    expect(ajv.compile(taxonomySchema)(loaded.taxonomy)).toBe(true);
   });
 
   it("resolves the relative module URL without a site-root assumption", async () => {
@@ -91,11 +107,33 @@ describe("paleontology reference data", () => {
     const loaded = await data();
     const graph = loaded.graph;
     expect(getReferenceNodeById(graph, "geo:eon:phanerozoic")).not.toBeNull();
-    expect(getVisibleReferenceRoots(graph).map((node) => node.id)).toEqual([
+    expect(getVisibleReferenceRoots(graph, "geological-time").map((node) => node.id)).toEqual([
+      "geo:group:precambrian",
       "geo:era:paleozoic",
       "geo:era:mesozoic",
       "geo:era:cenozoic",
     ]);
+    expect(getVisibleReferenceRoots(graph, "taxonomy").map((node) => node.id)).toEqual(["taxon:tetrapoda"]);
+  });
+
+  it("preserves OCCURS_DURING and only maps IS_A to SUBCLASS_OF", async () => {
+    const graph = (await data()).graph;
+    expect(graph.edges.filter((edge) => edge.type === "SUBCLASS_OF")).toHaveLength(146);
+    expect(graph.edges.filter((edge) => edge.type === "OCCURS_DURING")).toHaveLength(317);
+    expect(graph.edges.some((edge) => edge.type === "IS_A")).toBe(false);
+  });
+
+  it("does not convert an unknown relation type", async () => {
+    const loaded = await data();
+    const taxonomy = structuredClone(loaded.taxonomy);
+    taxonomy.relations.push({
+      id: "rel:unknown:test",
+      type: "CUSTOM_REFERENCE",
+      sourceId: taxonomy.nodes[0].id,
+      targetId: taxonomy.nodes[1].id,
+    });
+    const graph = buildReferenceGraph({ manifest: loaded.manifest, geologicalTime: loaded.geologicalTime, taxonomy });
+    expect(graph.edges.find((edge) => edge.id === "rel:unknown:test")?.type).toBe("CUSTOM_REFERENCE");
   });
 
   it("provides parent, child, ancestor, and descendant selectors", async () => {
@@ -117,6 +155,25 @@ describe("paleontology reference data", () => {
     const graph = (await data()).graph;
     expect(getReferenceGraphByAxis(graph, "taxonomy").nodes.every((node) => node.axis === "taxonomy")).toBe(true);
     expect(getReferenceGraphByAxis(graph, "geological-time").nodes.every((node) => node.axis === "geological-time")).toBe(true);
+  });
+
+  it("keeps semantic taxonomy IDs and updates every reference", async () => {
+    const loaded = await data();
+    expect(loaded.taxonomy.nodes.every((node) => !node.id.startsWith("taxon:drawio:"))).toBe(true);
+    expect(getReferenceNodeById(loaded.graph, "taxon:tetrapoda")?.label).toBe("四足類（四肢動物）");
+    expect(loaded.taxonomy.nodes.every((node) => node.sourceRef?.drawioCellId)).toBe(true);
+    const graphIds = new Set(loaded.graph.nodes.map((node) => node.id));
+    expect(loaded.graph.edges.every((edge) => graphIds.has(edge.sourceId) && graphIds.has(edge.targetId))).toBe(true);
+  });
+
+  it("retains quizEligible and selects only verified eligible nodes", async () => {
+    const loaded = await data();
+    const graph = structuredClone(loaded.graph);
+    graph.nodes[0].quizEligible = false;
+    const selected = getVerifiedQuizEligibleReferenceGraph(graph);
+    expect(selected.nodes.every((node) => node.status === "verified" && node.quizEligible)).toBe(true);
+    expect(getVerifiedQuizEligibleReferenceNodes(graph)).toHaveLength(selected.nodes.length);
+    expect(graph.nodes.some((node) => node.quizEligible === false)).toBe(true);
   });
 
   it("extracts verified nodes and preserves deterministic output", async () => {

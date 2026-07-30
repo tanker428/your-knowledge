@@ -127,12 +127,14 @@ stable ID付きJSONへ変換し、`manifest.json`でDraw.io版とJSON版の対�
 ```text
 ReferenceGraph
  ├─ ReferenceNode（taxonomy / geological-time）
- └─ ReferenceEdge（SUBCLASS_OF / PART_OF / PRECEDES）
+ └─ ReferenceEdge（SUBCLASS_OF / PART_OF / PRECEDES、および入力固有Relation）
 ```
 
 `ReferenceGraph`は分類・時代そのものの参照構造である。一方、`ReferenceFact`はEntityと
 分類・時代などを結ぶ、クイズの正解根拠となる確認済み知識であり、両者は同じデータとして
-重複保存しない。参照ノードは`sourceType`と`status`を持ち、verifiedだけを利用対象にできる。
+重複保存しない。`IS_A`だけを`SUBCLASS_OF`へ正規化し、`OCCURS_DURING`などの他のRelationは
+意味を変えずに保持する。参照ノードは`sourceType`、`status`、`quizEligible`を持ち、verifiedかつ
+quizEligible=trueだけを問題候補へ取得できる。
 顕生代は親ノードとして保存するが、通常の表示ルートには出さない。
 
 | データ | 保存先 |

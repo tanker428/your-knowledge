@@ -10,11 +10,15 @@
     "geologicalTimeSchema": "schemas/geological-time.schema.json",
     "taxonomySchema": "schemas/taxonomy.schema.json"
   },
-  "displayRootIds": [
-    "geo:era:paleozoic",
-    "geo:era:mesozoic",
-    "geo:era:cenozoic"
-  ],
+  "displayRootIdsByAxis": {
+    "taxonomy": ["taxon:tetrapoda"],
+    "geological-time": [
+      "geo:group:precambrian",
+      "geo:era:paleozoic",
+      "geo:era:mesozoic",
+      "geo:era:cenozoic"
+    ]
+  },
   "sourceType": "curated",
   "status": "verified",
   "drawioJsonVersion": "2026-07-30.1",

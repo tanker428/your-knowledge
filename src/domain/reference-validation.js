@@ -84,8 +84,10 @@ export function validateReferenceData(input) {
   validateTimeHierarchy(geologicalTime, timeIds, errors);
   validateTaxonomyHierarchy(taxonomy, taxonomyIds, errors);
   validateCrossReferences(taxonomy, timeIds, errors);
-  for (const rootId of manifest.displayRootIds || []) {
-    if (!allIds.has(rootId)) errors.push(`表示ルートが存在しません: ${rootId}`);
+  for (const rootIds of Object.values(manifest.displayRootIdsByAxis || {})) {
+    for (const rootId of rootIds) {
+      if (!allIds.has(rootId)) errors.push(`表示ルートが存在しません: ${rootId}`);
+    }
   }
 
   return errors.length ? { ok: false, errors } : { ok: true, errors: [] };
@@ -104,8 +106,8 @@ function validateDocumentShape(document, name, errors) {
 
 /** @param {any} manifest @param {string[]} errors */
 function validateManifest(manifest, errors) {
-  if (!isObject(manifest) || !Array.isArray(manifest.displayRootIds))
-    errors.push("manifest.displayRootIds が必要です");
+  if (!isObject(manifest) || !isObject(manifest.displayRootIdsByAxis))
+    errors.push("manifest.displayRootIdsByAxis が必要です");
   if (manifest?.status && !STATUS_VALUES.has(manifest.status))
     errors.push(`manifest.status が不正です: ${manifest.status}`);
 }

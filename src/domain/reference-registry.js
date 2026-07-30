@@ -2,7 +2,7 @@ import { validateJsonSchema, validateReferenceData } from "./reference-validatio
 
 const ROOT_URL = new URL("../../domain/reference/paleontology/", import.meta.url);
 
-/** @typedef {{id:string,label:string,kind:string,axis:string,rank?:string,status:string,internalOnly:boolean,externalIds?:Record<string,string|null>,sourceType:string,visible:boolean,parentIds?:string[],startMa?:number|null,endMa?:number|null,order?:number|null}} ReferenceNode */
+/** @typedef {{id:string,label:string,kind:string,axis:string,rank?:string,status:string,internalOnly:boolean,externalIds?:Record<string,string|null>,sourceType:string,visible:boolean,quizEligible:boolean,parentIds?:string[],startMa?:number|null,endMa?:number|null,order?:number|null}} ReferenceNode */
 /** @typedef {{id:string,type:string,sourceId:string,targetId:string}} ReferenceEdge */
 /** @typedef {{nodes:ReferenceNode[],edges:ReferenceEdge[],metadata:Record<string,any>}} ReferenceGraph */
 
@@ -57,7 +57,7 @@ export function buildReferenceGraph({ manifest, geologicalTime, taxonomy }) {
   ].sort((a, b) => a.id.localeCompare(b.id));
   const edges = [
     ...(geologicalTime.relations || []).map((relation) => normalizeEdge(relation)),
-    ...(taxonomy.relations || []).map((relation) => normalizeEdge(relation, "SUBCLASS_OF")),
+    ...(taxonomy.relations || []).map((relation) => normalizeEdge(relation)),
   ].sort((a, b) => a.id.localeCompare(b.id));
   return {
     nodes,
@@ -65,7 +65,7 @@ export function buildReferenceGraph({ manifest, geologicalTime, taxonomy }) {
     metadata: {
       id: manifest.id,
       referenceDataVersion: manifest.referenceDataVersion,
-      displayRootIds: [...(manifest.displayRootIds || [])],
+      displayRootIdsByAxis: structuredClone(manifest.displayRootIdsByAxis || {}),
       axes: ["taxonomy", "geological-time"],
       sourceType: manifest.sourceType,
       status: manifest.status,
@@ -86,6 +86,7 @@ function normalizeNode(node, kind) {
     externalIds: node.externalIds || {},
     sourceType: node.sourceType || "curated",
     visible: node.ui?.visible !== false,
+    quizEligible: node.quizEligible !== false,
     parentIds: node.parentIds || (node.parentId ? [node.parentId] : []),
     startMa: node.startMa ?? null,
     endMa: node.endMa ?? null,
@@ -93,11 +94,11 @@ function normalizeNode(node, kind) {
   };
 }
 
-/** @param {any} relation @param {string} [defaultType] @returns {ReferenceEdge} */
-function normalizeEdge(relation, defaultType) {
+/** @param {any} relation @returns {ReferenceEdge} */
+function normalizeEdge(relation) {
   return {
     id: relation.id,
-    type: relation.type === "IS_A" ? "SUBCLASS_OF" : defaultType || relation.type,
+    type: relation.type === "IS_A" ? "SUBCLASS_OF" : relation.type,
     sourceId: relation.sourceId,
     targetId: relation.targetId,
   };
@@ -130,14 +131,29 @@ export function getReferenceDescendants(graph, id) {
   return walkGraph(graph, id, getReferenceChildren);
 }
 
-/** @param {ReferenceGraph} graph */
-export function getVisibleReferenceRoots(graph) {
-  return sortNodes(graph, graph.metadata.displayRootIds || []).filter((node) => node && node.internalOnly !== true && node.visible);
+/** @param {ReferenceGraph} graph @param {string} [axis] */
+export function getVisibleReferenceRoots(graph, axis) {
+  const ids = axis
+    ? graph.metadata.displayRootIdsByAxis?.[axis] || []
+    : Object.values(graph.metadata.displayRootIdsByAxis || {}).flat();
+  return ids
+    .map((id) => getReferenceNodeById(graph, id))
+    .filter((node) => node && node.internalOnly !== true && node.visible);
 }
 
 /** @param {ReferenceGraph} graph */
 export function getVerifiedReferenceGraph(graph) {
   return filterGraph(graph, (node) => node.status === "verified");
+}
+
+/** @param {ReferenceGraph} graph */
+export function getVerifiedQuizEligibleReferenceGraph(graph) {
+  return filterGraph(graph, (node) => node.status === "verified" && node.quizEligible);
+}
+
+/** @param {ReferenceGraph} graph */
+export function getVerifiedQuizEligibleReferenceNodes(graph) {
+  return graph.nodes.filter((node) => node.status === "verified" && node.quizEligible);
 }
 
 /** @param {ReferenceGraph} graph @param {string} axis */
@@ -149,7 +165,16 @@ export function getReferenceGraphByAxis(graph, axis) {
 function filterGraph(graph, predicate) {
   const nodes = graph.nodes.filter(predicate);
   const ids = new Set(nodes.map((node) => node.id));
-  return { nodes, edges: graph.edges.filter((edge) => ids.has(edge.sourceId) && ids.has(edge.targetId)), metadata: { ...graph.metadata, displayRootIds: (graph.metadata.displayRootIds || []).filter((id) => ids.has(id)) } };
+  return {
+    nodes,
+    edges: graph.edges.filter((edge) => ids.has(edge.sourceId) && ids.has(edge.targetId)),
+    metadata: {
+      ...graph.metadata,
+      displayRootIdsByAxis: Object.fromEntries(
+        Object.entries(graph.metadata.displayRootIdsByAxis || {}).map(([axis, rootIds]) => [axis, rootIds.filter((id) => ids.has(id))]),
+      ),
+    },
+  };
 }
 
 /** @param {ReferenceGraph} graph @param {string} startId @param {(graph:ReferenceGraph,id:string)=>ReferenceNode[]} next */
