@@ -101,6 +101,7 @@ describe("Minimal Knowledge View", () => {
       { id: "r2", sourceId: "o2", targetId: "o3", status: "confirmed" },
       { id: "r3", sourceId: "o1", targetId: "o4", status: "confirmed" },
       { id: "r4", sourceId: "o1", targetId: "o2", status: "suggested" },
+      { id: "r5", sourceId: "o1", targetId: "o3", status: "confirmed" },
     ];
     expect(oneHopRelations(relations, photos, "v1", "o1").map((relation) => relation.id)).toEqual(["r1"]);
     expect(learningFactsForObservation(facts, "o1").map((fact) => fact.id)).toEqual(["f1"]);

@@ -27,7 +27,7 @@ export function observationEntriesForVisit(photos, visitId, includedOnly = true)
  */
 export function oneHopRelations(relations, photos, visitId, observationId) {
   const ids = new Set(
-    observationEntriesForVisit(photos, visitId, false).map(
+    observationEntriesForVisit(photos, visitId).map(
       ({ observation }) => observation.id,
     ),
   );
