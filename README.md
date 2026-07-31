@@ -51,10 +51,12 @@ assets/               サンプル写真20枚（恐竜博物館）
 domain/
   core/vocabulary.json    汎用分類・学習役割・関係種別（全分野共通）
   packs/*.json            分野別分類（古生物 / 文化財 / 自然 / 歴史）
+  reference/paleontology/ curatedな分類・地質時代JSONとReferenceGraph用Schema
 src/
   main.js                 実装の合成点。ここだけが具体クラスを知っている
   ui/app.js               描画とイベント
   domain/registry.js      分類語彙の読み込み
+  domain/reference-registry.js  参照JSONの読み込み・正規化・selector
   repositories/           保存（IndexedDB）
   services/analysis/      解析（今回はデモ実装のみ）
   features/               写真取り込み / JSON入出力 / PWA
@@ -89,6 +91,17 @@ PWA としてインストールすると `navigator.storage.persist()` により
 
 JSON で書き出し・読み込みができる。写真のバイナリはJSONに入れない（数百MBになるため）。
 読み込みは検証してから適用するので、壊れたファイルで既存データが消えることはない。
+
+### Reference Data
+
+`domain/reference/paleontology/`は、Draw.ioでレビューした分類・時系列をstable ID付きJSONへ
+変換した参照データである。Draw.ioはレビュー資料、JSONはアプリ実行時の正本とし、
+`manifest.json`に両者のバージョン対応を記録する。`ReferenceGraph`は分類・時代そのものの
+参照構造であり、Entityと確認済み知識を結ぶ`ReferenceFact`とは別の概念である。
+
+参照ノードは`sourceType`と`status`を持ち、クイズなどの利用対象は原則`status: "verified"`
+だけとする。顕生代は親ノードとして保存するが、通常の表示ルートには出さず、古生代・
+中生代・新生代から表示できる。
 
 ## AI 解析について
 
