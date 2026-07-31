@@ -29,7 +29,7 @@ Photo (43085_0.jpg)
 | `Observation` | 写真の中で観察した対象 |
 | `ObservationRelation` | Observation 同士の関係 |
 | `Entity` | 具体的な実体（ティラノサウルス等）。**任意** |
-| `LearningFact` | あとから学ぶ詳しい知識 |
+| `LearningFact` | 旧方針の知識レコード。現行MVPの保存用KGには含めない |
 | `Collection` | 発見→整理→分類→関係付け→学習 の進み |
 | `Question` | 問題 |
 
@@ -98,10 +98,10 @@ Photo (43085_0.jpg)
      歴史・考古     → 古文書 / 地図 / 武具 / 年表 …
 ```
 
-②は①のあとに適用する。年代・寸法のような細かい知識はここでは扱わず、
-`LearningFact` として「詳しく学ぶ」段階に回す。
+②は①のあとに適用する。年代・寸法のような細かい知識は、現行MVPでは
+`ReferenceFact`として確認済み参照知識へ分離する。
 
-## LearningFact
+## LearningFact（旧方針）
 
 ```js
 {
@@ -113,8 +113,8 @@ Photo (43085_0.jpg)
 }
 ```
 
-`locked` の間は知識マップに件数だけが出る。「詳しく学ぶ」で `learned` になり、
-追加学習デッキの問題が解放される。
+この形式は旧方針であり、現行MVPでは新規の保存用KGノードとして扱わない。既存データを
+ReferenceFactや学習済み状態へ自動変換もしない。
 
 ## 保存先
 
@@ -136,6 +136,32 @@ ReferenceGraph
 意味を変えずに保持する。参照ノードは`sourceType`、`status`、`quizEligible`を持ち、verifiedかつ
 quizEligible=trueだけを問題候補へ取得できる。
 顕生代は親ノードとして保存するが、通常の表示ルートには出さない。
+
+## 保存用KnowledgeGraph
+
+保存用KGは既存Projectから`activeVisit`単位で決定的に生成する。現在のMVPのルートは次の
+構造で、旧`LearningFact`・`KnowledgeFact`・`LearningGap`は含めない。
+
+```text
+KnowledgeGraph
+ ├─ User ─HAS_VISIT→ Visit ─HAS_PHOTO→ Photo ─HAS_OBSERVATION→ Observation
+ ├─ Observation ─HAS_CLASSIFICATION→ ClassificationAssertion ─CLASSIFIES_AS→ Category
+ ├─ Observation ─HAS_ROLE→ LearningRole
+ ├─ Observation ─RELATES_TO→ Observation
+ ├─ Observation ─REFERS_TO→ Entity
+ ├─ Entity/Observation ─HAS_REFERENCE_FACT→ ReferenceFact
+ └─ QuestionSeed ─REFERENCES/TARGETS→ graph nodes
+```
+
+`KnowledgeGraph`は`schemaVersion`、`visitId`、`nodes`、`edges`、`metadata`を持つ。Relationは
+方向、種別、status、origin、confidenceをedgeへ保持し、分類AssertionのIDとQuestionSeedの
+IDは入力IDから生成する。activeVisit外のPhoto・Observation・Relationは除外し、同一Entityは
+一度だけノード化する。`project.facts`をReferenceFactへ自動変換せず、ReferenceGraph全体も
+Visitごとに複製しない。グラフはJSON.stringify/parse可能で、表示用の座標やUI状態を保存しない。
+
+ReferenceGraph（分類・時代の参照構造）とReferenceFact（EntityやObservationに接続する確認済み
+知識）は別の層である。ReferenceGraphのstable IDを必要な参照接続から利用し、参照構造そのものを
+保存用KGへ重複保存しない。
 
 | データ | 保存先 |
 |-------|-------|
@@ -164,6 +190,8 @@ quizEligible=trueだけを問題候補へ取得できる。
   "quizResults": [ { "deck": "observed", "score": 3, "total": 5, "completedAt": "…" } ]
 }
 ```
+
+`learningFacts`は旧形式の入出力項目であり、現行MVPの保存用KGには含めない。
 
 - **写真のバイナリは入れない。** Base64にすると数百MBの読めないファイルになる。
   JSONが持つのは写真のIDとメタデータだけで、実体はIndexedDBに残る。
