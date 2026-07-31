@@ -308,9 +308,7 @@ export async function initApp(deps) {
     state.referenceFacts = project.referenceFacts || [];
     state.quizResults = project.quizResults || [];
     state.learningEvents = mergeQuizResultsIntoLearningEvents(project.learningEvents || [], state.quizResults, state.userId);
-    state.userKnowledgeStates = state.learningEvents.length
-      ? rebuildUserKnowledgeStates(state.learningEvents)
-      : project.userKnowledgeStates || [];
+    state.userKnowledgeStates = rebuildUserKnowledgeStates(state.learningEvents);
 
     await attachImportedPhotoUrls();
     normaliseSelection();

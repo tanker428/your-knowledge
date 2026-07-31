@@ -48,9 +48,9 @@ export function mergeQuizResultsIntoLearningEvents(events = [], results = [], us
   return next;
 }
 
-/** @param {any[]} events @param {any[]} [existing] */
-export function rebuildUserKnowledgeStates(events = [], existing = []) {
-  const states = new Map(existing.map((state) => [stateKey(state.userId, state.visitId, state.referenceFactId), { ...state }]));
+/** Rebuild from the complete event set; persisted summaries are never an input. */
+export function rebuildUserKnowledgeStates(events = []) {
+  const states = new Map();
   const ordered = [...events].sort((a, b) => {
     const byTime = String(a.occurredAt || "").localeCompare(String(b.occurredAt || ""));
     return byTime || String(a.id || "").localeCompare(String(b.id || ""));

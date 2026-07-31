@@ -76,8 +76,10 @@ describe("LearningEvent and UserKnowledgeState", () => {
     ];
     const reloadedEvents = JSON.parse(JSON.stringify(events));
     const states = rebuildUserKnowledgeStates(reloadedEvents);
+    const rebuiltAgain = rebuildUserKnowledgeStates(reloadedEvents);
     expect(reloadedEvents).toHaveLength(2);
     expect(states[0]).toMatchObject({ attemptCount: 2, correctCount: 1, masteryValue: 1, lastAnsweredAt: "2026-07-31T10:01:00.000Z" });
+    expect(rebuiltAgain).toEqual(states);
   });
 
   it("backfills old quiz results once without duplicating events", () => {
