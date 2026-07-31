@@ -256,6 +256,25 @@ describe("migrateProjectDocument — すでに v2", () => {
     expect(result.project.visits).toHaveLength(1);
     expect(result.project.activeVisitId).toBe("v1");
   });
+
+  it("v2のReferenceFactと学習履歴を変更せず保持する", () => {
+    const v2 = {
+      id: "default",
+      schemaVersion: "2.0.0",
+      visits: [{ id: "v1", title: "mine", source: "user" }],
+      activeVisitId: "v1",
+      photos: [],
+      relations: [],
+      facts: [],
+      referenceFacts: [{ id: "rf1", status: "verified" }],
+      learningEvents: [{ id: "event-1", referenceFactId: "rf1", result: 1 }],
+      userKnowledgeStates: [{ referenceFactId: "rf1", masteryValue: 1 }],
+    };
+    const result = migrateProjectDocument(v2, context());
+    expect(result.project.referenceFacts).toEqual(v2.referenceFacts);
+    expect(result.project.learningEvents).toEqual(v2.learningEvents);
+    expect(result.project.userKnowledgeStates).toEqual(v2.userKnowledgeStates);
+  });
 });
 
 describe("migrateProjectDocument — 壊れた入力", () => {

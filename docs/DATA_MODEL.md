@@ -178,20 +178,25 @@ ReferenceGraph（分類・時代の参照構造）とReferenceFact（EntityやOb
 ```json
 {
   "format": "your-knowledge-project",
-  "schemaVersion": "1.0.0",
+  "schemaVersion": "2.0.0",
   "exportedAt": "2026-07-28T03:00:00.000Z",
-  "project": { "id": "default", "visit": {...}, "photoStorage": "indexeddb" },
+  "project": { "id": "default", "activeVisitId": "visit-001", "visits": [ … ], "photoStorage": "indexeddb" },
   "photos": [ { "id": "p01", "title": "…", "status": "organized", … } ],
   "observations": [ { "id": "o01a", "photoId": "p01", … } ],
   "relations": [ … ],
   "entities": [ … ],
-  "learningFacts": [ … ],
-  "collections": [ … ],
-  "quizResults": [ { "deck": "observed", "score": 3, "total": 5, "completedAt": "…" } ]
+  "referenceFacts": [ … ],
+  "quizResults": [ … ],
+  "learningEvents": [ … ],
+  "userKnowledgeStates": [ … ],
+  "referenceDataVersion": "paleontology-1"
 }
 ```
 
-`learningFacts`は旧形式の入出力項目であり、現行MVPの保存用KGには含めない。
+v2では`ReferenceFact`、`LearningEvent`、`UserKnowledgeState`を保存する。コレクション進捗、
+表示用Knowledge Graph、画面座標・選択状態・展開状態は保存せず、Projectから導出する。
+旧`LearningFact`相当のデータは`legacyFacts`へ隔離して保持し、ReferenceFactや学習済み状態へ
+自動変換しない。
 
 - **写真のバイナリは入れない。** Base64にすると数百MBの読めないファイルになる。
   JSONが持つのは写真のIDとメタデータだけで、実体はIndexedDBに残る。

@@ -60,6 +60,8 @@
  * @property {object[]} [quizResults]
  * @property {object[]} [learningEvents]            Append-only learning history.
  * @property {object[]} [userKnowledgeStates]       Per-user/fact learning summaries.
+ * @property {string|null} [referenceDataVersion]   Version of bundled curated reference data.
+ * @property {object} [sourceMetadata]              Provenance metadata for imported data.
  *
  * @typedef {object} PhotoBinary
  * @property {Blob} display    Downscaled image actually shown in the app.

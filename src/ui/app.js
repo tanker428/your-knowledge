@@ -170,7 +170,7 @@ export async function initApp(deps) {
   /** Object URLs handed out for imported photos; revoked when replaced. */
   const objectUrls = new Map();
 
-  const entityMap = new Map(SAMPLE_ENTITIES.map((item) => [item.id, item]));
+  let entityMap = new Map(SAMPLE_ENTITIES.map((item) => [item.id, item]));
 
   // ---------------------------------------------------------------- state ---
 
@@ -188,7 +188,10 @@ export async function initApp(deps) {
     relations: [],
     /** @type {any[]} */
     facts: [],
+    entities: SAMPLE_ENTITIES.map((item) => ({ ...item })),
     referenceFacts: [],
+    referenceDataVersion: null,
+    sourceMetadata: {},
     /** @type {any[]} */
     quizResults: [],
     learningEvents: [],
@@ -307,7 +310,13 @@ export async function initApp(deps) {
     }));
     state.relations = project.relations;
     state.facts = project.facts;
+    state.entities = Array.isArray(project.entities)
+      ? project.entities.map((entity) => ({ ...entity }))
+      : SAMPLE_ENTITIES.map((entity) => ({ ...entity }));
+    entityMap = new Map(state.entities.map((entity) => [entity.id, entity]));
     state.referenceFacts = project.referenceFacts || [];
+    state.referenceDataVersion = project.referenceDataVersion ?? null;
+    state.sourceMetadata = project.sourceMetadata || {};
     state.quizResults = project.quizResults || [];
     state.learningEvents = mergeQuizResultsIntoLearningEvents(project.learningEvents || [], state.quizResults, state.userId);
     state.userKnowledgeStates = rebuildUserKnowledgeStates(state.learningEvents);
@@ -439,7 +448,10 @@ export async function initApp(deps) {
       })),
       relations: state.relations,
       facts: copyFactsForProject(state.facts),
+      entities: state.entities.map((entity) => ({ ...entity })),
       referenceFacts: state.referenceFacts.map((fact) => ({ ...fact })),
+      referenceDataVersion: state.referenceDataVersion,
+      sourceMetadata: { ...state.sourceMetadata },
       quizResults: state.quizResults,
       learningEvents: state.learningEvents,
       userKnowledgeStates: state.userKnowledgeStates,
@@ -2674,7 +2686,7 @@ export async function initApp(deps) {
     const document_ = buildExportDocument({
       project: toProject(),
       visit: SAMPLE_VISIT,
-      entities: SAMPLE_ENTITIES,
+      entities: state.entities,
       learningFacts: state.facts,
       collections: SAMPLE_COLLECTIONS,
       quizResults: state.quizResults,

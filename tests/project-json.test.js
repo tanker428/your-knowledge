@@ -13,6 +13,9 @@ import {
 function sampleProject() {
   return {
     id: "default",
+    userId: "user-local",
+    activeVisitId: "visit-1",
+    visits: [{ id: "visit-1", title: "訪問", source: "user" }],
     updatedAt: 0,
     photos: [
       {
@@ -77,6 +80,12 @@ function sampleProject() {
       },
     ],
     facts: [{ id: "f1", status: "learned" }],
+    entities: [{ id: "e1", name: "ティラノサウルス" }],
+    referenceFacts: [{ id: "rf1", subjectId: "e1", status: "verified" }],
+    learningEvents: [{ id: "event-1", referenceFactId: "rf1", result: 1 }],
+    userKnowledgeStates: [{ userId: "user-local", visitId: "visit-1", referenceFactId: "rf1", masteryValue: 1 }],
+    referenceDataVersion: "paleo-2026-07",
+    sourceMetadata: { curator: "museum-team", reviewedAt: "2026-07-30" },
     quizResults: [
       {
         deck: "observed",
@@ -108,7 +117,7 @@ describe("buildExportDocument", () => {
     expect(doc.format).toBe(PROJECT_FORMAT);
     expect(doc.schemaVersion).toBe(SCHEMA_VERSION);
     expect(parseSchemaVersion(doc.schemaVersion)).toEqual({
-      major: 1,
+      major: 2,
       minor: 0,
       patch: 0,
     });
@@ -147,14 +156,40 @@ describe("buildExportDocument", () => {
     expect(exportDoc().project.photoStorage).toBe("indexeddb");
   });
 
-  it("carries quiz results and collection state", () => {
+  it("carries quiz results and omits derived collection state", () => {
     const doc = exportDoc();
     expect(doc.quizResults).toHaveLength(1);
-    expect(doc.collections).toHaveLength(1);
+    expect(doc.collections).toBeUndefined();
+    expect(doc.learningFacts).toBeUndefined();
+    expect(doc.referenceFacts).toHaveLength(1);
+    expect(doc.learningEvents).toHaveLength(1);
+    expect(doc.userKnowledgeStates).toHaveLength(1);
   });
 
-  it("applies the live fact status over the demo default", () => {
-    expect(exportDoc().learningFacts[0].status).toBe("learned");
+  it("round-trips visits, ReferenceFacts, and learning history without image bytes", () => {
+    const source = /** @type {any} */ (exportDoc());
+    const restored = documentToProject(source, new Set(["p01", "p99"]), "default").project;
+    expect(restored.visits).toEqual(source.project.visits);
+    expect(restored.referenceFacts).toEqual(source.referenceFacts);
+    expect(restored.learningEvents).toEqual(source.learningEvents);
+    expect(restored.userKnowledgeStates).toEqual(source.userKnowledgeStates);
+    expect(restored.referenceDataVersion).toBe("paleo-2026-07");
+    expect(restored.sourceMetadata).toEqual(source.sourceMetadata);
+    expect(JSON.stringify(source)).not.toMatch(/data:image\//);
+  });
+
+  it("keeps an explicitly empty entity list empty across import and re-export", () => {
+    const source = /** @type {any} */ (exportDoc());
+    source.entities = [];
+    source.referenceFacts = [];
+    const imported = documentToProject(source, new Set(["p01", "p99"]), "default").project;
+    const reExported = /** @type {any} */ (buildExportDocument({ project: imported }));
+    expect(imported.entities).toEqual([]);
+    expect(reExported.entities).toEqual([]);
+  });
+
+  it("retains legacy facts without reclassifying them as ReferenceFact", () => {
+    expect(exportDoc().legacyFacts[0].status).toBe("learned");
   });
 });
 
@@ -191,10 +226,42 @@ describe("validateProjectDocument", () => {
   it("refuses a future major version instead of guessing", () => {
     const result = validateProjectDocument({
       ...exportDoc(),
-      schemaVersion: "2.0.0",
+      schemaVersion: "3.0.0",
     });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.reason).toContain("対応していません");
+  });
+
+  it("refuses malformed v2 metadata before import can apply it", () => {
+    const doc = /** @type {any} */ (exportDoc());
+    doc.project.visits = "broken";
+    const result = validateProjectDocument(doc);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toContain("project.visits");
+  });
+
+  it.each([
+    ["duplicate entity id", (doc) => { doc.entities.push({ id: "e1" }); }],
+    ["dangling relation", (doc) => { doc.relations[0].targetId = "missing"; }],
+    ["invalid active visit", (doc) => { doc.project.activeVisitId = "missing"; }],
+    ["invalid photo visit", (doc) => { doc.photos[0].visitId = "missing"; }],
+    ["invalid ReferenceFact subject", (doc) => { doc.referenceFacts[0].subjectId = "missing"; }],
+    ["invalid ReferenceFact value", (doc) => { doc.referenceFacts[0].valueType = "entity-reference"; doc.referenceFacts[0].value = "missing"; }],
+    ["invalid ReferenceFact observationId", (doc) => { doc.referenceFacts[0].observationId = "missing"; }],
+    ["invalid ReferenceFact targetObservationId", (doc) => { doc.referenceFacts[0].targetObservationId = "missing"; }],
+  ])("rejects %s without accepting the document", (_label, mutate) => {
+    const doc = /** @type {any} */ (exportDoc());
+    mutate(doc);
+    expect(validateProjectDocument(doc).ok).toBe(false);
+  });
+
+  it("accepts and round-trips valid Observation references on a ReferenceFact", () => {
+    const doc = /** @type {any} */ (exportDoc());
+    doc.referenceFacts[0].observationId = "o01a";
+    doc.referenceFacts[0].targetObservationId = "o01a";
+    expect(validateProjectDocument(doc).ok).toBe(true);
+    const restored = documentToProject(doc, new Set(["p01", "p99"]), "default").project;
+    expect(/** @type {any} */ (buildExportDocument({ project: restored })).referenceFacts[0]).toMatchObject({ observationId: "o01a", targetObservationId: "o01a" });
   });
 
   it("accepts a newer minor version of the same major", () => {
