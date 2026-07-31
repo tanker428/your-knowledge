@@ -82,6 +82,7 @@ import {
   getKnowledgeGraphNodeDetail,
   getRadialNodeShape,
 } from "../features/knowledge-graph/selectors.js";
+import { getReferenceChildren } from "../domain/reference-registry.js";
 
 const MAX_UPLOAD_BATCH = 120;
 const STATUS_LABELS = {
@@ -1817,13 +1818,12 @@ export async function initApp(deps) {
     const sections = groups.map((type) => {
       const nodes = graph.nodes.filter((node) => node.type === type);
       if (!nodes.length) return "";
-      return `<section class="kg-node-group kg-${type.toLowerCase()}"><div class="kg-group-title"><span>${knowledgeNodeIcon(type)}</span><strong>${escapeHtml(knowledgeNodeLabel(type))}</strong><small>${nodes.length}</small></div><div class="kg-node-grid">${nodes.map(renderKnowledgeNode).join("")}</div></section>`;
+      return `<section class="kg-node-group kg-${type.toLowerCase()}"><div class="kg-group-title"><span>${knowledgeNodeIcon(type)}</span><strong>${escapeHtml(knowledgeNodeLabel(type))}</strong><small>${nodes.length}</small></div><div class="kg-node-grid">${nodes.map((node) => renderKnowledgeNode(node, graph)).join("")}</div></section>`;
     }).join("");
     const relations = graph.edges.filter((edge) => edge.type === "RELATES_TO");
     const relationSection = relations.length ? `<section class="kg-relation-strip"><div class="kg-group-title"><span>↔</span><strong>関係</strong><small>${relations.length}</small></div>${relations.map((edge) => `<button class="kg-relation-row" data-kg-node="${escapeHtml(edge.targetId)}"><span>${edge.directed === false ? "↔" : "→"}</span><strong>${escapeHtml(nodeLabel(graph, edge.sourceId))}</strong><em>${escapeHtml(edge.relationType || "RELATES_TO")}</em><strong>${escapeHtml(nodeLabel(graph, edge.targetId))}</strong></button>`).join("")}</section>` : "";
-    const referenceToggle = graph.nodes.some((node) => node.type === "ReferenceNode") ? `<button class="text-button" data-kg-toggle-reference>${state.knowledgeExpanded.has("references") ? "参照を折り畳む" : "参照を展開"}</button>` : "";
     const backButton = state.knowledgeViewMode === "focus" ? '<button class="text-button" data-kg-overview>← 訪問全体へ戻る</button>' : "";
-    return `<div class="kg-canvas-header"><span>DISPLAY GRAPH</span><strong>${state.knowledgeViewMode === "focus" ? "Observation詳細・1ホップ" : "訪問全体"}</strong><span class="kg-header-actions">${backButton}${referenceToggle}</span></div>${sections}${relationSection}`;
+    return `<div class="kg-canvas-header"><span>DISPLAY GRAPH</span><strong>${state.knowledgeViewMode === "focus" ? "Observation詳細・1ホップ" : "訪問全体"}</strong><span class="kg-header-actions">${backButton}</span></div>${sections}${relationSection}`;
   }
 
   function renderKnowledgeRadial(graph) {
@@ -1847,7 +1847,7 @@ export async function initApp(deps) {
       const region = node.region && photo ? `<rect class="kg-svg-region" x="${position.x - 17 + (Number(node.region.x) || 0) * 0.34}" y="${position.y - 17 + (Number(node.region.y) || 0) * 0.34}" width="${Math.max(1, (Number(node.region.w) || 0) * 0.34)}" height="${Math.max(1, (Number(node.region.h) || 0) * 0.34)}" />` : "";
       const shape = renderRadialNodeShape(node, position, selected);
       const referenceKey = node.type === "ReferenceNode" ? `reference:${node.referenceId}` : null;
-      const referenceAction = referenceKey ? `<text class="kg-svg-expand" data-kg-expand-reference="${escapeHtml(referenceKey)}" x="${position.x}" y="${position.y + 59}" text-anchor="middle">${state.knowledgeExpanded.has(referenceKey) ? "折り畳む" : "展開"}</text>` : "";
+      const referenceAction = referenceKey && shouldShowReferenceExpansion(node, displayGraph) ? `<text class="kg-svg-expand" data-kg-expand-reference="${escapeHtml(referenceKey)}" x="${position.x}" y="${position.y + 59}" text-anchor="middle">${state.knowledgeExpanded.has(referenceKey) ? "折り畳む" : "展開"}</text>` : "";
       return `<g class="kg-svg-node kg-svg-${node.type.toLowerCase()} ${selected ? "selected" : ""}" data-kg-node="${escapeHtml(node.id)}">${shape}${image}${region}<text x="${position.x}" y="${position.y + 43}" text-anchor="middle">${escapeHtml(shortGraphLabel(node.label || node.title || node.predicate || node.referenceId || node.type))}</text>${referenceAction}<title>${escapeHtml(node.label || node.title || node.predicate || node.referenceId || node.type)}</title></g>`;
     }).join("");
     const zoom = state.knowledgeZoom;
@@ -1875,11 +1875,19 @@ export async function initApp(deps) {
     return text.length > 12 ? `${text.slice(0, 11)}…` : text;
   }
 
-  function renderKnowledgeNode(node) {
+  function renderKnowledgeNode(node, graph) {
     const photo = node.type === "Photo" || node.type === "Observation" ? photoById(node.photoId) : null;
     const image = photo ? `<span class="kg-node-image"><img src="${escapeHtml(photo.thumbSrc || photo.src || MISSING_PHOTO_SRC)}" alt="" />${node.region ? `<i style="left:${node.region.x}%;top:${node.region.y}%;width:${node.region.w}%;height:${node.region.h}%"></i>` : ""}</span>` : "";
     const card = `<button class="kg-node-card kg-shape-${node.type.toLowerCase()}" data-kg-node="${escapeHtml(node.id)}">${image}<span class="kg-node-icon">${knowledgeNodeIcon(node.type)}</span><strong>${escapeHtml(node.label || node.title || node.predicate || node.referenceId || node.type)}</strong><small>${escapeHtml(knowledgeNodeLabel(node.type))}</small></button>`;
-    return node.type === "ReferenceNode" ? `<div class="kg-reference-node-wrap">${card}<button class="text-button kg-reference-expand" data-kg-expand-reference="reference:${escapeHtml(node.referenceId)}">${state.knowledgeExpanded.has(`reference:${node.referenceId}`) ? "折り畳む" : "展開"}</button></div>` : card;
+    return node.type === "ReferenceNode" && shouldShowReferenceExpansion(node, graph) ? `<div class="kg-reference-node-wrap">${card}<button class="text-button kg-reference-expand" data-kg-expand-reference="reference:${escapeHtml(node.referenceId)}">${state.knowledgeExpanded.has(`reference:${node.referenceId}`) ? "折り畳む" : "展開"}</button></div>` : card;
+  }
+
+  function shouldShowReferenceExpansion(node, graph) {
+    if (node.type !== "ReferenceNode" || !referenceData?.graph) return false;
+    const key = `reference:${node.referenceId}`;
+    if (state.knowledgeExpanded.has(key)) return true;
+    const visibleIds = new Set((graph?.nodes || []).map((item) => item.id));
+    return getReferenceChildren(referenceData.graph, node.referenceId).some((child) => child && child.internalOnly !== true && child.visible !== false && !visibleIds.has(`Reference:${child.id}`));
   }
 
   function renderKnowledgeDetail(graph, nodeId) {

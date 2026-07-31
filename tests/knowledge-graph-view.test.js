@@ -118,6 +118,10 @@ describe("knowledge graph view selectors", () => {
   });
   it("does not retain the old LearningFact label in the Knowledge Graph UI", async () => {
     const source = await readFile(new URL("../src/ui/app.js", import.meta.url), "utf8");
+    const index = await readFile(new URL("../index.html", import.meta.url), "utf8");
     expect(source).not.toContain("LearningFact");
+    expect(index).toContain("Photo ≠ Observation ≠ Entity ≠ ReferenceFact");
+    expect(index).not.toContain("Photo ≠ Observation ≠ Entity ≠ LearningFact");
+    expect(source).not.toContain("data-kg-toggle-reference");
   });
 });
