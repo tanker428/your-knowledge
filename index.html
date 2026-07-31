@@ -225,7 +225,7 @@
 
       <section class="view" id="view-learn" aria-labelledby="learnTitle">
         <div class="page-hero compact">
-          <div><p class="section-kicker">LEARN & REVIEW</p><h1 id="learnTitle">確認した知識から問題を作る</h1><p>入力時に確認した分類・関係をまず復習し、あとから追加した詳細知識は別の問題として扱います。</p></div>
+          <div><p class="section-kicker">LEARN & REVIEW</p><h1 id="learnTitle">知識グラフから問題を作る</h1><p>activeVisitの確認済みObservationとverified ReferenceFactから、分類・時代の配置問題を生成します。</p></div>
           <div class="deck-summary" id="deckSummary"></div>
         </div>
         <div class="learn-layout">
@@ -233,8 +233,7 @@
             <p class="section-kicker">PERSONAL REVIEW</p>
             <h2>写真クイズ</h2>
             <div class="deck-switch" id="deckSwitch">
-              <button class="active" data-deck="observed">見た知識</button>
-              <button data-deck="learned">追加学習</button>
+              <button class="active" data-deck="observed">Knowledge Graph</button>
             </div>
             <div class="quiz-progress-ring" id="quizRing"><span><strong id="quizScore">0</strong><small id="quizTotal">/ 5</small></span></div>
             <button class="ghost-button dark full" id="resetQuizButton">最初からやり直す</button>

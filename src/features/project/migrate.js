@@ -126,6 +126,7 @@ export function migrateProjectDocument(stored, context) {
           ),
           relations: context.demoRelations.map((relation) => ({ ...relation })),
           facts: context.demoFacts.map((fact) => ({ ...fact })),
+          referenceFacts: [],
           quizResults: [],
         },
       };
@@ -253,6 +254,7 @@ export function migrateProjectDocument(stored, context) {
         photos,
         relations,
         facts,
+        referenceFacts: Array.isArray(stored.referenceFacts) ? stored.referenceFacts.map((fact) => ({ ...fact })) : [],
         quizResults,
       },
     };
