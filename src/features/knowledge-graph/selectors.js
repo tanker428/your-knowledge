@@ -93,6 +93,46 @@ export function getKnowledgeGraphNodeDetail(graph, nodeId) {
   return { node, incoming: graph.edges.filter((edge) => edge.targetId === nodeId), outgoing: graph.edges.filter((edge) => edge.sourceId === nodeId) };
 }
 
+/**
+ * Deterministic radial coordinates for either a Visit overview or an
+ * Observation focus graph. Coordinates are in a stable 1000x700 viewBox.
+ */
+export function buildRadialLayout(graph, centerId) {
+  const center = getGraphNodeById(graph, centerId);
+  if (!center) return { width: 1000, height: 700, centerId, nodes: [], edges: [] };
+  const centerType = center.type === "Visit" ? "Visit" : "Observation";
+  const centerNodeIds = new Set([centerId]);
+  const ringOne = [];
+  const ringTwo = [];
+  const direct = new Set(graph.edges.filter((edge) => edge.sourceId === centerId || edge.targetId === centerId).flatMap((edge) => [edge.sourceId, edge.targetId]));
+  direct.delete(centerId);
+  for (const node of graph.nodes) {
+    if (node.id === centerId) continue;
+    if (centerType === "Visit" && node.type === "Photo") ringOne.push(node);
+    else if (centerType === "Observation" && direct.has(node.id)) ringOne.push(node);
+    else if (centerType === "Visit" && node.type === "Observation") ringTwo.push(node);
+    else if (centerType === "Observation" && !direct.has(node.id) && ["ReferenceNode", "ReferenceFact", "GenericCategory", "DomainCategory", "LearningRole"].includes(node.type)) ringTwo.push(node);
+  }
+  ringOne.sort(compareId);
+  ringTwo.sort(compareId);
+  ringOne.forEach((node) => centerNodeIds.add(node.id));
+  ringTwo.forEach((node) => centerNodeIds.add(node.id));
+  const positions = [{ id: centerId, x: 500, y: 350, ring: 0 }];
+  addRingPositions(positions, ringOne, 190, 1);
+  addRingPositions(positions, ringTwo, Math.max(300, ringTwo.length * 38), 2);
+  return { width: 1000, height: 700, centerId, centerType, nodes: positions, edges: graph.edges.filter((edge) => centerNodeIds.has(edge.sourceId) && centerNodeIds.has(edge.targetId)).sort(compareId) };
+}
+
+function addRingPositions(positions, nodes, radius, ring) {
+  const count = nodes.length;
+  if (!count) return;
+  const effectiveRadius = Math.max(radius, count * 42);
+  nodes.forEach((node, index) => {
+    const angle = -Math.PI / 2 + (Math.PI * 2 * index) / count;
+    positions.push({ id: node.id, x: Math.round((500 + Math.cos(angle) * effectiveRadius) * 100) / 100, y: Math.round((350 + Math.sin(angle) * effectiveRadius) * 100) / 100, ring });
+  });
+}
+
 function projectGraph(graph, ids, scope) {
   return { ...graph, nodes: graph.nodes.filter((node) => ids.has(node.id)), edges: graph.edges.filter((edge) => ids.has(edge.sourceId) && ids.has(edge.targetId)), metadata: { ...graph.metadata, displayScope: scope } };
 }

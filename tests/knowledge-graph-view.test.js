@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 import { buildVisitKnowledgeGraph } from "../src/domain/knowledge-graph.js";
-import { buildKnowledgeGraphView, buildObservationFocusGraph, filterGraphByAxis, getKnowledgeGraphNodeDetail, mergeReferencedReferenceGraph } from "../src/features/knowledge-graph/selectors.js";
+import { buildKnowledgeGraphView, buildObservationFocusGraph, buildRadialLayout, buildVisitOverviewGraph, filterGraphByAxis, getKnowledgeGraphNodeDetail, mergeReferencedReferenceGraph } from "../src/features/knowledge-graph/selectors.js";
 
 const registries = { genericCategories: [{ id: "display", label: "展示物" }], learningRoles: [], categoriesByPack: {} };
 const referenceGraph = {
@@ -76,5 +76,18 @@ describe("knowledge graph view selectors", () => {
     const css = await readFile(new URL("../styles.css", import.meta.url), "utf8");
     expect(css).toContain("@media(max-width:820px)");
     expect(css).toContain(".knowledge-view-panel{grid-template-columns:1fr}");
+  });
+  it("builds deterministic radial rings for overview and observation focus", () => {
+    const graph = buildVisitKnowledgeGraph(project(), "v1", registries);
+    const overview = buildVisitOverviewGraph(graph);
+    const overviewLayout = buildRadialLayout(overview, "Visit:v1");
+    expect(overviewLayout.nodes.find((node) => node.id === "Visit:v1")?.ring).toBe(0);
+    expect(overviewLayout.nodes.find((node) => node.id === "Photo:p1")?.ring).toBe(1);
+    expect(overviewLayout.nodes.find((node) => node.id === "Observation:o1")?.ring).toBe(2);
+    expect(JSON.stringify(overviewLayout)).toBe(JSON.stringify(buildRadialLayout(overview, "Visit:v1")));
+    const focus = buildObservationFocusGraph(graph, "Observation:o1", referenceGraph);
+    const focusLayout = buildRadialLayout(focus, "Observation:o1");
+    expect(focusLayout.nodes.find((node) => node.id === "Observation:o1")?.ring).toBe(0);
+    expect(focusLayout.nodes.some((node) => node.ring === 1)).toBe(true);
   });
 });

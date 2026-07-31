@@ -76,6 +76,7 @@ import {
 import {
   buildKnowledgeGraphView,
   buildObservationFocusGraph,
+  buildRadialLayout,
   filterGraphByAxis,
   getKnowledgeGraphNodeDetail,
 } from "../features/knowledge-graph/selectors.js";
@@ -194,6 +195,8 @@ export async function initApp(deps) {
     activeObservationId: "o03a",
     knowledgeMode: "observed",
     knowledgeViewMode: "overview",
+    knowledgeLayoutMode: "radial",
+    knowledgeZoom: 1,
     knowledgeAxis: "all",
     knowledgeExpanded: new Set(),
     knowledgeDetailNodeId: null,
@@ -1790,6 +1793,7 @@ export async function initApp(deps) {
     const base = state.knowledgeViewMode === "focus" && focus ? focus : view?.overview;
     const graph = base ? filterGraphByAxis(base, state.knowledgeAxis) : null;
     $$("#knowledgeViewModeControl [data-knowledge-view-mode]").forEach((button) => button.classList.toggle("active", button.dataset.knowledgeViewMode === state.knowledgeViewMode));
+    $$("#knowledgeLayoutControl [data-knowledge-layout]").forEach((button) => button.classList.toggle("active", button.dataset.knowledgeLayout === state.knowledgeLayoutMode));
     $$("#knowledgeAxisControl [data-knowledge-axis]").forEach((button) => button.classList.toggle("active", button.dataset.knowledgeAxis === state.knowledgeAxis));
     const query = state.knowledgeSearch.trim().toLowerCase();
     $("#knowledgeObservationList").innerHTML = observations.length ? observations.filter((node) => !query || `${node.label} ${photoById(node.photoId)?.title || ""}`.toLowerCase().includes(query)).map((node) => renderKnowledgeObservationItem(node)).join("") : '<div class="empty-state"><strong>この訪問には表示できるObservationがありません</strong><p>写真を追加してObservationを整理すると、ここに知識グラフが表示されます。</p></div>';
@@ -1804,6 +1808,7 @@ export async function initApp(deps) {
   }
 
   function renderKnowledgeGraph(graph) {
+    if (state.knowledgeLayoutMode === "radial") return renderKnowledgeRadial(graph);
     const groups = ["Visit", "Photo", "Observation", "Entity", "ReferenceFact", "ReferenceNode", "GenericCategory", "DomainCategory", "LearningRole"];
     const sections = groups.map((type) => {
       const nodes = graph.nodes.filter((node) => node.type === type && (type !== "ReferenceNode" || state.knowledgeExpanded.has("references")));
@@ -1815,6 +1820,44 @@ export async function initApp(deps) {
     const referenceToggle = graph.nodes.some((node) => node.type === "ReferenceNode") ? `<button class="text-button" data-kg-toggle-reference>${state.knowledgeExpanded.has("references") ? "参照を折り畳む" : "参照を展開"}</button>` : "";
     const backButton = state.knowledgeViewMode === "focus" ? '<button class="text-button" data-kg-overview>← 訪問全体へ戻る</button>' : "";
     return `<div class="kg-canvas-header"><span>DISPLAY GRAPH</span><strong>${state.knowledgeViewMode === "focus" ? "Observation詳細・1ホップ" : "訪問全体"}</strong><span class="kg-header-actions">${backButton}${referenceToggle}</span></div>${sections}${relationSection}`;
+  }
+
+  function renderKnowledgeRadial(graph) {
+    const centerId = state.knowledgeViewMode === "focus" ? `Observation:${state.knowledgeObservationId}` : `Visit:${state.activeVisitId}`;
+    const displayGraph = state.knowledgeExpanded.has("references")
+      ? graph
+      : {
+          ...graph,
+          nodes: graph.nodes.filter((node) => node.type !== "ReferenceNode"),
+          edges: graph.edges.filter((edge) => graph.nodes.some((node) => node.id === edge.sourceId && node.type !== "ReferenceNode") && graph.nodes.some((node) => node.id === edge.targetId && node.type !== "ReferenceNode")),
+        };
+    const layout = buildRadialLayout(displayGraph, centerId);
+    const positionMap = new Map(layout.nodes.map((node) => /** @type {[string, any]} */ ([node.id, node])));
+    const edgeMarkup = layout.edges.map((edge) => {
+      const source = positionMap.get(edge.sourceId);
+      const target = positionMap.get(edge.targetId);
+      if (!source || !target) return "";
+      const arrow = edge.type === "RELATES_TO" && (edge.directed === true || (edge.directed == null && isDirectedRelation(registry.relationTypes, edge.relationType))) ? " marker-end=\"url(#kg-arrow)\"" : "";
+      return `<line class="kg-svg-edge ${edge.type === "RELATES_TO" ? "relation" : "reference"}" x1="${source.x}" y1="${source.y}" x2="${target.x}" y2="${target.y}"${arrow} />`;
+    }).join("");
+    const nodeMarkup = layout.nodes.map((position) => {
+      const node = getKnowledgeGraphNodeDetail(displayGraph, position.id)?.node;
+      if (!node) return "";
+      const selected = position.id === centerId || position.id === state.knowledgeDetailNodeId;
+      const photo = node.type === "Photo" || node.type === "Observation" ? photoById(node.photoId) : null;
+      const image = photo ? `<image class="kg-svg-image" href="${escapeHtml(photo.thumbSrc || photo.src || MISSING_PHOTO_SRC)}" x="${position.x - 17}" y="${position.y - 17}" width="34" height="34" preserveAspectRatio="xMidYMid slice" />` : "";
+      const region = node.region && photo ? `<rect class="kg-svg-region" x="${position.x - 17 + (Number(node.region.x) || 0) * 0.34}" y="${position.y - 17 + (Number(node.region.y) || 0) * 0.34}" width="${Math.max(1, (Number(node.region.w) || 0) * 0.34)}" height="${Math.max(1, (Number(node.region.h) || 0) * 0.34)}" />` : "";
+      return `<g class="kg-svg-node kg-svg-${node.type.toLowerCase()} ${selected ? "selected" : ""}" data-kg-node="${escapeHtml(node.id)}"><circle cx="${position.x}" cy="${position.y}" r="${selected ? 29 : 24}" />${image}${region}<text x="${position.x}" y="${position.y + 43}" text-anchor="middle">${escapeHtml(shortGraphLabel(node.label || node.title || node.predicate || node.referenceId || node.type))}</text><title>${escapeHtml(node.label || node.title || node.predicate || node.referenceId || node.type)}</title></g>`;
+    }).join("");
+    const zoom = state.knowledgeZoom;
+    const referenceToggle = graph.nodes.some((node) => node.type === "ReferenceNode") ? `<button class="text-button" data-kg-toggle-reference>${state.knowledgeExpanded.has("references") ? "参照を折り畳む" : "参照を展開"}</button>` : "";
+    const backButton = state.knowledgeViewMode === "focus" ? '<button class="text-button" data-kg-overview>← 訪問全体へ戻る</button>' : "";
+    return `<div class="kg-canvas-header"><span>RADIAL GRAPH</span><strong>${state.knowledgeViewMode === "focus" ? "Observation詳細・1ホップ" : "訪問全体"}</strong><span class="kg-header-actions">${backButton}${referenceToggle}</span></div><div class="kg-zoom-controls"><button data-kg-zoom="out" aria-label="縮小">−</button><button data-kg-zoom="reset" aria-label="中央へ戻す">100%</button><button data-kg-zoom="in" aria-label="拡大">＋</button></div><svg class="kg-radial-svg" viewBox="0 0 ${layout.width} ${layout.height}" role="img" aria-label="知識グラフ"><defs><marker id="kg-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" /></marker></defs><g transform="translate(500 350) scale(${zoom}) translate(-500 -350)">${edgeMarkup}${nodeMarkup}</g></svg>`;
+  }
+
+  function shortGraphLabel(value) {
+    const text = String(value || "");
+    return text.length > 12 ? `${text.slice(0, 11)}…` : text;
   }
 
   function renderKnowledgeNode(node) {
@@ -1832,13 +1875,16 @@ export async function initApp(deps) {
   }
 
   function nodeLabel(graph, nodeId) { const node = getKnowledgeGraphNodeDetail(graph, nodeId)?.node; return node?.label || node?.title || nodeId; }
-  function knowledgeNodeLabel(type) { return { Photo: "写真", Observation: "Observation", Entity: "Entity", ReferenceFact: "ReferenceFact", ReferenceNode: "参照分類・時代", GenericCategory: "汎用分類", DomainCategory: "分野分類", LearningRole: "学習役割" }[type] || type; }
-  function knowledgeNodeIcon(type) { return { Photo: "▣", Observation: "◎", Entity: "◇", ReferenceFact: "▤", ReferenceNode: "⌘", GenericCategory: "◌", DomainCategory: "◆", LearningRole: "✦" }[type] || "•"; }
+  function knowledgeNodeLabel(type) { return { User: "利用者", Visit: "訪問", Photo: "写真", Observation: "Observation", Entity: "Entity", ReferenceFact: "ReferenceFact", ReferenceNode: "参照分類・時代", GenericCategory: "汎用分類", DomainCategory: "分野分類", LearningRole: "学習役割" }[type] || type; }
+  function knowledgeNodeIcon(type) { return { User: "●", Visit: "⬡", Photo: "▣", Observation: "◎", Entity: "◇", ReferenceFact: "▤", ReferenceNode: "⌘", GenericCategory: "◌", DomainCategory: "◆", LearningRole: "✦" }[type] || "•"; }
   function bindKnowledgeGraphEvents() {
     $$('[data-knowledge-observation]').forEach((button) => button.addEventListener("click", () => { state.knowledgeObservationId = button.dataset.knowledgeObservation; state.knowledgeViewMode = "focus"; renderKnowledge(); }));
     $$('[data-kg-node]').forEach((button) => button.addEventListener("click", () => { const id = button.dataset.kgNode; state.knowledgeDetailNodeId = id; if (id?.startsWith("Observation:")) { state.knowledgeObservationId = id.slice("Observation:".length); state.knowledgeViewMode = "focus"; } renderKnowledge(); }));
     $("[data-kg-overview]")?.addEventListener("click", () => { state.knowledgeViewMode = "overview"; state.knowledgeDetailNodeId = null; renderKnowledge(); });
     $("[data-kg-toggle-reference]")?.addEventListener("click", () => { if (state.knowledgeExpanded.has("references")) state.knowledgeExpanded.delete("references"); else state.knowledgeExpanded.add("references"); renderKnowledge(); });
+    $("[data-kg-zoom=out]")?.addEventListener("click", () => { state.knowledgeZoom = Math.max(0.7, state.knowledgeZoom - 0.15); renderKnowledge(); });
+    $("[data-kg-zoom=in]")?.addEventListener("click", () => { state.knowledgeZoom = Math.min(1.8, state.knowledgeZoom + 0.15); renderKnowledge(); });
+    $("[data-kg-zoom=reset]")?.addEventListener("click", () => { state.knowledgeZoom = 1; renderKnowledge(); });
     $$('[data-open-photo]').forEach((button) => button.addEventListener("click", () => openPhotoModal(button.dataset.openPhoto)));
   }
 
@@ -2765,6 +2811,7 @@ export async function initApp(deps) {
         renderKnowledge();
       }),
     );
+    $$("#knowledgeLayoutControl [data-knowledge-layout]").forEach((button) => button.addEventListener("click", () => { state.knowledgeLayoutMode = button.dataset.knowledgeLayout; renderKnowledge(); }));
     $$("#knowledgeAxisControl [data-knowledge-axis]").forEach((button) =>
       button.addEventListener("click", () => {
         state.knowledgeAxis = button.dataset.knowledgeAxis;
