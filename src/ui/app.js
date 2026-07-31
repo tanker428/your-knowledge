@@ -213,6 +213,8 @@ export async function initApp(deps) {
     quizCompleted: false,
     quizCurrentAnswer: null,
     quizRetry: false,
+    deckAttemptId: null,
+    quizAttemptVisitId: null,
     importing: false,
     /** @type {AbortController|null} */
     importAbort: null,
@@ -2066,7 +2068,13 @@ export async function initApp(deps) {
   function renderQuiz() {
     const quizzes = deckQuizzes(state.deck);
     const total = quizzes.length;
-    const storedResults = new Map(state.quizResults.filter((result) => result.visitId === state.activeVisitId && result.quizId).map((result) => [result.quizId, result]));
+    if (!state.deckAttemptId || state.quizAttemptVisitId !== state.activeVisitId) {
+      state.deckAttemptId = uid("deck-attempt");
+      state.quizAttemptVisitId = state.activeVisitId;
+      state.quizIndex = 0;
+      state.quizCompleted = false;
+    }
+    const storedResults = new Map(state.quizResults.filter((result) => result.visitId === state.activeVisitId && result.deckAttemptId === state.deckAttemptId && result.quizId).map((result) => [result.quizId, result]));
     state.quizScore = quizzes.filter((quiz) => storedResults.get(quiz.id)?.correct).length;
     $("#quizScore").textContent = state.quizScore;
     $("#quizTotal").textContent = `/ ${total}`;
@@ -2125,7 +2133,7 @@ export async function initApp(deps) {
   function answerGeneratedQuiz(/** @type {any} */ quiz, /** @type {string} */ referenceId) {
     const result = scoreQuizAnswer(quiz, { placements: [{ cardId: quiz.observationId, referenceId }] });
     const answeredAt = new Date().toISOString();
-    state.quizResults.push({ id: uid("quiz-result"), attemptId: uid("quiz-attempt"), visitId: state.activeVisitId, quizId: quiz.id, quizType: quiz.questionType, referenceFactId: quiz.referenceFactId, answer: result.answer, score: result.score, correct: result.correct, answeredAt, completedAt: answeredAt });
+    state.quizResults.push({ id: uid("quiz-result"), deckAttemptId: state.deckAttemptId, attemptId: uid("quiz-attempt"), visitId: state.activeVisitId, quizId: quiz.id, quizType: quiz.questionType, referenceFactId: quiz.referenceFactId, answer: result.answer, score: result.score, correct: result.correct, answeredAt, completedAt: answeredAt });
     persist();
     state.quizAnswered = true;
     state.quizRetry = false;
@@ -2144,6 +2152,8 @@ export async function initApp(deps) {
   void renderLegacyQuiz;
 
   function resetQuiz() {
+    state.deckAttemptId = uid("deck-attempt");
+    state.quizAttemptVisitId = state.activeVisitId;
     state.quizIndex = 0;
     state.quizScore = 0;
     state.quizAnswered = false;

@@ -35,8 +35,8 @@ export function generateQuizzesFromKnowledgeGraph(graph, referenceGraph) {
       const candidateObservationIds = subjectEdge.sourceId.startsWith("Observation:") ? [subjectEdge.sourceId] : entityObservationIds.get(subjectEdge.sourceId) || [];
       const observation = candidateObservationIds.map((id) => observations.get(id)).find(Boolean);
       if (!observation) continue;
-      const options = buildPlacementOptions(referenceGraph, target, axis);
-      if (options.length < 2) continue;
+      const placement = buildPlacementBoardData(referenceGraph, target, axis);
+      if (placement.options.length < 2) continue;
       const observationNodeId = `Observation:${observation.observationId}`;
       const relationIds = [...confirmedRelationIds].filter((id) => graph.edges.some((edge) => edge.relationId === id && (edge.sourceId === observationNodeId || edge.targetId === observationNodeId))).sort();
       questions.push({
@@ -50,7 +50,9 @@ export function generateQuizzesFromKnowledgeGraph(graph, referenceGraph) {
         referenceFactId: fact.referenceFactId,
         targetReferenceId: target.id,
         relationIds,
-        options: options.map((node) => ({ id: node.id, label: node.label, labelEn: node.labelEn || node.scientificName || null, axis: node.axis, order: node.order ?? null, parentIds: node.parentIds || [], startMa: node.startMa ?? null, endMa: node.endMa ?? null })),
+        options: placement.options.map((node) => ({ id: node.id, label: node.label, labelEn: node.labelEn || node.scientificName || null, axis: node.axis, order: node.order ?? null, rank: node.rank ?? null, parentIds: node.parentIds || [], startMa: node.startMa ?? null, endMa: node.endMa ?? null })),
+        placementPathIds: placement.pathIds,
+        placementSiblingIds: placement.siblingIds,
         explanation: `${fact.predicate}のverified ReferenceFactと参照データに基づく配置です。`,
       });
     }
@@ -58,18 +60,45 @@ export function generateQuizzesFromKnowledgeGraph(graph, referenceGraph) {
   return questions.sort((a, b) => a.id.localeCompare(b.id)).slice(0, MAX_QUESTIONS);
 }
 
-function buildPlacementOptions(referenceGraph, target, axis) {
-  const candidates = new Map([[target.id, target]]);
-  for (const node of [...getReferenceParents(referenceGraph, target.id), ...getReferenceChildren(referenceGraph, target.id)]) {
-    if (node.axis === axis && node.status === "verified" && node.quizEligible !== false && node.internalOnly !== true && node.visible !== false) candidates.set(node.id, node);
+function isEligiblePlacementNode(node, axis) {
+  return node.axis === axis && node.status === "verified" && node.quizEligible !== false && node.internalOnly !== true && node.visible !== false;
+}
+
+function getTaxonomyPath(referenceGraph, target) {
+  const path = [];
+  const seen = new Set();
+  let current = target;
+  while (current && !seen.has(current.id)) {
+    path.unshift(current);
+    seen.add(current.id);
+    current = getReferenceParents(referenceGraph, current.id).find((node) => isEligiblePlacementNode(node, "taxonomy")) || null;
   }
-  if (candidates.size < 4) {
-    for (const node of referenceGraph.nodes.filter((item) => item.axis === axis && item.status === "verified" && item.quizEligible !== false && item.internalOnly !== true && item.visible !== false).sort((a, b) => a.id.localeCompare(b.id))) {
+  return path;
+}
+
+/** Build the actual board: taxonomy path plus siblings, or a full same-rank time band. */
+export function buildPlacementBoardData(referenceGraph, target, axis) {
+  if (axis === "geological-time") {
+    const options = referenceGraph.nodes
+      .filter((node) => isEligiblePlacementNode(node, axis) && node.rank === target.rank)
+      .sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER) || (b.startMa ?? -Infinity) - (a.startMa ?? -Infinity) || a.id.localeCompare(b.id));
+    return { options, pathIds: [], siblingIds: options.filter((node) => node.id !== target.id).map((node) => node.id) };
+  }
+
+  const path = getTaxonomyPath(referenceGraph, target);
+  const candidates = new Map(path.map((node) => [node.id, node]));
+  const siblingIds = [];
+  for (let index = 0; index < path.length - 1; index += 1) {
+    for (const node of getReferenceChildren(referenceGraph, path[index].id)) {
+      if (!isEligiblePlacementNode(node, axis)) continue;
       candidates.set(node.id, node);
-      if (candidates.size >= 4) break;
+      if (node.id !== path[index + 1].id) siblingIds.push(node.id);
     }
   }
-  return [...candidates.values()].sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER) || a.id.localeCompare(b.id)).slice(0, 4);
+  const pathIds = path.map((node) => node.id);
+  const pathIndex = new Map(pathIds.map((id, index) => [id, index]));
+  const options = [...candidates.values()].sort((a, b) => (pathIndex.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (pathIndex.get(b.id) ?? Number.MAX_SAFE_INTEGER) || a.id.localeCompare(b.id));
+  return { options, pathIds, siblingIds: [...new Set(siblingIds)].sort() };
 }
 
 export function scoreQuizAnswer(question, answer) {
