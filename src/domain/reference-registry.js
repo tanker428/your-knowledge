@@ -2,7 +2,7 @@ import { validateJsonSchema, validateReferenceData } from "./reference-validatio
 
 const ROOT_URL = new URL("../../domain/reference/paleontology/", import.meta.url);
 
-/** @typedef {{id:string,label:string,kind:string,axis:string,rank?:string,status:string,internalOnly:boolean,externalIds?:Record<string,string|null>,sourceType:string,visible:boolean,quizEligible:boolean,parentIds?:string[],startMa?:number|null,endMa?:number|null,order?:number|null}} ReferenceNode */
+/** @typedef {{id:string,label:string,labelEn?:string,scientificName?:string,kind:string,axis:string,rank?:string,status:string,internalOnly:boolean,externalIds?:Record<string,string|null>,sourceType:string,visible:boolean,quizEligible:boolean,parentIds?:string[],startMa?:number|null,endMa?:number|null,order?:number|null}} ReferenceNode */
 /** @typedef {{id:string,type:string,sourceId:string,targetId:string}} ReferenceEdge */
 /** @typedef {{nodes:ReferenceNode[],edges:ReferenceEdge[],metadata:Record<string,any>}} ReferenceGraph */
 
@@ -78,6 +78,8 @@ function normalizeNode(node, kind) {
   return {
     id: node.id,
     label: node.label,
+    labelEn: node.labelEn,
+    scientificName: node.scientificName,
     kind,
     axis: node.axis,
     rank: node.rank,

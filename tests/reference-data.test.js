@@ -160,7 +160,12 @@ describe("paleontology reference data", () => {
   it("keeps semantic taxonomy IDs and updates every reference", async () => {
     const loaded = await data();
     expect(loaded.taxonomy.nodes.every((node) => !node.id.startsWith("taxon:drawio:"))).toBe(true);
+    expect(loaded.taxonomy.nodes.every((node) => !node.id.startsWith("taxon:label:"))).toBe(true);
+    expect(loaded.taxonomy.nodes.every((node) => node.scientificName)).toBe(true);
     expect(getReferenceNodeById(loaded.graph, "taxon:tetrapoda")?.label).toBe("四足類（四肢動物）");
+    expect(getReferenceNodeById(loaded.graph, "taxon:theropoda")?.scientificName).toBe("Theropoda");
+    expect(getReferenceNodeById(loaded.graph, "taxon:spinosaurus")?.scientificName).toBe("Spinosaurus");
+    expect(getReferenceNodeById(loaded.graph, "taxon:tyrannosaurus")?.scientificName).toBe("Tyrannosaurus");
     expect(loaded.taxonomy.nodes.every((node) => node.sourceRef?.drawioCellId)).toBe(true);
     const graphIds = new Set(loaded.graph.nodes.map((node) => node.id));
     expect(loaded.graph.edges.every((edge) => graphIds.has(edge.sourceId) && graphIds.has(edge.targetId))).toBe(true);
