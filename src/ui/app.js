@@ -1804,7 +1804,7 @@ export async function initApp(deps) {
   }
 
   function renderKnowledgeGraph(graph) {
-    const groups = ["Photo", "Observation", "Entity", "ReferenceFact", "ReferenceNode", "GenericCategory", "DomainCategory", "LearningRole"];
+    const groups = ["Visit", "Photo", "Observation", "Entity", "ReferenceFact", "ReferenceNode", "GenericCategory", "DomainCategory", "LearningRole"];
     const sections = groups.map((type) => {
       const nodes = graph.nodes.filter((node) => node.type === type && (type !== "ReferenceNode" || state.knowledgeExpanded.has("references")));
       if (!nodes.length) return "";

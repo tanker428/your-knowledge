@@ -6,7 +6,7 @@ import {
 } from "../../domain/knowledge-graph.js";
 import {
   getReferenceAncestors,
-  getReferenceDescendants,
+  getReferenceChildren,
   getReferenceNodeById,
 } from "../../domain/reference-registry.js";
 
@@ -23,8 +23,19 @@ export function buildVisitOverviewGraph(graph) {
 }
 
 export function buildObservationFocusGraph(graph, observationNodeId, referenceGraph = null) {
-  const focus = getOneHopGraph(graph, observationNodeId);
-  const view = projectGraph(focus, new Set(focus.nodes.map((node) => node.id)), "focus");
+  const oneHop = getOneHopGraph(graph, observationNodeId);
+  const ids = new Set(oneHop.nodes.map((node) => node.id));
+  const entityIds = new Set(oneHop.nodes.filter((node) => node.type === "Entity").map((node) => node.id));
+  for (const edge of graph.edges) {
+    if (edge.type === "HAS_REFERENCE_FACT" && entityIds.has(edge.sourceId)) {
+      ids.add(edge.targetId);
+      for (const factEdge of graph.edges.filter((candidate) => candidate.type === "HAS_REFERENCE_FACT" && candidate.targetId === edge.targetId)) ids.add(factEdge.sourceId);
+    }
+  }
+  const focus = { ...graph, nodes: graph.nodes.filter((node) => ids.has(node.id)), edges: graph.edges.filter((edge) => ids.has(edge.sourceId) && ids.has(edge.targetId)) };
+  const verifiedFactIds = new Set(focus.nodes.filter((node) => node.type !== "ReferenceFact" || node.status === "verified").map((node) => node.id));
+  const verifiedFocus = { ...focus, nodes: focus.nodes.filter((node) => verifiedFactIds.has(node.id)), edges: focus.edges.filter((edge) => verifiedFactIds.has(edge.sourceId) && verifiedFactIds.has(edge.targetId)) };
+  const view = projectGraph(verifiedFocus, new Set(verifiedFocus.nodes.map((node) => node.id)), "focus");
   return referenceGraph ? mergeReferencedReferenceGraph(view, referenceGraph) : view;
 }
 
@@ -39,12 +50,20 @@ export function mergeReferencedReferenceGraph(viewGraph, referenceGraph) {
     for (const id of values) if (typeof id === "string" && getReferenceNodeById(referenceGraph, id)) referenceIds.add(id);
   }
   for (const id of referenceIds) {
-    for (const node of [getReferenceNodeById(referenceGraph, id), ...getReferenceAncestors(referenceGraph, id), ...getReferenceDescendants(referenceGraph, id)]) {
+    for (const node of [getReferenceNodeById(referenceGraph, id), ...getReferenceAncestors(referenceGraph, id), ...getReferenceChildren(referenceGraph, id)]) {
       if (!node || node.internalOnly || node.visible === false) continue;
       const displayId = `Reference:${node.id}`;
       if (nodeIds.has(displayId)) continue;
       nodeIds.add(displayId);
       nodes.push({ id: displayId, type: "ReferenceNode", referenceId: node.id, label: node.label, axis: node.axis, kind: node.kind, status: node.status, sourceType: node.sourceType, internalOnly: false });
+    }
+  }
+  for (const fact of nodes.filter((node) => node.type === "ReferenceFact" && node.status === "verified")) {
+    for (const id of (Array.isArray(fact.value) ? fact.value : [fact.value])) {
+      const targetId = typeof id === "string" ? `Reference:${id}` : null;
+      if (!targetId || !nodeIds.has(targetId)) continue;
+      const edgeId = `ReferenceFactEdge:${fact.referenceFactId}:${id}`;
+      if (!edges.some((edge) => edge.id === edgeId)) edges.push({ id: edgeId, type: "REFERS_TO_REFERENCE", sourceId: fact.id, targetId });
     }
   }
   for (const edge of referenceGraph.edges) {
@@ -63,7 +82,8 @@ export function filterGraphByAxis(graph, axis) {
     const ids = new Set(graph.nodes.filter((node) => ["User", "Visit", "Photo", "Observation"].includes(node.type)).map((node) => node.id));
     return projectGraph(graph, ids, axis);
   }
-  const ids = new Set(graph.nodes.filter((node) => node.axis === axis || ["User", "Visit", "Photo", "Observation", "Entity", "ReferenceFact"].includes(node.type)).map((node) => node.id));
+  const referenceFactIds = new Set(graph.edges.filter((edge) => edge.type === "REFERS_TO_REFERENCE" && graph.nodes.find((node) => node.id === edge.targetId)?.axis === axis).map((edge) => edge.sourceId));
+  const ids = new Set(graph.nodes.filter((node) => node.axis === axis || ["User", "Visit", "Photo", "Observation", "Entity"].includes(node.type) || (node.type === "ReferenceFact" && (node.axis === axis || referenceFactIds.has(node.id)))).map((node) => node.id));
   return projectGraph(graph, ids, axis);
 }
 
