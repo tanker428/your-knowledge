@@ -49,6 +49,7 @@
  * @property {string} id
  * @property {number} updatedAt
  * @property {string} [schemaVersion]
+ * @property {string} [userId]
  * @property {import('../domain/visit.js').Visit[]} [visits]
  * @property {string|null} [activeVisitId]
  * @property {PhotoRecord[]} photos
@@ -57,6 +58,8 @@
  * @property {object[]} [entities]                  Optional project entities.
  * @property {object[]} [referenceFacts]            Curated quiz/reference facts.
  * @property {object[]} [quizResults]
+ * @property {object[]} [learningEvents]            Append-only learning history.
+ * @property {object[]} [userKnowledgeStates]       Per-user/fact learning summaries.
  *
  * @typedef {object} PhotoBinary
  * @property {Blob} display    Downscaled image actually shown in the app.
