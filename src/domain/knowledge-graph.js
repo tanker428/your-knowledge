@@ -57,6 +57,7 @@ export function buildVisitKnowledgeGraph(project, visitId, registries = {}) {
       .map((observation) => ({ observation, photo })),
   );
   const observationIds = new Set(observations.map(({ observation }) => observation.id));
+  const activeEntityIds = new Set(observations.map(({ observation }) => observation.entityId).filter(Boolean));
   const nodes = [];
   const edges = [];
   const addNode = (node) => nodes.push(node);
@@ -100,8 +101,10 @@ export function buildVisitKnowledgeGraph(project, visitId, registries = {}) {
         if (!nodes.some((node) => node.id === categoryNodeId)) {
           addNode({ id: categoryNodeId, type: categoryNodeType, categoryId, label: term.label || categoryId, axis: isGeneric ? "classification" : (term.axis || "classification"), kind: term.kind || (isGeneric ? "generic" : "domain"), status: term.status || "confirmed" });
         }
-        const assertionId = stableId("assertion", [observation.id, isGeneric ? "generic" : "domain", categoryId]);
-        addNode({ id: assertionId, type: NODE_TYPES.CLASSIFICATION_ASSERTION, assertionId, observationId: observation.id, categoryType: isGeneric ? "generic" : "domain", categoryId, status: "confirmed" });
+        const assertionType = isGeneric ? "generic" : "domain";
+        const assertionId = stableId("assertion", [observation.id, assertionType, categoryId]);
+        const assertion = (observation.classificationAssertions || []).find((item) => item.categoryId === categoryId && item.categoryType === assertionType);
+        addNode({ id: assertionId, type: NODE_TYPES.CLASSIFICATION_ASSERTION, assertionId, observationId: observation.id, categoryType: assertionType, categoryId, status: assertion?.status || "confirmed" });
         addEdge({ id: stableId("edge:HAS_CLASSIFICATION", [observation.id, assertionId]), type: "HAS_CLASSIFICATION", sourceId: observationNodeId, targetId: assertionId });
         addEdge({ id: stableId("edge:CLASSIFIES_AS", [assertionId, categoryNodeId]), type: "CLASSIFIES_AS", sourceId: assertionId, targetId: categoryNodeId });
       }
@@ -129,7 +132,7 @@ export function buildVisitKnowledgeGraph(project, visitId, registries = {}) {
 
   const referenceFacts = (project.referenceFacts || []).filter((fact) => {
     if (fact.visitId && fact.visitId !== visitId) return false;
-    return observationIds.has(fact.targetObservationId) || observationIds.has(fact.observationId) || [...entityMap.keys()].includes(fact.subjectId);
+    return observationIds.has(fact.targetObservationId) || observationIds.has(fact.observationId) || activeEntityIds.has(fact.subjectId);
   });
   for (const fact of referenceFacts) {
     const factNodeId = graphNodeId(NODE_TYPES.REFERENCE_FACT, fact.id);
@@ -164,12 +167,14 @@ export function validateKnowledgeGraph(graph) {
     if (!node.id || nodeIds.has(node.id)) errors.push(`duplicate node id: ${node.id}`);
     nodeIds.add(node.id);
     if (["KnowledgeFact", "LearningFact", "LearningGap"].includes(node.type)) errors.push(`forbidden node type: ${node.type}`);
+    if (node.visitId && node.visitId !== graph.visitId) errors.push(`visitId mismatch: ${node.id}`);
   }
   const edgeIds = new Set();
   for (const edge of graph?.edges || []) {
     if (!edge.id || edgeIds.has(edge.id)) errors.push(`duplicate edge id: ${edge.id}`);
     edgeIds.add(edge.id);
     if (!nodeIds.has(edge.sourceId) || !nodeIds.has(edge.targetId)) errors.push(`dangling edge: ${edge.id}`);
+    if (edge.visitId && edge.visitId !== graph.visitId) errors.push(`visitId mismatch: ${edge.id}`);
   }
   if (errors.length) throw new Error(`KnowledgeGraph is invalid: ${errors.join("; ")}`);
   return { ok: true, errors: [] };
@@ -202,14 +207,14 @@ export function getGraphForActiveVisit(project, registries = {}) {
 /** @param {KnowledgeGraph} graph */
 export function buildQuestionSeeds(graph) {
   const seeds = [];
-  for (const assertion of getGraphNodesByType(graph, NODE_TYPES.CLASSIFICATION_ASSERTION)) {
+  for (const assertion of getGraphNodesByType(graph, NODE_TYPES.CLASSIFICATION_ASSERTION).filter((node) => node.status === "confirmed")) {
     const category = graph.edges.find((edge) => edge.type === "CLASSIFIES_AS" && edge.sourceId === assertion.id)?.targetId;
     if (category) seeds.push({ id: stableId("seed:classification", [assertion.observationId, assertion.categoryType, assertion.categoryId]), sourceType: "classification", sourceIds: [assertion.id], targetType: "category", targetId: category, questionType: "single-choice" });
   }
-  for (const relation of graph.edges.filter((edge) => edge.type === "RELATES_TO")) {
+  for (const relation of graph.edges.filter((edge) => edge.type === "RELATES_TO" && relationStatus(edge) === "confirmed")) {
     seeds.push({ id: stableId("seed:relation", [relation.relationId]), sourceType: "relation", sourceIds: [relation.sourceId, relation.targetId], targetType: "observation", targetId: relation.targetId, questionType: "matching" });
   }
-  for (const fact of getGraphNodesByType(graph, NODE_TYPES.REFERENCE_FACT)) {
+  for (const fact of getGraphNodesByType(graph, NODE_TYPES.REFERENCE_FACT).filter((node) => node.status === "verified")) {
     seeds.push({ id: stableId("seed:reference-fact", [fact.referenceFactId]), sourceType: "reference-fact", sourceIds: [fact.id], targetType: "reference-fact", targetId: fact.id, questionType: "fill" });
   }
   return seeds.sort(compareId);
@@ -217,5 +222,8 @@ export function buildQuestionSeeds(graph) {
 
 function compareId(left, right) { return left.id.localeCompare(right.id); }
 function sortById(items) { return [...items].sort(compareId); }
+
+/** @param {GraphEdge} edge */
+function relationStatus(edge) { return edge.status || ""; }
 
 export { NODE_TYPES };

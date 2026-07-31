@@ -29,7 +29,7 @@ Photo (43085_0.jpg)
 | `Observation` | 写真の中で観察した対象 |
 | `ObservationRelation` | Observation 同士の関係 |
 | `Entity` | 具体的な実体（ティラノサウルス等）。**任意** |
-| `LearningFact` | あとから学ぶ詳しい知識 |
+| `LearningFact` | 旧方針の知識レコード。現行MVPの保存用KGには含めない |
 | `Collection` | 発見→整理→分類→関係付け→学習 の進み |
 | `Question` | 問題 |
 
@@ -98,10 +98,10 @@ Photo (43085_0.jpg)
      歴史・考古     → 古文書 / 地図 / 武具 / 年表 …
 ```
 
-②は①のあとに適用する。年代・寸法のような細かい知識はここでは扱わず、
-`LearningFact` として「詳しく学ぶ」段階に回す。
+②は①のあとに適用する。年代・寸法のような細かい知識は、現行MVPでは
+`ReferenceFact`として確認済み参照知識へ分離する。
 
-## LearningFact
+## LearningFact（旧方針）
 
 ```js
 {
@@ -113,8 +113,8 @@ Photo (43085_0.jpg)
 }
 ```
 
-`locked` の間は知識マップに件数だけが出る。「詳しく学ぶ」で `learned` になり、
-追加学習デッキの問題が解放される。
+この形式は旧方針であり、現行MVPでは新規の保存用KGノードとして扱わない。既存データを
+ReferenceFactや学習済み状態へ自動変換もしない。
 
 ## 保存先
 
@@ -190,6 +190,8 @@ ReferenceGraph（分類・時代の参照構造）とReferenceFact（EntityやOb
   "quizResults": [ { "deck": "observed", "score": 3, "total": 5, "completedAt": "…" } ]
 }
 ```
+
+`learningFacts`は旧形式の入出力項目であり、現行MVPの保存用KGには含めない。
 
 - **写真のバイナリは入れない。** Base64にすると数百MBの読めないファイルになる。
   JSONが持つのは写真のIDとメタデータだけで、実体はIndexedDBに残る。

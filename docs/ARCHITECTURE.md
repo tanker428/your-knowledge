@@ -126,7 +126,7 @@ Visit
           ├─ entityId              具体名。不明なら null のまま保存できる
           └─ origin                'ai'（候補）か 'user'（自分で追加）か
 ObservationRelation            Observation 同士の関係。Photo からは独立
-LearningFact                   あとから学ぶ知識。入力時には要求しない
+LearningFact                   旧方針。現行MVPの保存用KGには含めない
 ```
 
 詳細は [DATA_MODEL.md](DATA_MODEL.md)。
