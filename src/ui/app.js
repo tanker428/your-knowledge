@@ -83,6 +83,7 @@ import {
 import { describeQuizAvailability, scoreQuizAnswer } from "../features/knowledge-graph/quiz-generation.js";
 import { getReferenceChildren, getReferenceNodeById } from "../domain/reference-registry.js";
 import { LOCAL_USER_ID, mergeQuizResultsIntoLearningEvents, rebuildUserKnowledgeStates, recordQuizLearning, removeVisitLearningRecords } from "../domain/learning-state.js";
+import { getLearnedReferenceFacts } from "../domain/learned-reference-facts.js";
 
 const MAX_UPLOAD_BATCH = 120;
 const STATUS_LABELS = {
@@ -1804,6 +1805,11 @@ export async function initApp(deps) {
   // Core 4's old knowledge screen remains above for compatibility with
   // older markup, but this later declaration is the active ReferenceFact view.
   function renderKnowledge() {
+    $$("#knowledgeModeControl [data-knowledge-mode]").forEach((button) => button.classList.toggle("active", button.dataset.knowledgeMode === state.knowledgeMode));
+    if (state.knowledgeMode === "learned") {
+      renderLearnedReferenceFacts();
+      return;
+    }
     const project = toProject();
     const view = state.activeVisitId ? buildKnowledgeGraphView(project, state.activeVisitId, registry, referenceData?.graph) : null;
     const observations = view?.source.nodes.filter((node) => node.type === "Observation") || [];
@@ -1820,6 +1826,25 @@ export async function initApp(deps) {
     $("#knowledgeObservationList").innerHTML = observations.length ? observations.filter((node) => !query || `${node.label} ${photoById(node.photoId)?.title || ""}`.toLowerCase().includes(query)).map((node) => renderKnowledgeObservationItem(node)).join("") : '<div class="empty-state"><strong>この訪問には表示できるObservationがありません</strong><p>写真を追加してObservationを整理すると、ここに知識グラフが表示されます。</p></div>';
     $("#knowledgeGraphCanvas").innerHTML = graph?.nodes.length ? renderKnowledgeGraph(graph) : '<div class="empty-state large"><strong>表示する知識グラフがありません</strong><p>activeVisitの写真とObservationを確認してください。</p></div>';
     $("#knowledgeGraphDetail").innerHTML = state.knowledgeObservationId && focus ? renderKnowledgeDetail(focus, state.knowledgeDetailNodeId || `Observation:${state.knowledgeObservationId}`) : '<div class="empty-state"><strong>ノードを選択してください</strong><p>写真内のObservationを選ぶと詳細を表示します。</p></div>';
+    bindKnowledgeGraphEvents();
+  }
+
+  function renderLearnedReferenceFacts() {
+    const learned = getLearnedReferenceFacts(toProject(), state.activeVisitId, state.userId, [...entityMap.values()]);
+    $("#knowledgeObservationList").innerHTML = learned.length
+      ? `<div class="learned-index-note"><strong>学習済み ${learned.length}件</strong><small>この訪問で正解したReferenceFact</small></div>`
+      : '<div class="empty-state"><strong>後から学ぶ知識はまだありません</strong><p>知識グラフから問題に回答すると、学習済みのReferenceFactがここに表示されます。</p></div>';
+    $("#knowledgeGraphCanvas").innerHTML = learned.length
+      ? `<div class="kg-canvas-header"><span>LEARNED REFERENCE FACTS</span><strong>後から学ぶ知識</strong></div><div class="learned-reference-grid">${learned.map((item) => {
+        const fact = item.fact;
+        const photo = item.photo;
+        const observation = item.observation;
+        const entity = item.entity;
+        const value = Array.isArray(fact.value) ? fact.value.join("、") : fact.value;
+        return `<article class="learned-reference-card"><div class="learned-reference-media">${photo ? `<img src="${escapeHtml(photo.thumbSrc || photo.src || MISSING_PHOTO_SRC)}" alt="${escapeHtml(photo.title || "写真")}" />${observation?.region ? `<i style="left:${observation.region.x}%;top:${observation.region.y}%;width:${observation.region.w}%;height:${observation.region.h}%"></i>` : ""}` : `<span>⌘</span>`}</div><div class="learned-reference-body"><span class="source-badge">✓ VERIFIED REFERENCE</span><h3>${escapeHtml(fact.predicate || "参照知識")}</h3><strong>${escapeHtml(String(value || ""))}</strong>${entity ? `<p>Entity：${escapeHtml(entity.name || entity.id)}</p>` : ""}${observation ? `<p>Observation：${escapeHtml(observation.label)}${photo ? ` ／ ${escapeHtml(photo.title)}` : ""}</p>` : ""}<dl><div><dt>最終回答</dt><dd>${escapeHtml(item.state?.lastAnsweredAt || "-")}</dd></div><div><dt>試行</dt><dd>${item.state?.attemptCount ?? 0}回</dd></div><div><dt>正解</dt><dd>${item.state?.correctCount ?? 0}回</dd></div></dl>${item.questionId ? `<small class="learned-reference-question">Question：${escapeHtml(item.questionId)}</small>` : ""}<button class="text-button" data-delete-reference-fact="${escapeHtml(fact.id)}">ReferenceFactを削除</button></div></article>`;
+      }).join("")}</div>`
+      : '<div class="empty-state large"><strong>学習済みReferenceFactはありません</strong><p>ReferenceFactを登録しただけでは表示されません。クイズへ回答し、正解すると表示されます。</p></div>';
+    $("#knowledgeGraphDetail").innerHTML = '<div class="empty-state"><strong>学習済み知識を選択してください</strong><p>表示されているカードから、関係する写真とObservationを確認できます。</p></div>';
     bindKnowledgeGraphEvents();
   }
 
@@ -1944,6 +1969,13 @@ export async function initApp(deps) {
       renderKnowledge();
       renderLearn();
       showToast("verified ReferenceFactを追加しました");
+    }));
+    $$('[data-delete-reference-fact]').forEach((button) => button.addEventListener("click", () => {
+      const factId = button.dataset.deleteReferenceFact;
+      state.referenceFacts = state.referenceFacts.filter((fact) => fact.id !== factId);
+      persist();
+      renderKnowledge();
+      showToast("ReferenceFactを削除しました");
     }));
     $$('[data-open-photo]').forEach((button) => button.addEventListener("click", () => openPhotoModal(button.dataset.openPhoto)));
   }
@@ -2152,6 +2184,7 @@ export async function initApp(deps) {
     persist();
     state.quizAnswered = true;
     state.quizRetry = false;
+    renderKnowledge();
     renderQuiz();
   }
 
