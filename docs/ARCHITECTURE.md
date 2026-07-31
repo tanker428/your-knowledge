@@ -38,28 +38,6 @@ await initApp({
 
 ## 差し替え点
 
-### 0. Reference Data — 参照構造
-
-`domain/reference/paleontology/`には、Draw.ioでレビューした分類・地質時代をstable ID付き
-JSONへ変換したデータを置く。Draw.ioはレビュー資料であり、アプリ実行時の正本はJSONである。
-`src/domain/reference-registry.js`が`import.meta.url`基準でmanifestとJSONを読み込み、
-`ReferenceGraph`へ正規化する。ReferenceGraphは分類・時代の参照構造で、Entityと参照知識を
-結ぶReferenceFactとは別レイヤーである。
-
-参照データは`sourceType`と`status`を持ち、verifiedノードだけを利用対象にできる。顕生代は
-内部ノードとして保持するが、通常の表示ルートからは除外し、古生代・中生代・新生代を表示する。
-
-### 0.1 ReferenceGraphのselector
-
-loaderは保存用KG全体やUIを変更せず、次の純粋なselectorを提供する。
-
-- ノードIDによる取得、親・子・祖先・子孫の取得
-- verifiedノードだけのグラフ
-- 表示可能なルート
-- taxonomy軸とgeological-time軸の切り替え
-
-入力JSONは破壊的に変更せず、同じ入力から決定的に同じグラフを生成する。
-
 ### 1. KnowledgeRepository — 保存先
 
 `src/repositories/knowledge-repository.js` が形だけを宣言し、
