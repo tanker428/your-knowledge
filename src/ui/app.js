@@ -82,6 +82,7 @@ import {
 } from "../features/knowledge-graph/selectors.js";
 import { describeQuizAvailability, scoreQuizAnswer } from "../features/knowledge-graph/quiz-generation.js";
 import { getReferenceChildren, getReferenceNodeById } from "../domain/reference-registry.js";
+import { LOCAL_USER_ID, mergeQuizResultsIntoLearningEvents, rebuildUserKnowledgeStates, recordQuizLearning, removeVisitLearningRecords } from "../domain/learning-state.js";
 
 const MAX_UPLOAD_BATCH = 120;
 const STATUS_LABELS = {
@@ -172,6 +173,7 @@ export async function initApp(deps) {
   // ---------------------------------------------------------------- state ---
 
   const state = {
+    userId: LOCAL_USER_ID,
     /** @type {import('../domain/visit.js').Visit[]} */
     visits: [],
     /** @type {string|null} */
@@ -187,6 +189,8 @@ export async function initApp(deps) {
     referenceFacts: [],
     /** @type {any[]} */
     quizResults: [],
+    learningEvents: [],
+    userKnowledgeStates: [],
     photoFilter: "all",
     /** @type {File[]} */
     selectedFiles: [],
@@ -291,6 +295,7 @@ export async function initApp(deps) {
     }
 
     const project = result.project;
+    state.userId = project.userId || LOCAL_USER_ID;
     state.visits = project.visits;
     state.activeVisitId = project.activeVisitId;
     state.photos = project.photos.map((/** @type {any} */ photo) => ({
@@ -302,6 +307,8 @@ export async function initApp(deps) {
     state.facts = project.facts;
     state.referenceFacts = project.referenceFacts || [];
     state.quizResults = project.quizResults || [];
+    state.learningEvents = mergeQuizResultsIntoLearningEvents(project.learningEvents || [], state.quizResults, state.userId);
+    state.userKnowledgeStates = rebuildUserKnowledgeStates(state.learningEvents);
 
     await attachImportedPhotoUrls();
     normaliseSelection();
@@ -402,6 +409,7 @@ export async function initApp(deps) {
       id: DEFAULT_PROJECT_ID,
       schemaVersion: PROJECT_SCHEMA_VERSION,
       updatedAt: Date.now(),
+      userId: state.userId,
       visits: state.visits,
       activeVisitId: state.activeVisitId,
       photos: state.photos.map((photo) => ({
@@ -431,6 +439,8 @@ export async function initApp(deps) {
       facts: copyFactsForProject(state.facts),
       referenceFacts: state.referenceFacts.map((fact) => ({ ...fact })),
       quizResults: state.quizResults,
+      learningEvents: state.learningEvents,
+      userKnowledgeStates: state.userKnowledgeStates,
     };
   }
 
@@ -2131,9 +2141,14 @@ export async function initApp(deps) {
   }
 
   function answerGeneratedQuiz(/** @type {any} */ quiz, /** @type {string} */ referenceId) {
+    if (state.quizAnswered) return;
     const result = scoreQuizAnswer(quiz, { placements: [{ cardId: quiz.observationId, referenceId }] });
     const answeredAt = new Date().toISOString();
-    state.quizResults.push({ id: uid("quiz-result"), deckAttemptId: state.deckAttemptId, attemptId: uid("quiz-attempt"), visitId: state.activeVisitId, quizId: quiz.id, quizType: quiz.questionType, referenceFactId: quiz.referenceFactId, answer: result.answer, score: result.score, correct: result.correct, answeredAt, completedAt: answeredAt });
+    const quizResult = { id: uid("quiz-result"), deckAttemptId: state.deckAttemptId, attemptId: uid("quiz-attempt"), visitId: state.activeVisitId, quizId: quiz.id, quizType: quiz.questionType, referenceFactId: quiz.referenceFactId, answer: result.answer, score: result.score, correct: result.correct, answeredAt, completedAt: answeredAt };
+    state.quizResults.push(quizResult);
+    const learning = recordQuizLearning({ events: state.learningEvents, states: state.userKnowledgeStates, result: quizResult, userId: state.userId });
+    state.learningEvents = learning.events;
+    state.userKnowledgeStates = learning.states;
     persist();
     state.quizAnswered = true;
     state.quizRetry = false;
@@ -2477,6 +2492,9 @@ export async function initApp(deps) {
         result.visitId !== visit.id &&
         !cascade.quizResultIds.includes(result.id),
     );
+    const learning = removeVisitLearningRecords(state.learningEvents, state.userKnowledgeStates, visit.id);
+    state.learningEvents = learning.events;
+    state.userKnowledgeStates = learning.states;
     state.visits = state.visits.filter((item) => item.id !== visit.id);
     state.activeVisitId = pickNextActiveVisitId(state.visits);
 
@@ -2686,6 +2704,8 @@ export async function initApp(deps) {
       learningFacts: state.facts,
       collections: SAMPLE_COLLECTIONS,
       quizResults: state.quizResults,
+      learningEvents: state.learningEvents,
+      userKnowledgeStates: state.userKnowledgeStates,
     });
     return new Blob([JSON.stringify(document_, null, 2)], {
       type: "application/json",

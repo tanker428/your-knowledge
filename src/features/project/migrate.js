@@ -121,6 +121,7 @@ export function migrateProjectDocument(stored, context) {
           visits: [demoVisit],
           // 初回は未選択にしておき、UI で「デモを見る／自分の訪問を作る」を選ばせる。
           activeVisitId: null,
+          userId: "user-local",
           photos: context.demoPhotos.map((photo) =>
             normalisePhoto(photo, DEMO_VISIT_ID),
           ),
@@ -128,6 +129,8 @@ export function migrateProjectDocument(stored, context) {
           facts: context.demoFacts.map((fact) => ({ ...fact })),
           referenceFacts: [],
           quizResults: [],
+          learningEvents: [],
+          userKnowledgeStates: [],
         },
       };
     }
@@ -149,10 +152,13 @@ export function migrateProjectDocument(stored, context) {
         project: {
           ...stored,
           schemaVersion: PROJECT_SCHEMA_VERSION,
+          userId: stored.userId || "user-local",
           activeVisitId: stored.activeVisitId ?? null,
           quizResults: Array.isArray(stored.quizResults)
             ? stored.quizResults
             : [],
+          learningEvents: Array.isArray(stored.learningEvents) ? stored.learningEvents : [],
+          userKnowledgeStates: Array.isArray(stored.userKnowledgeStates) ? stored.userKnowledgeStates : [],
         },
       };
     }
@@ -248,6 +254,7 @@ export function migrateProjectDocument(stored, context) {
       project: {
         id: stored.id || "default",
         schemaVersion: PROJECT_SCHEMA_VERSION,
+        userId: stored.userId || "user-local",
         updatedAt: Date.now(),
         visits,
         activeVisitId,
@@ -256,6 +263,8 @@ export function migrateProjectDocument(stored, context) {
         facts,
         referenceFacts: Array.isArray(stored.referenceFacts) ? stored.referenceFacts.map((fact) => ({ ...fact })) : [],
         quizResults,
+        learningEvents: Array.isArray(stored.learningEvents) ? stored.learningEvents.map((event) => ({ ...event })) : [],
+        userKnowledgeStates: Array.isArray(stored.userKnowledgeStates) ? stored.userKnowledgeStates.map((state) => ({ ...state })) : [],
       },
     };
   } catch (error) {

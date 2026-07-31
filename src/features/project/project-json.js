@@ -40,6 +40,8 @@ const SUPPORTED_MAJORS = new Set([1]);
  * @param {Array<{id: string, status?: string} & Record<string, any>>} input.learningFacts
  * @param {object[]} input.collections
  * @param {object[]} [input.quizResults]
+ * @param {object[]} [input.learningEvents]
+ * @param {object[]} [input.userKnowledgeStates]
  * @returns {object}
  */
 export function buildExportDocument(input) {
@@ -50,6 +52,8 @@ export function buildExportDocument(input) {
     learningFacts,
     collections,
     quizResults = [],
+    learningEvents = [],
+    userKnowledgeStates = [],
   } = input;
 
   const observations = project.photos.flatMap((photo) =>
@@ -76,6 +80,7 @@ export function buildExportDocument(input) {
     exportedAt: new Date().toISOString(),
     project: {
       id: project.id,
+      userId: project.userId || "user-local",
       visit,
       // Photo binaries live in IndexedDB. Only ids and metadata travel in JSON.
       photoStorage: "indexeddb",
@@ -101,6 +106,8 @@ export function buildExportDocument(input) {
     })),
     collections,
     quizResults,
+    learningEvents,
+    userKnowledgeStates,
   };
 }
 
@@ -269,6 +276,7 @@ export function documentToProject(doc, availablePhotoIds, projectId) {
   return {
     project: {
       id: projectId,
+      userId: doc.project?.userId || "user-local",
       updatedAt: Date.now(),
       photos,
       relations: doc.relations || [],
@@ -277,6 +285,8 @@ export function documentToProject(doc, availablePhotoIds, projectId) {
         status: fact.status,
       })),
       quizResults: doc.quizResults || [],
+      learningEvents: doc.learningEvents || [],
+      userKnowledgeStates: doc.userKnowledgeStates || [],
     },
     missingPhotoIds,
   };
