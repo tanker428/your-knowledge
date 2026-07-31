@@ -84,6 +84,7 @@ import { describeQuizAvailability, scoreQuizAnswer } from "../features/knowledge
 import { getReferenceChildren, getReferenceNodeById } from "../domain/reference-registry.js";
 import { LOCAL_USER_ID, mergeQuizResultsIntoLearningEvents, rebuildUserKnowledgeStates, recordQuizLearning, removeVisitLearningRecords } from "../domain/learning-state.js";
 import { getLearnedReferenceFacts } from "../domain/learned-reference-facts.js";
+import { buildCollectionProgress } from "../features/collections/collection-progress.js";
 
 const MAX_UPLOAD_BATCH = 120;
 const STATUS_LABELS = {
@@ -447,6 +448,7 @@ export async function initApp(deps) {
 
   /** Coalesce the many small edits the organise screen produces into one write. */
   function persist() {
+    if ($("#collectionGrid")) renderCollections();
     if (persistTimer) clearTimeout(persistTimer);
     persistTimer = setTimeout(() => void flushPersist(), 250);
   }
@@ -531,8 +533,6 @@ export async function initApp(deps) {
     return null;
   }
 
-  const factById = (/** @type {string} */ id) =>
-    state.facts.find((/** @type {any} */ f) => f.id === id);
   const factUnlocked = (/** @type {any} */ fact) => fact?.status === "learned";
   const packCategories = (/** @type {string} */ packId) =>
     registry.categoriesByPack[packId] || [];
@@ -2234,78 +2234,19 @@ export async function initApp(deps) {
     ).join("");
   }
 
-  function collectionProgress(/** @type {any} */ collection) {
-    const photos = collection.photoIds.map(photoById).filter(Boolean);
-    const observationIds = new Set(
-      photos.flatMap((/** @type {any} */ photo) =>
-        photo.observations
-          .filter((/** @type {any} */ item) => item.included !== false)
-          .map((/** @type {any} */ item) => item.id),
-      ),
-    );
-    const observations = photos.flatMap((/** @type {any} */ photo) =>
-      photo.observations.filter(
-        (/** @type {any} */ item) => item.included !== false,
-      ),
-    );
-    const relations = state.relations.filter(
-      (/** @type {any} */ relation) =>
-        observationIds.has(relation.sourceId) ||
-        observationIds.has(relation.targetId),
-    );
-    const facts = collection.factIds.map(factById).filter(Boolean);
-    const stages = [
-      { label: "発見", complete: photos.length > 0, optional: false },
-      {
-        label: "整理",
-        complete:
-          photos.length > 0 &&
-          photos.every((/** @type {any} */ p) => p.status === "organized"),
-        optional: false,
-      },
-      {
-        label: "分類",
-        complete:
-          observations.length > 0 &&
-          observations.every(
-            (/** @type {any} */ item) =>
-              item.genericCategories.length && item.domainCategories.length,
-          ),
-        optional: false,
-      },
-      {
-        label: "関係付け",
-        complete: relations.some(
-          (/** @type {any} */ relation) => relation.status === "confirmed",
-        ),
-        optional: false,
-      },
-      {
-        label: "学習",
-        complete: facts.length ? facts.every(factUnlocked) : false,
-        optional: !facts.length,
-      },
-    ];
-    const denominator = stages.filter((stage) => !stage.optional).length;
-    const completed = stages.filter(
-      (stage) => stage.complete && !stage.optional,
-    ).length;
-    return {
-      stages,
-      percent: denominator ? Math.round((completed / denominator) * 100) : 0,
-      photos,
-    };
-  }
-
   function renderCollections() {
-    // The bundled collections are hand-authored around the demo photos. Until
-    // Core 6 (#8) generates them from real data, a user's visit shows none.
-    const collections = viewingDemo() ? SAMPLE_COLLECTIONS : [];
+    const collections = buildCollectionProgress(
+      toProject(),
+      state.activeVisitId,
+      state.userId,
+      registry,
+    );
 
     $("#collectionGrid").innerHTML = collections.length
       ? collections.map(
       (/** @type {any} */ collection) => {
-        const progress = collectionProgress(collection);
+        const progress = collection;
+        const collectionIcon = collection.kind === "visit" ? "◉" : collection.kind === "generic" ? "▦" : "◇";
         return `<article class="collection-card"><div class="collection-cover">${progress.photos
           .slice(0, 3)
           .map(
@@ -2314,7 +2255,7 @@ export async function initApp(deps) {
           )
           .join(
             "",
-          )}<span>${escapeHtml(collection.icon)}</span></div><div class="collection-body"><div class="collection-title-row"><div><small>COLLECTION</small><h3>${escapeHtml(collection.title)}</h3></div><strong>${progress.percent}%</strong></div><div class="collection-progress"><span style="width:${progress.percent}%"></span></div><div class="stage-row">${progress.stages.map((stage) => `<span class="${stage.complete ? "complete" : ""} ${stage.optional ? "optional" : ""}"><i>${stage.complete ? "✓" : stage.optional ? "—" : "○"}</i>${escapeHtml(stage.label)}</span>`).join("")}</div></div></article>`;
+          )}<span>${collectionIcon}</span></div><div class="collection-body"><div class="collection-title-row"><div><small>${escapeHtml(collection.kind.toUpperCase())} COLLECTION</small><h3>${escapeHtml(collection.title)}</h3></div><strong>${progress.percent}%</strong></div><div class="collection-progress"><span style="width:${progress.percent}%"></span></div><div class="stage-row">${progress.stages.map((stage) => `<span class="${stage.complete ? "complete" : ""}"><i>${stage.complete ? "✓" : "○"}</i>${escapeHtml(stage.label)} ${stage.count}/${stage.denominator}</span>`).join("")}</div></div></article>`;
       },
         ).join("")
       : '<div class="empty-state"><strong>この訪問のコレクションはこれからです</strong><p>写真を追加して整理を進めると、集めた記録がここに並びます。</p></div>';
