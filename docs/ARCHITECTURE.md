@@ -60,6 +60,18 @@ loaderは保存用KG全体やUIを変更せず、次の純粋なselectorを提�
 
 入力JSONは破壊的に変更せず、同じ入力から決定的に同じグラフを生成する。
 
+### 0.2 保存用Knowledge Graph
+
+`src/domain/knowledge-graph.js` は、既存Projectから`activeVisit`だけを抽出して、
+JSON保存可能な`KnowledgeGraph`を都度生成する。保存用KGはUser・Visit・Photo・Observation、
+分類Assertion、Entity、ReferenceFact、QuestionSeedと、それらの接続を含む。画面の座標、
+選択状態、折り畳み状態は含めない。`src/repositories/knowledge-graph-service.js`は既存
+KnowledgeRepository経由でこの投影を取得するため、IndexedDBのobject storeを増やさない。
+
+ReferenceGraphは分類・地質時代の参照構造、ReferenceFactはEntityまたはObservationへ接続
+される確認済み知識であり、Visit KGへReferenceGraph全体を複製しない。必要な参照ノードだけを
+stable IDで接続する。旧`project.facts`はReferenceFactや学習済み状態へ自動変換しない。
+
 ### 1. KnowledgeRepository — 保存先
 
 `src/repositories/knowledge-repository.js` が形だけを宣言し、

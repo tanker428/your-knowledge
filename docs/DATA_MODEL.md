@@ -137,6 +137,32 @@ ReferenceGraph
 quizEligible=trueだけを問題候補へ取得できる。
 顕生代は親ノードとして保存するが、通常の表示ルートには出さない。
 
+## 保存用KnowledgeGraph
+
+保存用KGは既存Projectから`activeVisit`単位で決定的に生成する。現在のMVPのルートは次の
+構造で、旧`LearningFact`・`KnowledgeFact`・`LearningGap`は含めない。
+
+```text
+KnowledgeGraph
+ ├─ User ─HAS_VISIT→ Visit ─HAS_PHOTO→ Photo ─HAS_OBSERVATION→ Observation
+ ├─ Observation ─HAS_CLASSIFICATION→ ClassificationAssertion ─CLASSIFIES_AS→ Category
+ ├─ Observation ─HAS_ROLE→ LearningRole
+ ├─ Observation ─RELATES_TO→ Observation
+ ├─ Observation ─REFERS_TO→ Entity
+ ├─ Entity/Observation ─HAS_REFERENCE_FACT→ ReferenceFact
+ └─ QuestionSeed ─REFERENCES/TARGETS→ graph nodes
+```
+
+`KnowledgeGraph`は`schemaVersion`、`visitId`、`nodes`、`edges`、`metadata`を持つ。Relationは
+方向、種別、status、origin、confidenceをedgeへ保持し、分類AssertionのIDとQuestionSeedの
+IDは入力IDから生成する。activeVisit外のPhoto・Observation・Relationは除外し、同一Entityは
+一度だけノード化する。`project.facts`をReferenceFactへ自動変換せず、ReferenceGraph全体も
+Visitごとに複製しない。グラフはJSON.stringify/parse可能で、表示用の座標やUI状態を保存しない。
+
+ReferenceGraph（分類・時代の参照構造）とReferenceFact（EntityやObservationに接続する確認済み
+知識）は別の層である。ReferenceGraphのstable IDを必要な参照接続から利用し、参照構造そのものを
+保存用KGへ重複保存しない。
+
 | データ | 保存先 |
 |-------|-------|
 | Photo メタ・Observation・関係・学習状態・クイズ結果 | IndexedDB `projects` |

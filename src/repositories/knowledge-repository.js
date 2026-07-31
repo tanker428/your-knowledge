@@ -54,6 +54,8 @@
  * @property {PhotoRecord[]} photos
  * @property {object[]} relations
  * @property {{id:string,status:string}[]} facts
+ * @property {object[]} [entities]                  Optional project entities.
+ * @property {object[]} [referenceFacts]            Curated quiz/reference facts.
  * @property {object[]} [quizResults]
  *
  * @typedef {object} PhotoBinary
