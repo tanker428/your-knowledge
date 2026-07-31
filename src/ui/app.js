@@ -2255,7 +2255,7 @@ export async function initApp(deps) {
           )
           .join(
             "",
-          )}<span>${collectionIcon}</span></div><div class="collection-body"><div class="collection-title-row"><div><small>${escapeHtml(collection.kind.toUpperCase())} COLLECTION</small><h3>${escapeHtml(collection.title)}</h3></div><strong>${progress.percent}%</strong></div><div class="collection-progress"><span style="width:${progress.percent}%"></span></div><div class="stage-row">${progress.stages.map((stage) => `<span class="${stage.complete ? "complete" : ""} ${stage.optional ? "optional" : ""}"><i>${stage.complete ? "✓" : stage.optional ? "—" : "○"}</i>${escapeHtml(stage.label)} ${stage.count}</span>`).join("")}</div></div></article>`;
+          )}<span>${collectionIcon}</span></div><div class="collection-body"><div class="collection-title-row"><div><small>${escapeHtml(collection.kind.toUpperCase())} COLLECTION</small><h3>${escapeHtml(collection.title)}</h3></div><strong>${progress.percent}%</strong></div><div class="collection-progress"><span style="width:${progress.percent}%"></span></div><div class="stage-row">${progress.stages.map((stage) => `<span class="${stage.complete ? "complete" : ""}"><i>${stage.complete ? "✓" : "○"}</i>${escapeHtml(stage.label)} ${stage.count}/${stage.denominator}</span>`).join("")}</div></div></article>`;
       },
         ).join("")
       : '<div class="empty-state"><strong>この訪問のコレクションはこれからです</strong><p>写真を追加して整理を進めると、集めた記録がここに並びます。</p></div>';

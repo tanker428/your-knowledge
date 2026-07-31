@@ -45,7 +45,7 @@ describe("collection progress", () => {
   it("derives five stages from the active visit only", () => {
     const [visit] = buildCollectionProgress(project(), "visit-1", "user-1", registry);
     expect(visit.counts).toEqual({ discovery: 2, organize: 1, classification: 2, relation: 2, learning: 1 });
-    expect(visit.stages.map((stage) => stage.complete)).toEqual([true, false, true, true, true]);
+    expect(visit.stages.map((stage) => `${stage.count}/${stage.denominator}`)).toEqual(["2/2", "1/2", "2/2", "2/2", "1/2"]);
     expect(visit.percent).toBe(80);
   });
 
@@ -70,5 +70,15 @@ describe("collection progress", () => {
     expect(visit.counts.learning).toBe(0);
     expect(buildCollectionProgress(project(), "missing", "user-1", registry)).toEqual([]);
     expect(JSON.parse(JSON.stringify(buildCollectionProgress(project(), "visit-1", "user-1", registry)))).toEqual(buildCollectionProgress(project(), "visit-1", "user-1", registry));
+  });
+
+  it("treats one-sided relations as completed and unknown-only classification as incomplete", () => {
+    const changed = project();
+    changed.photos[0].observations[0].genericCategories = ["unknown"];
+    const [visit] = buildCollectionProgress(changed, "visit-1", "user-1", registry);
+    expect(visit.counts.classification).toBe(1);
+    expect(visit.counts.relation).toBe(2);
+    changed.relations = [{ id: "relation-2", sourceId: "obs-1", targetId: "obs-other", status: "confirmed" }];
+    expect(buildCollectionProgress(changed, "visit-1", "user-1", registry)[0].counts.relation).toBe(1);
   });
 });
