@@ -1,4 +1,5 @@
 import { isQuotaExceeded, StorageWriteError } from "../knowledge-repository.js";
+import { buildExportDocument } from "../../features/project/project-json.js";
 import {
   isIndexedDbAvailable,
   openDatabase,
@@ -114,7 +115,7 @@ export class IndexedDbKnowledgeRepository {
    */
   async exportProject(projectId) {
     const project = await this.loadProject(projectId);
-    return new Blob([JSON.stringify(project ?? {}, null, 2)], {
+    return new Blob([JSON.stringify(buildExportDocument({ project: project ?? { id: projectId, updatedAt: 0, photos: [], relations: [], facts: [] } }), null, 2)], {
       type: "application/json",
     });
   }

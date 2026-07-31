@@ -13,6 +13,9 @@ import {
 function sampleProject() {
   return {
     id: "default",
+    userId: "user-local",
+    activeVisitId: "visit-1",
+    visits: [{ id: "visit-1", title: "訪問", source: "user" }],
     updatedAt: 0,
     photos: [
       {
@@ -77,6 +80,9 @@ function sampleProject() {
       },
     ],
     facts: [{ id: "f1", status: "learned" }],
+    referenceFacts: [{ id: "rf1", subjectId: "e1", status: "verified" }],
+    learningEvents: [{ id: "event-1", referenceFactId: "rf1", result: 1 }],
+    userKnowledgeStates: [{ userId: "user-local", visitId: "visit-1", referenceFactId: "rf1", masteryValue: 1 }],
     quizResults: [
       {
         deck: "observed",
@@ -108,7 +114,7 @@ describe("buildExportDocument", () => {
     expect(doc.format).toBe(PROJECT_FORMAT);
     expect(doc.schemaVersion).toBe(SCHEMA_VERSION);
     expect(parseSchemaVersion(doc.schemaVersion)).toEqual({
-      major: 1,
+      major: 2,
       minor: 0,
       patch: 0,
     });
@@ -147,14 +153,28 @@ describe("buildExportDocument", () => {
     expect(exportDoc().project.photoStorage).toBe("indexeddb");
   });
 
-  it("carries quiz results and collection state", () => {
+  it("carries quiz results and omits derived collection state", () => {
     const doc = exportDoc();
     expect(doc.quizResults).toHaveLength(1);
-    expect(doc.collections).toHaveLength(1);
+    expect(doc.collections).toBeUndefined();
+    expect(doc.learningFacts).toBeUndefined();
+    expect(doc.referenceFacts).toHaveLength(1);
+    expect(doc.learningEvents).toHaveLength(1);
+    expect(doc.userKnowledgeStates).toHaveLength(1);
   });
 
-  it("applies the live fact status over the demo default", () => {
-    expect(exportDoc().learningFacts[0].status).toBe("learned");
+  it("round-trips visits, ReferenceFacts, and learning history without image bytes", () => {
+    const source = exportDoc();
+    const restored = documentToProject(source, new Set(["p01", "p99"]), "default").project;
+    expect(restored.visits).toEqual(source.project.visits);
+    expect(restored.referenceFacts).toEqual(source.referenceFacts);
+    expect(restored.learningEvents).toEqual(source.learningEvents);
+    expect(restored.userKnowledgeStates).toEqual(source.userKnowledgeStates);
+    expect(JSON.stringify(source)).not.toMatch(/data:image\//);
+  });
+
+  it("retains legacy facts without reclassifying them as ReferenceFact", () => {
+    expect(exportDoc().legacyFacts[0].status).toBe("learned");
   });
 });
 
@@ -191,10 +211,18 @@ describe("validateProjectDocument", () => {
   it("refuses a future major version instead of guessing", () => {
     const result = validateProjectDocument({
       ...exportDoc(),
-      schemaVersion: "2.0.0",
+      schemaVersion: "3.0.0",
     });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.reason).toContain("対応していません");
+  });
+
+  it("refuses malformed v2 metadata before import can apply it", () => {
+    const doc = exportDoc();
+    doc.project.visits = "broken";
+    const result = validateProjectDocument(doc);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toContain("project.visits");
   });
 
   it("accepts a newer minor version of the same major", () => {

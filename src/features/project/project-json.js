@@ -11,10 +11,10 @@
  */
 
 export const PROJECT_FORMAT = "your-knowledge-project";
-export const SCHEMA_VERSION = "1.0.0";
+export const SCHEMA_VERSION = "2.0.0";
 
 /** Majors we know how to read. Anything else is refused. */
-const SUPPORTED_MAJORS = new Set([1]);
+const SUPPORTED_MAJORS = new Set([1, 2]);
 
 /**
  * The outcome of reading an untrusted file.
@@ -35,10 +35,10 @@ const SUPPORTED_MAJORS = new Set([1]);
  *
  * @param {object} input
  * @param {import('../../repositories/knowledge-repository.js').Project} input.project
- * @param {object} input.visit
- * @param {object[]} input.entities
- * @param {Array<{id: string, status?: string} & Record<string, any>>} input.learningFacts
- * @param {object[]} input.collections
+ * @param {object} [input.visit] Legacy, ignored by v2.
+ * @param {object[]} [input.entities]
+ * @param {object[]} [input.learningFacts] Legacy, never exported as LearningFact.
+ * @param {object[]} [input.collections] Derived data, never exported.
  * @param {object[]} [input.quizResults]
  * @param {object[]} [input.learningEvents]
  * @param {object[]} [input.userKnowledgeStates]
@@ -47,10 +47,6 @@ const SUPPORTED_MAJORS = new Set([1]);
 export function buildExportDocument(input) {
   const {
     project,
-    visit,
-    entities,
-    learningFacts,
-    collections,
     quizResults = [],
     learningEvents = [],
     userKnowledgeStates = [],
@@ -81,7 +77,8 @@ export function buildExportDocument(input) {
     project: {
       id: project.id,
       userId: project.userId || "user-local",
-      visit,
+      activeVisitId: project.activeVisitId ?? null,
+      visits: project.visits || (input.visit ? [input.visit] : []),
       // Photo binaries live in IndexedDB. Only ids and metadata travel in JSON.
       photoStorage: "indexeddb",
     },
@@ -94,20 +91,29 @@ export function buildExportDocument(input) {
       status: photo.status,
       source: photo.source,
       domainHint: photo.domainHint || null,
+      rotation: photo.rotation ?? 0,
+      capturedAt: photo.capturedAt ?? null,
+      fileLastModified: photo.fileLastModified ?? null,
+      importedAt: photo.importedAt ?? null,
+      originalFileName: photo.originalFileName ?? photo.file ?? null,
+      originalMimeType: photo.originalMimeType ?? null,
+      originalBytes: photo.originalBytes ?? null,
+      originalWidth: photo.originalWidth ?? null,
+      originalHeight: photo.originalHeight ?? null,
+      experienceMemo: photo.experienceMemo ?? "",
     })),
     observations,
     relations: project.relations,
-    entities,
-    learningFacts: learningFacts.map((fact) => ({
-      ...fact,
-      status:
-        project.facts.find((item) => item.id === fact.id)?.status ??
-        fact.status,
-    })),
-    collections,
+    entities: project.entities || input.entities || [],
+    referenceFacts: project.referenceFacts || [],
+    // Legacy facts are retained under an explicit quarantine key so an old
+    // user's data is not silently destroyed or reclassified as ReferenceFact.
+    legacyFacts: project.facts || [],
     quizResults,
-    learningEvents,
-    userKnowledgeStates,
+    learningEvents: project.learningEvents || learningEvents,
+    userKnowledgeStates: project.userKnowledgeStates || userKnowledgeStates,
+    referenceDataVersion: project.referenceDataVersion ?? null,
+    sourceMetadata: project.sourceMetadata || {},
   };
 }
 
@@ -156,7 +162,7 @@ export function validateProjectDocument(value) {
   if (!SUPPORTED_MAJORS.has(version.major)) {
     return {
       ok: false,
-      reason: `schemaVersion ${doc.schemaVersion} には対応していません。このアプリが読めるのは 1.x です。アプリを更新してから読み込んでください。`,
+      reason: `schemaVersion ${doc.schemaVersion} には対応していません。このアプリが読めるのは 1.x / 2.x です。アプリを更新してから読み込んでください。`,
     };
   }
 
@@ -166,6 +172,16 @@ export function validateProjectDocument(value) {
         ok: false,
         reason: `"${key}" が配列ではありません。ファイルが壊れている可能性があります。`,
       };
+    }
+  }
+
+  if (version.major >= 2 && (!doc.project || typeof doc.project !== "object" || !Array.isArray(doc.project.visits))) {
+    return { ok: false, reason: 'v2 JSONの "project.visits" が配列ではありません。' };
+  }
+
+  for (const key of ["entities", "referenceFacts", "quizResults", "learningEvents", "userKnowledgeStates"]) {
+    if (doc[key] !== undefined && !Array.isArray(doc[key])) {
+      return { ok: false, reason: `"${key}" が配列ではありません。ファイルが壊れている可能性があります。` };
     }
   }
 
@@ -276,17 +292,25 @@ export function documentToProject(doc, availablePhotoIds, projectId) {
   return {
     project: {
       id: projectId,
+      schemaVersion: SCHEMA_VERSION,
       userId: doc.project?.userId || "user-local",
+      activeVisitId: doc.project?.activeVisitId ?? doc.project?.visit?.id ?? null,
+      visits: Array.isArray(doc.project?.visits)
+        ? doc.project.visits.map((visit) => ({ ...visit }))
+        : doc.project?.visit
+          ? [{ ...doc.project.visit }]
+          : [],
       updatedAt: Date.now(),
       photos,
       relations: doc.relations || [],
-      facts: (doc.learningFacts || []).map((/** @type {any} */ fact) => ({
-        id: fact.id,
-        status: fact.status,
-      })),
+      entities: (doc.entities || []).map((entity) => ({ ...entity })),
+      referenceFacts: (doc.referenceFacts || []).map((fact) => ({ ...fact })),
+      facts: (doc.legacyFacts || doc.facts || []).map((fact) => ({ ...fact })),
       quizResults: doc.quizResults || [],
       learningEvents: doc.learningEvents || [],
       userKnowledgeStates: doc.userKnowledgeStates || [],
+      referenceDataVersion: doc.referenceDataVersion ?? null,
+      sourceMetadata: doc.sourceMetadata || {},
     },
     missingPhotoIds,
   };
