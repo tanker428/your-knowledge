@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "your-knowledge/reference/geological-time.schema.json",
+  "type": "object",
+  "required": ["schemaVersion", "meta", "nodes", "relations"],
+  "properties": {
+    "schemaVersion": { "type": "string" },
+    "meta": {
+      "type": "object",
+      "required": ["id", "axis", "source"],
+      "properties": {
+        "id": { "type": "string" },
+        "axis": { "const": "geological-time" },
+        "source": { "type": "object", "required": ["status"] }
+      }
+    },
+    "nodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "label", "axis", "status", "internalOnly", "ui"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "label": { "type": "string", "minLength": 1 },
+          "axis": { "const": "geological-time" },
+          "startMa": { "type": ["number", "null"] },
+          "endMa": { "type": ["number", "null"] },
+          "parentId": { "type": ["string", "null"] },
+          "order": { "type": ["number", "null"] },
+          "internalOnly": { "type": "boolean" },
+          "ui": { "type": "object", "required": ["visible"] },
+          "status": { "enum": ["draft", "verified", "deprecated"] }
+        }
+      }
+    },
+    "relations": { "type": "array" }
+  }
+}
