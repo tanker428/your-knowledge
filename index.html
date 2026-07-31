@@ -195,18 +195,31 @@
 
       <section class="view" id="view-knowledge" aria-labelledby="knowledgeTitle">
         <div class="page-hero compact">
-          <div><p class="section-kicker">KNOWLEDGE MAP</p><h1 id="knowledgeTitle">自分が触れた知識を中心に見る</h1><p>最初に表示するのは写真から確認した知識だけです。「詳しく学ぶ」を選んだときに、説明パネルや追加教材から細かな知識を広げます。</p></div>
-          <div class="segmented-control" id="knowledgeModeControl">
-            <button class="active" data-knowledge-mode="observed">📷 見た知識</button>
-            <button data-knowledge-mode="learned">📚 後から学んだ知識</button>
+          <div><p class="section-kicker">KNOWLEDGE GRAPH</p><h1 id="knowledgeTitle">訪問で見た知識をつなぐ</h1><p>写真からObservationを選び、分類・関係・参照知識を段階的に確認します。</p></div>
+          <div class="segmented-control" id="knowledgeViewModeControl">
+            <button class="active" data-knowledge-view-mode="overview">訪問全体</button>
+            <button data-knowledge-view-mode="focus">Observation詳細</button>
+          </div>
+          <div class="segmented-control" id="knowledgeLayoutControl">
+            <button class="active" data-knowledge-layout="radial">◉ 円形表示</button>
+            <button data-knowledge-layout="list">☷ リスト表示</button>
           </div>
         </div>
         <div class="knowledge-layout">
           <aside class="knowledge-index">
-            <div class="knowledge-search"><input id="knowledgeSearch" type="search" placeholder="対象を検索" /></div>
+            <div class="knowledge-search"><input id="knowledgeSearch" type="search" placeholder="写真・Observationを検索" /></div>
+            <div class="kg-axis-control" id="knowledgeAxisControl">
+              <button class="active" data-knowledge-axis="all">全体</button>
+              <button data-knowledge-axis="taxonomy">分類</button>
+              <button data-knowledge-axis="geological-time">時代</button>
+              <button data-knowledge-axis="relation">関係</button>
+            </div>
             <div id="knowledgeObservationList"></div>
           </aside>
-          <section class="knowledge-focus" id="knowledgeFocus"></section>
+          <section class="knowledge-focus knowledge-view-panel">
+            <div id="knowledgeGraphCanvas"></div>
+            <aside class="kg-detail-panel" id="knowledgeGraphDetail"></aside>
+          </section>
         </div>
       </section>
 
@@ -249,7 +262,7 @@
     <footer>
       <div class="footer-brand"><span class="brand-mark">Y</span><strong>Your Knowledge</strong></div>
       <p>自分が見たものを、続いていく学びへ。</p>
-      <small>Prototype: Photo ≠ Observation ≠ Entity ≠ LearningFact</small>
+      <small>Prototype: Photo ≠ Observation ≠ Entity ≠ ReferenceFact</small>
     </footer>
   </div>
 

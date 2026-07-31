@@ -12,6 +12,7 @@ import { requestPersistentStorage } from "./repositories/storage-persistence.js"
 import { DemoAnalysisProvider } from "./services/analysis/demo-analysis-provider.js";
 import { registerServiceWorker } from "./features/pwa/service-worker-client.js";
 import { initApp } from "./ui/app.js";
+import { loadReferenceData } from "./domain/reference-registry.js";
 
 /**
  * @param {string} message
@@ -40,6 +41,17 @@ async function boot() {
     return;
   }
 
+  let referenceData;
+  try {
+    referenceData = await loadReferenceData();
+  } catch (error) {
+    showFatalError(
+      "分類・時代の参照データを読み込めませんでした。ページを再読み込みしてください。",
+      error,
+    );
+    return;
+  }
+
   const storageStatus = await requestPersistentStorage();
 
   // The handle is filled in once registration finishes; the update banner is
@@ -51,6 +63,7 @@ async function boot() {
     repository: new IndexedDbKnowledgeRepository(),
     registry,
     lookups: buildLookups(registry),
+    referenceData,
     analysisProvider: new DemoAnalysisProvider(),
     storageStatus,
     serviceWorker,

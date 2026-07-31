@@ -73,6 +73,16 @@ import {
   migrateProjectDocument,
   PROJECT_SCHEMA_VERSION,
 } from "../features/project/migrate.js";
+import {
+  buildKnowledgeGraphView,
+  buildObservationFocusGraph,
+  buildRadialLayout,
+  expandReferenceGraphNodes,
+  filterGraphByAxis,
+  getKnowledgeGraphNodeDetail,
+  getRadialNodeShape,
+} from "../features/knowledge-graph/selectors.js";
+import { getReferenceChildren } from "../domain/reference-registry.js";
 
 const MAX_UPLOAD_BATCH = 120;
 const STATUS_LABELS = {
@@ -141,6 +151,7 @@ const uid = (/** @type {string} */ prefix) =>
  * @param {import('../services/analysis/analysis-provider.js').AnalysisProvider} deps.analysisProvider
  * @param {import('../repositories/storage-persistence.js').StorageStatus} deps.storageStatus
  * @param {{supported: boolean, applyUpdate: () => Promise<void>}} deps.serviceWorker
+ * @param {{graph:any}} deps.referenceData
  */
 export async function initApp(deps) {
   const {
@@ -150,6 +161,7 @@ export async function initApp(deps) {
     analysisProvider,
     storageStatus,
     serviceWorker,
+    referenceData,
   } = deps;
   const { genericLabel, relationLabel, packLabel, packCategoryLabel } = lookups;
 
@@ -185,6 +197,12 @@ export async function initApp(deps) {
     /** @type {string|null} */
     activeObservationId: "o03a",
     knowledgeMode: "observed",
+    knowledgeViewMode: "overview",
+    knowledgeLayoutMode: "radial",
+    knowledgeZoom: 1,
+    knowledgeAxis: "all",
+    knowledgeExpanded: new Set(),
+    knowledgeDetailNodeId: null,
     /** @type {string|null} */
     knowledgeObservationId: "o07a",
     knowledgeSearch: "",
@@ -1617,7 +1635,7 @@ export async function initApp(deps) {
     switchView("knowledge");
   }
 
-  function renderKnowledge() {
+  function renderLegacyKnowledge() {
     $$("#knowledgeModeControl [data-knowledge-mode]").forEach((button) =>
       button.classList.toggle(
         "active",
@@ -1665,10 +1683,10 @@ export async function initApp(deps) {
         renderKnowledge();
       }),
     );
-    renderKnowledgeFocus();
+    renderLegacyKnowledgeFocus();
   }
 
-  function renderKnowledgeFocus() {
+  function renderLegacyKnowledgeFocus() {
     const found = observationById(state.knowledgeObservationId);
     if (!found) {
       $("#knowledgeFocus").innerHTML =
@@ -1709,7 +1727,7 @@ export async function initApp(deps) {
         : "📷 自分の写真から";
 
     $("#knowledgeFocus").innerHTML = `
-      <div class="knowledge-map-header"><div><span class="source-badge">${sourceBadge}</span><h2>${escapeHtml(observation.label)}</h2><p>${learnedMode ? "確認済みの観察対象に、あとから追加したLearningFactです。" : `${escapeHtml(photo.title)}の中で確認した観察対象です。`}</p></div><button class="ghost-button dark" data-open-photo="${escapeHtml(photo.id)}">元写真を見る</button></div>
+      <div class="knowledge-map-header"><div><span class="source-badge">${sourceBadge}</span><h2>${escapeHtml(observation.label)}</h2><p>${learnedMode ? "確認済みの観察対象に、あとから追加したReferenceFactです。" : `${escapeHtml(photo.title)}の中で確認した観察対象です。`}</p></div><button class="ghost-button dark" data-open-photo="${escapeHtml(photo.id)}">元写真を見る</button></div>
       <div class="focus-map">
         <article class="map-source-card"><small>PHOTO</small><img src="${escapeHtml(photo.thumbSrc || photo.src)}" alt="${escapeHtml(photo.title)}" /><strong>${escapeHtml(photo.title)}</strong></article>
         <div class="map-connector">→</div>
@@ -1763,6 +1781,135 @@ export async function initApp(deps) {
       renderKnowledge();
       showToast(`${facts.length}件の知識を学習カードへ追加しました`);
     });
+  }
+
+  void renderLegacyKnowledge;
+
+  // Core 4's old knowledge screen remains above for compatibility with
+  // older markup, but this later declaration is the active ReferenceFact view.
+  function renderKnowledge() {
+    const project = toProject();
+    const view = state.activeVisitId ? buildKnowledgeGraphView(project, state.activeVisitId, registry, referenceData?.graph) : null;
+    const observations = view?.source.nodes.filter((node) => node.type === "Observation") || [];
+    if (!observations.some((node) => node.observationId === state.knowledgeObservationId)) state.knowledgeObservationId = observations[0]?.observationId || null;
+    const focus = state.knowledgeObservationId ? buildObservationFocusGraph(view.source, `Observation:${state.knowledgeObservationId}`, referenceData?.graph) : null;
+    const base = state.knowledgeViewMode === "focus" && focus ? focus : view?.overview;
+    const expandedReferenceIds = [...state.knowledgeExpanded].filter((id) => id.startsWith("reference:")).map((id) => id.slice("reference:".length));
+    const expanded = base ? expandReferenceGraphNodes(base, referenceData?.graph, expandedReferenceIds) : null;
+    const graph = expanded ? filterGraphByAxis(expanded, state.knowledgeAxis) : null;
+    $$("#knowledgeViewModeControl [data-knowledge-view-mode]").forEach((button) => button.classList.toggle("active", button.dataset.knowledgeViewMode === state.knowledgeViewMode));
+    $$("#knowledgeLayoutControl [data-knowledge-layout]").forEach((button) => button.classList.toggle("active", button.dataset.knowledgeLayout === state.knowledgeLayoutMode));
+    $$("#knowledgeAxisControl [data-knowledge-axis]").forEach((button) => button.classList.toggle("active", button.dataset.knowledgeAxis === state.knowledgeAxis));
+    const query = state.knowledgeSearch.trim().toLowerCase();
+    $("#knowledgeObservationList").innerHTML = observations.length ? observations.filter((node) => !query || `${node.label} ${photoById(node.photoId)?.title || ""}`.toLowerCase().includes(query)).map((node) => renderKnowledgeObservationItem(node)).join("") : '<div class="empty-state"><strong>この訪問には表示できるObservationがありません</strong><p>写真を追加してObservationを整理すると、ここに知識グラフが表示されます。</p></div>';
+    $("#knowledgeGraphCanvas").innerHTML = graph?.nodes.length ? renderKnowledgeGraph(graph) : '<div class="empty-state large"><strong>表示する知識グラフがありません</strong><p>activeVisitの写真とObservationを確認してください。</p></div>';
+    $("#knowledgeGraphDetail").innerHTML = state.knowledgeObservationId && focus ? renderKnowledgeDetail(focus, state.knowledgeDetailNodeId || `Observation:${state.knowledgeObservationId}`) : '<div class="empty-state"><strong>ノードを選択してください</strong><p>写真内のObservationを選ぶと詳細を表示します。</p></div>';
+    bindKnowledgeGraphEvents();
+  }
+
+  function renderKnowledgeObservationItem(node) {
+    const photo = photoById(node.photoId);
+    return `<button class="knowledge-list-item ${node.observationId === state.knowledgeObservationId ? "active" : ""}" data-knowledge-observation="${escapeHtml(node.observationId)}"><img src="${escapeHtml(photo?.thumbSrc || photo?.src || MISSING_PHOTO_SRC)}" alt="" /><span><strong>${escapeHtml(node.label)}</strong><small>${escapeHtml(photo?.title || "写真")}</small></span><i aria-hidden="true">◉</i></button>`;
+  }
+
+  function renderKnowledgeGraph(graph) {
+    if (state.knowledgeLayoutMode === "radial") return renderKnowledgeRadial(graph);
+    const groups = ["Visit", "Photo", "Observation", "Entity", "ReferenceFact", "ReferenceNode", "GenericCategory", "DomainCategory", "LearningRole"];
+    const sections = groups.map((type) => {
+      const nodes = graph.nodes.filter((node) => node.type === type);
+      if (!nodes.length) return "";
+      return `<section class="kg-node-group kg-${type.toLowerCase()}"><div class="kg-group-title"><span>${knowledgeNodeIcon(type)}</span><strong>${escapeHtml(knowledgeNodeLabel(type))}</strong><small>${nodes.length}</small></div><div class="kg-node-grid">${nodes.map((node) => renderKnowledgeNode(node, graph)).join("")}</div></section>`;
+    }).join("");
+    const relations = graph.edges.filter((edge) => edge.type === "RELATES_TO");
+    const relationSection = relations.length ? `<section class="kg-relation-strip"><div class="kg-group-title"><span>↔</span><strong>関係</strong><small>${relations.length}</small></div>${relations.map((edge) => `<button class="kg-relation-row" data-kg-node="${escapeHtml(edge.targetId)}"><span>${edge.directed === false ? "↔" : "→"}</span><strong>${escapeHtml(nodeLabel(graph, edge.sourceId))}</strong><em>${escapeHtml(edge.relationType || "RELATES_TO")}</em><strong>${escapeHtml(nodeLabel(graph, edge.targetId))}</strong></button>`).join("")}</section>` : "";
+    const backButton = state.knowledgeViewMode === "focus" ? '<button class="text-button" data-kg-overview>← 訪問全体へ戻る</button>' : "";
+    return `<div class="kg-canvas-header"><span>DISPLAY GRAPH</span><strong>${state.knowledgeViewMode === "focus" ? "Observation詳細・1ホップ" : "訪問全体"}</strong><span class="kg-header-actions">${backButton}</span></div>${sections}${relationSection}`;
+  }
+
+  function renderKnowledgeRadial(graph) {
+    const centerId = state.knowledgeViewMode === "focus" ? `Observation:${state.knowledgeObservationId}` : `Visit:${state.activeVisitId}`;
+    const displayGraph = graph;
+    const layout = buildRadialLayout(displayGraph, centerId);
+    const positionMap = new Map(layout.nodes.map((node) => /** @type {[string, any]} */ ([node.id, node])));
+    const edgeMarkup = layout.edges.map((edge) => {
+      const source = positionMap.get(edge.sourceId);
+      const target = positionMap.get(edge.targetId);
+      if (!source || !target) return "";
+      const arrow = edge.type === "RELATES_TO" && (edge.directed === true || (edge.directed == null && isDirectedRelation(registry.relationTypes, edge.relationType))) ? " marker-end=\"url(#kg-arrow)\"" : "";
+      return `<line class="kg-svg-edge ${edge.type === "RELATES_TO" ? "relation" : "reference"}" x1="${source.x}" y1="${source.y}" x2="${target.x}" y2="${target.y}"${arrow} />`;
+    }).join("");
+    const nodeMarkup = layout.nodes.map((position) => {
+      const node = getKnowledgeGraphNodeDetail(displayGraph, position.id)?.node;
+      if (!node) return "";
+      const selected = position.id === centerId || position.id === state.knowledgeDetailNodeId;
+      const photo = node.type === "Photo" || node.type === "Observation" ? photoById(node.photoId) : null;
+      const image = photo ? `<image class="kg-svg-image" href="${escapeHtml(photo.thumbSrc || photo.src || MISSING_PHOTO_SRC)}" x="${position.x - 17}" y="${position.y - 17}" width="34" height="34" preserveAspectRatio="xMidYMid slice" />` : "";
+      const region = node.region && photo ? `<rect class="kg-svg-region" x="${position.x - 17 + (Number(node.region.x) || 0) * 0.34}" y="${position.y - 17 + (Number(node.region.y) || 0) * 0.34}" width="${Math.max(1, (Number(node.region.w) || 0) * 0.34)}" height="${Math.max(1, (Number(node.region.h) || 0) * 0.34)}" />` : "";
+      const shape = renderRadialNodeShape(node, position, selected);
+      const referenceKey = node.type === "ReferenceNode" ? `reference:${node.referenceId}` : null;
+      const referenceAction = referenceKey && shouldShowReferenceExpansion(node, displayGraph) ? `<text class="kg-svg-expand" data-kg-expand-reference="${escapeHtml(referenceKey)}" x="${position.x}" y="${position.y + 59}" text-anchor="middle">${state.knowledgeExpanded.has(referenceKey) ? "折り畳む" : "展開"}</text>` : "";
+      return `<g class="kg-svg-node kg-svg-${node.type.toLowerCase()} ${selected ? "selected" : ""}" data-kg-node="${escapeHtml(node.id)}">${shape}${image}${region}<text x="${position.x}" y="${position.y + 43}" text-anchor="middle">${escapeHtml(shortGraphLabel(node.label || node.title || node.predicate || node.referenceId || node.type))}</text>${referenceAction}<title>${escapeHtml(node.label || node.title || node.predicate || node.referenceId || node.type)}</title></g>`;
+    }).join("");
+    const zoom = state.knowledgeZoom;
+    const backButton = state.knowledgeViewMode === "focus" ? '<button class="text-button" data-kg-overview>← 訪問全体へ戻る</button>' : "";
+    return `<div class="kg-canvas-header"><span>RADIAL GRAPH</span><strong>${state.knowledgeViewMode === "focus" ? "Observation詳細・1ホップ" : "訪問全体"}</strong><span class="kg-header-actions">${backButton}</span></div><div class="kg-zoom-controls"><button data-kg-zoom="out" aria-label="縮小">−</button><button data-kg-zoom="reset" aria-label="中央へ戻す">100%</button><button data-kg-zoom="in" aria-label="拡大">＋</button></div><svg class="kg-radial-svg" viewBox="0 0 ${layout.width} ${layout.height}" role="img" aria-label="知識グラフ"><defs><marker id="kg-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" /></marker></defs><g transform="translate(${layout.centerX} ${layout.centerY}) scale(${zoom}) translate(-${layout.centerX} -${layout.centerY})">${edgeMarkup}${nodeMarkup}</g></svg>`;
+  }
+
+  function renderRadialNodeShape(node, position, selected) {
+    const x = position.x;
+    const y = position.y;
+    const radius = selected ? 29 : 24;
+    const shape = getRadialNodeShape(node);
+    const className = `kg-svg-shape kg-svg-shape-${shape}`;
+    if (shape === "hexagon") return `<polygon class="${className}" points="${x - 29},${y - 16} ${x - 15},${y - 29} ${x + 15},${y - 29} ${x + 29},${y - 16} ${x + 29},${y + 16} ${x + 15},${y + 29} ${x - 15},${y + 29} ${x - 29},${y + 16}" />`;
+    if (shape === "diamond") return `<polygon class="${className}" points="${x},${y - 31} ${x + 31},${y} ${x},${y + 31} ${x - 31},${y}" />`;
+    if (shape === "triangle") return `<polygon class="${className}" points="${x},${y - 30} ${x + 30},${y + 24} ${x - 30},${y + 24}" />`;
+    if (shape === "ellipse") return `<ellipse class="${className}" cx="${x}" cy="${y}" rx="32" ry="22" />`;
+    if (shape === "rounded-rect") return `<rect class="${className}" x="${x - 29}" y="${y - 24}" width="58" height="48" rx="10" />`;
+    if (shape === "rect") return `<rect class="${className}" x="${x - 29}" y="${y - 22}" width="58" height="44" />`;
+    return `<circle class="${className}" cx="${x}" cy="${y}" r="${radius}" />`;
+  }
+
+  function shortGraphLabel(value) {
+    const text = String(value || "");
+    return text.length > 12 ? `${text.slice(0, 11)}…` : text;
+  }
+
+  function renderKnowledgeNode(node, graph) {
+    const photo = node.type === "Photo" || node.type === "Observation" ? photoById(node.photoId) : null;
+    const image = photo ? `<span class="kg-node-image"><img src="${escapeHtml(photo.thumbSrc || photo.src || MISSING_PHOTO_SRC)}" alt="" />${node.region ? `<i style="left:${node.region.x}%;top:${node.region.y}%;width:${node.region.w}%;height:${node.region.h}%"></i>` : ""}</span>` : "";
+    const card = `<button class="kg-node-card kg-shape-${node.type.toLowerCase()}" data-kg-node="${escapeHtml(node.id)}">${image}<span class="kg-node-icon">${knowledgeNodeIcon(node.type)}</span><strong>${escapeHtml(node.label || node.title || node.predicate || node.referenceId || node.type)}</strong><small>${escapeHtml(knowledgeNodeLabel(node.type))}</small></button>`;
+    return node.type === "ReferenceNode" && shouldShowReferenceExpansion(node, graph) ? `<div class="kg-reference-node-wrap">${card}<button class="text-button kg-reference-expand" data-kg-expand-reference="reference:${escapeHtml(node.referenceId)}">${state.knowledgeExpanded.has(`reference:${node.referenceId}`) ? "折り畳む" : "展開"}</button></div>` : card;
+  }
+
+  function shouldShowReferenceExpansion(node, graph) {
+    if (node.type !== "ReferenceNode" || !referenceData?.graph) return false;
+    const key = `reference:${node.referenceId}`;
+    if (state.knowledgeExpanded.has(key)) return true;
+    const visibleIds = new Set((graph?.nodes || []).map((item) => item.id));
+    return getReferenceChildren(referenceData.graph, node.referenceId).some((child) => child && child.internalOnly !== true && child.visible !== false && !visibleIds.has(`Reference:${child.id}`));
+  }
+
+  function renderKnowledgeDetail(graph, nodeId) {
+    const detail = getKnowledgeGraphNodeDetail(graph, nodeId);
+    if (!detail) return '<div class="empty-state"><strong>ノードを選択してください</strong></div>';
+    const node = detail.node;
+    const photo = node.photoId ? photoById(node.photoId) : null;
+    return `<div class="kg-detail-header"><span>${knowledgeNodeIcon(node.type)} ${escapeHtml(knowledgeNodeLabel(node.type))}</span><h2>${escapeHtml(node.label || node.title || node.predicate || node.referenceId || node.type)}</h2>${photo ? `<button class="ghost-button dark" data-open-photo="${escapeHtml(photo.id)}">元写真を見る</button>` : ""}</div>${photo ? `<div class="kg-detail-photo"><img src="${escapeHtml(photo.src || photo.thumbSrc || MISSING_PHOTO_SRC)}" alt="${escapeHtml(photo.title)}" /><strong>${escapeHtml(photo.title)}</strong></div>` : ""}<div class="kg-detail-meta"><p>接続 ${detail.incoming.length + detail.outgoing.length}件</p>${detail.outgoing.map((edge) => `<button data-kg-node="${escapeHtml(edge.targetId)}">→ ${escapeHtml(nodeLabel(graph, edge.targetId))}</button>`).join("")}${detail.incoming.map((edge) => `<button data-kg-node="${escapeHtml(edge.sourceId)}">← ${escapeHtml(nodeLabel(graph, edge.sourceId))}</button>`).join("")}</div>`;
+  }
+
+  function nodeLabel(graph, nodeId) { const node = getKnowledgeGraphNodeDetail(graph, nodeId)?.node; return node?.label || node?.title || nodeId; }
+  function knowledgeNodeLabel(type) { return { User: "利用者", Visit: "訪問", Photo: "写真", Observation: "Observation", Entity: "Entity", ReferenceFact: "ReferenceFact", ReferenceNode: "参照分類・時代", GenericCategory: "汎用分類", DomainCategory: "分野分類", LearningRole: "学習役割" }[type] || type; }
+  function knowledgeNodeIcon(type) { return { User: "●", Visit: "⬡", Photo: "▣", Observation: "◎", Entity: "◇", ReferenceFact: "▤", ReferenceNode: "⌘", GenericCategory: "◌", DomainCategory: "◆", LearningRole: "✦" }[type] || "•"; }
+  function bindKnowledgeGraphEvents() {
+    $$('[data-knowledge-observation]').forEach((button) => button.addEventListener("click", () => { state.knowledgeObservationId = button.dataset.knowledgeObservation; state.knowledgeViewMode = "focus"; renderKnowledge(); }));
+    $$('[data-kg-node]').forEach((button) => button.addEventListener("click", () => { const id = button.dataset.kgNode; state.knowledgeDetailNodeId = id; if (id?.startsWith("Observation:")) { state.knowledgeObservationId = id.slice("Observation:".length); state.knowledgeViewMode = "focus"; } renderKnowledge(); }));
+    $("[data-kg-overview]")?.addEventListener("click", () => { state.knowledgeViewMode = "overview"; state.knowledgeDetailNodeId = null; renderKnowledge(); });
+    $$('[data-kg-expand-reference]').forEach((button) => button.addEventListener("click", (event) => { event.stopPropagation(); const key = button.dataset.kgExpandReference; if (!key) return; if (state.knowledgeExpanded.has(key)) state.knowledgeExpanded.delete(key); else state.knowledgeExpanded.add(key); renderKnowledge(); }));
+    $("[data-kg-zoom=out]")?.addEventListener("click", () => { state.knowledgeZoom = Math.max(0.7, state.knowledgeZoom - 0.15); renderKnowledge(); });
+    $("[data-kg-zoom=in]")?.addEventListener("click", () => { state.knowledgeZoom = Math.min(1.8, state.knowledgeZoom + 0.15); renderKnowledge(); });
+    $("[data-kg-zoom=reset]")?.addEventListener("click", () => { state.knowledgeZoom = 1; renderKnowledge(); });
+    $$('[data-open-photo]').forEach((button) => button.addEventListener("click", () => openPhotoModal(button.dataset.openPhoto)));
   }
 
   function quizUsesConfirmedData(/** @type {any} */ quiz) {
@@ -2679,6 +2826,19 @@ export async function initApp(deps) {
     $$("#knowledgeModeControl [data-knowledge-mode]").forEach((button) =>
       button.addEventListener("click", () => {
         state.knowledgeMode = button.dataset.knowledgeMode;
+        renderKnowledge();
+      }),
+    );
+    $$("#knowledgeViewModeControl [data-knowledge-view-mode]").forEach((button) =>
+      button.addEventListener("click", () => {
+        state.knowledgeViewMode = button.dataset.knowledgeViewMode;
+        renderKnowledge();
+      }),
+    );
+    $$("#knowledgeLayoutControl [data-knowledge-layout]").forEach((button) => button.addEventListener("click", () => { state.knowledgeLayoutMode = button.dataset.knowledgeLayout; renderKnowledge(); }));
+    $$("#knowledgeAxisControl [data-knowledge-axis]").forEach((button) =>
+      button.addEventListener("click", () => {
+        state.knowledgeAxis = button.dataset.knowledgeAxis;
         renderKnowledge();
       }),
     );
