@@ -23,7 +23,6 @@ import {
   SAMPLE_COLLECTIONS,
   SAMPLE_ENTITIES,
   SAMPLE_PHOTOS,
-  SAMPLE_QUIZZES,
   SAMPLE_RELATIONS,
   SAMPLE_STORIES,
   SAMPLE_VISIT,
@@ -36,7 +35,6 @@ import {
   DEMO_VISIT_ID,
   isDemoVisit,
   pickNextActiveVisitId,
-  quizzesForVisit,
   updateVisit,
   visitFacts,
   validateVisit,
@@ -82,6 +80,7 @@ import {
   getKnowledgeGraphNodeDetail,
   getRadialNodeShape,
 } from "../features/knowledge-graph/selectors.js";
+import { describeQuizAvailability, scoreQuizAnswer } from "../features/knowledge-graph/quiz-generation.js";
 import { getReferenceChildren } from "../domain/reference-registry.js";
 
 const MAX_UPLOAD_BATCH = 120;
@@ -185,6 +184,7 @@ export async function initApp(deps) {
     relations: [],
     /** @type {any[]} */
     facts: [],
+    referenceFacts: [],
     /** @type {any[]} */
     quizResults: [],
     photoFilter: "all",
@@ -211,6 +211,7 @@ export async function initApp(deps) {
     quizScore: 0,
     quizAnswered: false,
     quizCompleted: false,
+    quizCurrentAnswer: null,
     importing: false,
     /** @type {AbortController|null} */
     importAbort: null,
@@ -296,6 +297,7 @@ export async function initApp(deps) {
     }));
     state.relations = project.relations;
     state.facts = project.facts;
+    state.referenceFacts = project.referenceFacts || [];
     state.quizResults = project.quizResults || [];
 
     await attachImportedPhotoUrls();
@@ -424,6 +426,7 @@ export async function initApp(deps) {
       })),
       relations: state.relations,
       facts: copyFactsForProject(state.facts),
+      referenceFacts: state.referenceFacts.map((fact) => ({ ...fact })),
       quizResults: state.quizResults,
     };
   }
@@ -1938,21 +1941,13 @@ export async function initApp(deps) {
   }
 
   function deckQuizzes(/** @type {string} */ deck) {
-    const quizzes = quizzesForVisit(activeVisit(), SAMPLE_QUIZZES);
-    if (deck === "observed")
-      return quizzes.filter(
-        (/** @type {any} */ quiz) =>
-          quiz.level === "observed" && quizUsesConfirmedData(quiz),
-      );
-    return quizzes.filter(
-      (/** @type {any} */ quiz) =>
-        quiz.level === "learned" && factUnlocked(factById(quiz.requiredFactId)),
-    );
+    if (deck !== "observed" || !state.activeVisitId) return [];
+    return describeQuizAvailability(toProject(), state.activeVisitId, registry, referenceData?.graph).questions;
   }
 
   function renderLearn() {
     $("#deckSummary").innerHTML =
-      `<span><strong>${deckQuizzes("observed").length}</strong>見た知識の問題</span><span><strong>${deckQuizzes("learned").length}</strong>追加学習の問題</span>`;
+      `<span><strong>${deckQuizzes("observed").length}</strong>Knowledge Graph問題</span>`;
     $$("#deckSwitch [data-deck]").forEach((button) =>
       button.classList.toggle("active", button.dataset.deck === state.deck),
     );
@@ -1960,7 +1955,7 @@ export async function initApp(deps) {
     renderStories();
   }
 
-  function renderQuiz() {
+  function renderLegacyQuiz() {
     const quizzes = deckQuizzes(state.deck);
     const total = quizzes.length;
     $("#quizScore").textContent = state.quizScore;
@@ -2046,6 +2041,60 @@ export async function initApp(deps) {
     }
     renderQuiz();
   }
+
+  function renderQuiz() {
+    const quizzes = deckQuizzes(state.deck);
+    const total = quizzes.length;
+    const storedResults = new Map(state.quizResults.filter((result) => result.visitId === state.activeVisitId && result.quizId).map((result) => [result.quizId, result]));
+    state.quizScore = quizzes.filter((quiz) => storedResults.get(quiz.id)?.correct).length;
+    $("#quizScore").textContent = state.quizScore;
+    $("#quizTotal").textContent = `/ ${total}`;
+    const degree = total ? Math.round((Math.min(state.quizIndex, total) / total) * 360) : 0;
+    $("#quizRing").style.background = `conic-gradient(var(--accent) ${degree}deg, rgba(255,255,255,.12) ${degree}deg)`;
+    if (!total) {
+      const availability = describeQuizAvailability(toProject(), state.activeVisitId, registry, referenceData?.graph);
+      $("#quizStage").innerHTML = `<div class="locked-deck"><span>∅</span><h2>表示できる問題がありません</h2><p>${escapeHtml(availability.reason || "このデッキには問題がありません。")} 確認済みのObservationとverified ReferenceFactを整理すると問題を生成できます。</p><button class="primary-button" id="goKnowledgeButton">知識マップへ</button></div>`;
+      $("#goKnowledgeButton").addEventListener("click", () => switchView("knowledge"));
+      return;
+    }
+    if (state.quizCompleted || state.quizIndex >= total) {
+      $("#quizStage").innerHTML = `<div class="quiz-finished"><div class="finish-mark">✓</div><h2>${state.quizScore} / ${total} 正解</h2><p>Knowledge Graphから生成した問題を完了しました。</p><button class="primary-button" id="finishRestartButton">もう一度挑戦</button></div>`;
+      $("#finishRestartButton").addEventListener("click", resetQuiz);
+      return;
+    }
+    const quiz = quizzes[state.quizIndex];
+    const photo = photoById(quiz.photoId);
+    const stored = storedResults.get(quiz.id);
+    state.quizAnswered = Boolean(stored);
+    const selectedReferenceId = stored?.answer?.placements?.find((placement) => placement.cardId === quiz.observationId)?.referenceId || null;
+    $("#quizStage").innerHTML = `<article class="quiz-card"><div class="quiz-content"><span class="quiz-counter">${quiz.questionType === "hierarchy" ? "CLASSIFICATION" : "GEOLOGICAL TIME"} ${String(state.quizIndex + 1).padStart(2, "0")} / ${String(total).padStart(2, "0")}</span><h2>${escapeHtml(quiz.prompt)}</h2><div class="quiz-placement-layout"><div class="quiz-photo-card" draggable="${stored ? "false" : "true"}" data-quiz-card="${escapeHtml(quiz.observationId)}"><img src="${escapeHtml(photo?.src || MISSING_PHOTO_SRC)}" alt="${escapeHtml(photo?.title || "写真")}" />${quiz.region ? `<i style="left:${quiz.region.x}%;top:${quiz.region.y}%;width:${quiz.region.w}%;height:${quiz.region.h}%"></i>` : ""}<strong>${escapeHtml(photo?.title || "写真")}</strong></div><div class="quiz-option-grid">${quiz.options.map((option) => `<button class="quiz-placement ${selectedReferenceId === option.id ? (stored.correct ? "correct" : "incorrect") : ""}" data-quiz-drop="${escapeHtml(option.id)}" ${stored ? "disabled" : ""}>${escapeHtml(option.label)}${option.labelEn ? `<small>${escapeHtml(option.labelEn)}</small>` : ""}</button>`).join("")}</div></div><div id="quizFeedback">${stored ? `<div class="quiz-feedback"><strong>${stored.correct ? "正解です。" : `正解は「${escapeHtml(quiz.options.find((option) => option.id === quiz.targetReferenceId)?.label || quiz.targetReferenceId)}」です。`}</strong>${escapeHtml(quiz.explanation)}</div>` : ""}</div><div class="quiz-next-row"><small>${escapeHtml(photo?.title || "写真")}</small><button class="primary-button" id="nextQuizButton" ${stored ? "" : "disabled"}>${state.quizIndex === total - 1 ? "結果を見る" : "次の問題 →"}</button></div></div></article>`;
+    $$('[data-quiz-drop]').forEach((button) => {
+      button.addEventListener("click", () => answerGeneratedQuiz(quiz, button.dataset.quizDrop));
+      button.addEventListener("dragover", (event) => event.preventDefault());
+      button.addEventListener("drop", (event) => { event.preventDefault(); answerGeneratedQuiz(quiz, button.dataset.quizDrop); });
+    });
+    $("[data-quiz-card]")?.addEventListener("dragstart", (event) => event.dataTransfer?.setData("text/plain", quiz.observationId));
+    $("#nextQuizButton").addEventListener("click", () => nextGeneratedQuiz(quizzes));
+  }
+
+  function answerGeneratedQuiz(/** @type {any} */ quiz, /** @type {string} */ referenceId) {
+    if (state.quizResults.some((result) => result.quizId === quiz.id && result.visitId === state.activeVisitId)) return;
+    const result = scoreQuizAnswer(quiz, { placements: [{ cardId: quiz.observationId, referenceId }] });
+    state.quizResults.push({ id: uid("quiz-result"), visitId: state.activeVisitId, quizId: quiz.id, quizType: quiz.questionType, referenceFactId: quiz.referenceFactId, answer: result.answer, score: result.score, correct: result.correct, completedAt: new Date().toISOString() });
+    persist();
+    state.quizAnswered = true;
+    renderQuiz();
+  }
+
+  function nextGeneratedQuiz(/** @type {any[]} */ quizzes) {
+    if (!state.quizAnswered) return;
+    state.quizIndex += 1;
+    if (state.quizIndex >= quizzes.length) state.quizCompleted = true;
+    renderQuiz();
+  }
+
+  void quizUsesConfirmedData;
+  void renderLegacyQuiz;
 
   function resetQuiz() {
     state.quizIndex = 0;
