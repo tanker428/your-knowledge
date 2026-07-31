@@ -167,7 +167,7 @@ describe("buildExportDocument", () => {
   });
 
   it("round-trips visits, ReferenceFacts, and learning history without image bytes", () => {
-    const source = exportDoc();
+    const source = /** @type {any} */ (exportDoc());
     const restored = documentToProject(source, new Set(["p01", "p99"]), "default").project;
     expect(restored.visits).toEqual(source.project.visits);
     expect(restored.referenceFacts).toEqual(source.referenceFacts);
@@ -176,6 +176,16 @@ describe("buildExportDocument", () => {
     expect(restored.referenceDataVersion).toBe("paleo-2026-07");
     expect(restored.sourceMetadata).toEqual(source.sourceMetadata);
     expect(JSON.stringify(source)).not.toMatch(/data:image\//);
+  });
+
+  it("keeps an explicitly empty entity list empty across import and re-export", () => {
+    const source = /** @type {any} */ (exportDoc());
+    source.entities = [];
+    source.referenceFacts = [];
+    const imported = documentToProject(source, new Set(["p01", "p99"]), "default").project;
+    const reExported = /** @type {any} */ (buildExportDocument({ project: imported }));
+    expect(imported.entities).toEqual([]);
+    expect(reExported.entities).toEqual([]);
   });
 
   it("retains legacy facts without reclassifying them as ReferenceFact", () => {
@@ -223,7 +233,7 @@ describe("validateProjectDocument", () => {
   });
 
   it("refuses malformed v2 metadata before import can apply it", () => {
-    const doc = exportDoc();
+    const doc = /** @type {any} */ (exportDoc());
     doc.project.visits = "broken";
     const result = validateProjectDocument(doc);
     expect(result.ok).toBe(false);
@@ -237,10 +247,21 @@ describe("validateProjectDocument", () => {
     ["invalid photo visit", (doc) => { doc.photos[0].visitId = "missing"; }],
     ["invalid ReferenceFact subject", (doc) => { doc.referenceFacts[0].subjectId = "missing"; }],
     ["invalid ReferenceFact value", (doc) => { doc.referenceFacts[0].valueType = "entity-reference"; doc.referenceFacts[0].value = "missing"; }],
+    ["invalid ReferenceFact observationId", (doc) => { doc.referenceFacts[0].observationId = "missing"; }],
+    ["invalid ReferenceFact targetObservationId", (doc) => { doc.referenceFacts[0].targetObservationId = "missing"; }],
   ])("rejects %s without accepting the document", (_label, mutate) => {
-    const doc = exportDoc();
+    const doc = /** @type {any} */ (exportDoc());
     mutate(doc);
     expect(validateProjectDocument(doc).ok).toBe(false);
+  });
+
+  it("accepts and round-trips valid Observation references on a ReferenceFact", () => {
+    const doc = /** @type {any} */ (exportDoc());
+    doc.referenceFacts[0].observationId = "o01a";
+    doc.referenceFacts[0].targetObservationId = "o01a";
+    expect(validateProjectDocument(doc).ok).toBe(true);
+    const restored = documentToProject(doc, new Set(["p01", "p99"]), "default").project;
+    expect(/** @type {any} */ (buildExportDocument({ project: restored })).referenceFacts[0]).toMatchObject({ observationId: "o01a", targetObservationId: "o01a" });
   });
 
   it("accepts a newer minor version of the same major", () => {

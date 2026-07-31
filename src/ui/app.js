@@ -310,7 +310,7 @@ export async function initApp(deps) {
     }));
     state.relations = project.relations;
     state.facts = project.facts;
-    state.entities = Array.isArray(project.entities) && project.entities.length
+    state.entities = Array.isArray(project.entities)
       ? project.entities.map((entity) => ({ ...entity }))
       : SAMPLE_ENTITIES.map((entity) => ({ ...entity }));
     entityMap = new Map(state.entities.map((entity) => [entity.id, entity]));

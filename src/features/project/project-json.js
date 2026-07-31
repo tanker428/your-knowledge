@@ -260,6 +260,11 @@ export function validateProjectDocument(value) {
     if (fact.subjectId != null && !entityIds.has(fact.subjectId) && !observationIds.has(fact.subjectId)) {
       return { ok: false, reason: `referenceFacts[${index}] のsubjectIdが存在しません。` };
     }
+    for (const key of ["observationId", "targetObservationId"]) {
+      if (fact[key] != null && !observationIds.has(fact[key])) {
+        return { ok: false, reason: `referenceFacts[${index}] の${key}が存在しません。` };
+      }
+    }
     const referenceValue = fact.valueType === "entity-reference" || fact.valueType === "observation-reference" || fact.valueType === "reference";
     if (referenceValue && typeof fact.value === "string") {
       const exists = entityIds.has(fact.value) || observationIds.has(fact.value);
