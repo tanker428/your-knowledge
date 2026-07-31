@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 import { buildVisitKnowledgeGraph } from "../src/domain/knowledge-graph.js";
-import { buildKnowledgeGraphView, buildObservationFocusGraph, buildRadialLayout, buildVisitOverviewGraph, filterGraphByAxis, getKnowledgeGraphNodeDetail, mergeReferencedReferenceGraph } from "../src/features/knowledge-graph/selectors.js";
+import { buildKnowledgeGraphView, buildObservationFocusGraph, buildRadialLayout, buildVisitOverviewGraph, expandReferenceGraphNodes, filterGraphByAxis, getKnowledgeGraphNodeDetail, getRadialNodeShape, mergeReferencedReferenceGraph } from "../src/features/knowledge-graph/selectors.js";
 
 const registries = { genericCategories: [{ id: "display", label: "展示物" }], learningRoles: [], categoriesByPack: {} };
 const referenceGraph = {
@@ -89,5 +89,35 @@ describe("knowledge graph view selectors", () => {
     const focusLayout = buildRadialLayout(focus, "Observation:o1");
     expect(focusLayout.nodes.find((node) => node.id === "Observation:o1")?.ring).toBe(0);
     expect(focusLayout.nodes.some((node) => node.ring === 1)).toBe(true);
+  });
+  it("expands one ReferenceNode at a time and keeps the graph UI state-free", () => {
+    const graph = buildVisitKnowledgeGraph(project(), "v1", registries);
+    const focus = buildObservationFocusGraph(graph, "Observation:o1", referenceGraph);
+    const collapsed = expandReferenceGraphNodes(focus, referenceGraph, []);
+    const expanded = expandReferenceGraphNodes(focus, referenceGraph, ["taxon:grandchild"]);
+    expect(collapsed.nodes.some((node) => node.referenceId === "taxon:greatgrandchild")).toBe(false);
+    expect(expanded.nodes.some((node) => node.referenceId === "taxon:greatgrandchild")).toBe(true);
+    expect(expanded.nodes.some((node) => "selected" in node || "expanded" in node)).toBe(false);
+  });
+  it("assigns distinct radial shapes and keeps large layouts inside the viewBox", () => {
+    expect(new Set([
+      getRadialNodeShape({ type: "Visit" }),
+      getRadialNodeShape({ type: "Photo" }),
+      getRadialNodeShape({ type: "Observation" }),
+      getRadialNodeShape({ type: "Entity" }),
+      getRadialNodeShape({ type: "ReferenceFact" }),
+      getRadialNodeShape({ type: "ReferenceNode", axis: "taxonomy" }),
+      getRadialNodeShape({ type: "ReferenceNode", axis: "geological-time" }),
+    ]).size).toBe(7);
+    const graph = buildVisitKnowledgeGraph(project(), "v1", registries);
+    const overview = buildVisitOverviewGraph(graph);
+    const layout = buildRadialLayout({ ...overview, nodes: [...overview.nodes, ...Array.from({ length: 30 }, (_, index) => ({ id: `Photo:extra-${index}`, type: "Photo" }))] }, "Visit:v1");
+    expect(Math.max(...layout.nodes.map((node) => node.x))).toBeLessThanOrEqual(layout.width / 2 + layout.outerRadius);
+    expect(Math.max(...layout.nodes.map((node) => node.y))).toBeLessThanOrEqual(layout.height / 2 + layout.outerRadius);
+    expect(layout.width).toBeGreaterThan(760);
+  });
+  it("does not retain the old LearningFact label in the Knowledge Graph UI", async () => {
+    const source = await readFile(new URL("../src/ui/app.js", import.meta.url), "utf8");
+    expect(source).not.toContain("LearningFact");
   });
 });

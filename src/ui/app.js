@@ -77,8 +77,10 @@ import {
   buildKnowledgeGraphView,
   buildObservationFocusGraph,
   buildRadialLayout,
+  expandReferenceGraphNodes,
   filterGraphByAxis,
   getKnowledgeGraphNodeDetail,
+  getRadialNodeShape,
 } from "../features/knowledge-graph/selectors.js";
 
 const MAX_UPLOAD_BATCH = 120;
@@ -1724,7 +1726,7 @@ export async function initApp(deps) {
         : "📷 自分の写真から";
 
     $("#knowledgeFocus").innerHTML = `
-      <div class="knowledge-map-header"><div><span class="source-badge">${sourceBadge}</span><h2>${escapeHtml(observation.label)}</h2><p>${learnedMode ? "確認済みの観察対象に、あとから追加したLearningFactです。" : `${escapeHtml(photo.title)}の中で確認した観察対象です。`}</p></div><button class="ghost-button dark" data-open-photo="${escapeHtml(photo.id)}">元写真を見る</button></div>
+      <div class="knowledge-map-header"><div><span class="source-badge">${sourceBadge}</span><h2>${escapeHtml(observation.label)}</h2><p>${learnedMode ? "確認済みの観察対象に、あとから追加したReferenceFactです。" : `${escapeHtml(photo.title)}の中で確認した観察対象です。`}</p></div><button class="ghost-button dark" data-open-photo="${escapeHtml(photo.id)}">元写真を見る</button></div>
       <div class="focus-map">
         <article class="map-source-card"><small>PHOTO</small><img src="${escapeHtml(photo.thumbSrc || photo.src)}" alt="${escapeHtml(photo.title)}" /><strong>${escapeHtml(photo.title)}</strong></article>
         <div class="map-connector">→</div>
@@ -1782,7 +1784,7 @@ export async function initApp(deps) {
 
   void renderLegacyKnowledge;
 
-  // Core 4's old LearningFact screen remains above for compatibility with
+  // Core 4's old knowledge screen remains above for compatibility with
   // older markup, but this later declaration is the active ReferenceFact view.
   function renderKnowledge() {
     const project = toProject();
@@ -1791,7 +1793,9 @@ export async function initApp(deps) {
     if (!observations.some((node) => node.observationId === state.knowledgeObservationId)) state.knowledgeObservationId = observations[0]?.observationId || null;
     const focus = state.knowledgeObservationId ? buildObservationFocusGraph(view.source, `Observation:${state.knowledgeObservationId}`, referenceData?.graph) : null;
     const base = state.knowledgeViewMode === "focus" && focus ? focus : view?.overview;
-    const graph = base ? filterGraphByAxis(base, state.knowledgeAxis) : null;
+    const expandedReferenceIds = [...state.knowledgeExpanded].filter((id) => id.startsWith("reference:")).map((id) => id.slice("reference:".length));
+    const expanded = base ? expandReferenceGraphNodes(base, referenceData?.graph, expandedReferenceIds) : null;
+    const graph = expanded ? filterGraphByAxis(expanded, state.knowledgeAxis) : null;
     $$("#knowledgeViewModeControl [data-knowledge-view-mode]").forEach((button) => button.classList.toggle("active", button.dataset.knowledgeViewMode === state.knowledgeViewMode));
     $$("#knowledgeLayoutControl [data-knowledge-layout]").forEach((button) => button.classList.toggle("active", button.dataset.knowledgeLayout === state.knowledgeLayoutMode));
     $$("#knowledgeAxisControl [data-knowledge-axis]").forEach((button) => button.classList.toggle("active", button.dataset.knowledgeAxis === state.knowledgeAxis));
@@ -1811,7 +1815,7 @@ export async function initApp(deps) {
     if (state.knowledgeLayoutMode === "radial") return renderKnowledgeRadial(graph);
     const groups = ["Visit", "Photo", "Observation", "Entity", "ReferenceFact", "ReferenceNode", "GenericCategory", "DomainCategory", "LearningRole"];
     const sections = groups.map((type) => {
-      const nodes = graph.nodes.filter((node) => node.type === type && (type !== "ReferenceNode" || state.knowledgeExpanded.has("references")));
+      const nodes = graph.nodes.filter((node) => node.type === type);
       if (!nodes.length) return "";
       return `<section class="kg-node-group kg-${type.toLowerCase()}"><div class="kg-group-title"><span>${knowledgeNodeIcon(type)}</span><strong>${escapeHtml(knowledgeNodeLabel(type))}</strong><small>${nodes.length}</small></div><div class="kg-node-grid">${nodes.map(renderKnowledgeNode).join("")}</div></section>`;
     }).join("");
@@ -1824,13 +1828,7 @@ export async function initApp(deps) {
 
   function renderKnowledgeRadial(graph) {
     const centerId = state.knowledgeViewMode === "focus" ? `Observation:${state.knowledgeObservationId}` : `Visit:${state.activeVisitId}`;
-    const displayGraph = state.knowledgeExpanded.has("references")
-      ? graph
-      : {
-          ...graph,
-          nodes: graph.nodes.filter((node) => node.type !== "ReferenceNode"),
-          edges: graph.edges.filter((edge) => graph.nodes.some((node) => node.id === edge.sourceId && node.type !== "ReferenceNode") && graph.nodes.some((node) => node.id === edge.targetId && node.type !== "ReferenceNode")),
-        };
+    const displayGraph = graph;
     const layout = buildRadialLayout(displayGraph, centerId);
     const positionMap = new Map(layout.nodes.map((node) => /** @type {[string, any]} */ ([node.id, node])));
     const edgeMarkup = layout.edges.map((edge) => {
@@ -1847,12 +1845,29 @@ export async function initApp(deps) {
       const photo = node.type === "Photo" || node.type === "Observation" ? photoById(node.photoId) : null;
       const image = photo ? `<image class="kg-svg-image" href="${escapeHtml(photo.thumbSrc || photo.src || MISSING_PHOTO_SRC)}" x="${position.x - 17}" y="${position.y - 17}" width="34" height="34" preserveAspectRatio="xMidYMid slice" />` : "";
       const region = node.region && photo ? `<rect class="kg-svg-region" x="${position.x - 17 + (Number(node.region.x) || 0) * 0.34}" y="${position.y - 17 + (Number(node.region.y) || 0) * 0.34}" width="${Math.max(1, (Number(node.region.w) || 0) * 0.34)}" height="${Math.max(1, (Number(node.region.h) || 0) * 0.34)}" />` : "";
-      return `<g class="kg-svg-node kg-svg-${node.type.toLowerCase()} ${selected ? "selected" : ""}" data-kg-node="${escapeHtml(node.id)}"><circle cx="${position.x}" cy="${position.y}" r="${selected ? 29 : 24}" />${image}${region}<text x="${position.x}" y="${position.y + 43}" text-anchor="middle">${escapeHtml(shortGraphLabel(node.label || node.title || node.predicate || node.referenceId || node.type))}</text><title>${escapeHtml(node.label || node.title || node.predicate || node.referenceId || node.type)}</title></g>`;
+      const shape = renderRadialNodeShape(node, position, selected);
+      const referenceKey = node.type === "ReferenceNode" ? `reference:${node.referenceId}` : null;
+      const referenceAction = referenceKey ? `<text class="kg-svg-expand" data-kg-expand-reference="${escapeHtml(referenceKey)}" x="${position.x}" y="${position.y + 59}" text-anchor="middle">${state.knowledgeExpanded.has(referenceKey) ? "折り畳む" : "展開"}</text>` : "";
+      return `<g class="kg-svg-node kg-svg-${node.type.toLowerCase()} ${selected ? "selected" : ""}" data-kg-node="${escapeHtml(node.id)}">${shape}${image}${region}<text x="${position.x}" y="${position.y + 43}" text-anchor="middle">${escapeHtml(shortGraphLabel(node.label || node.title || node.predicate || node.referenceId || node.type))}</text>${referenceAction}<title>${escapeHtml(node.label || node.title || node.predicate || node.referenceId || node.type)}</title></g>`;
     }).join("");
     const zoom = state.knowledgeZoom;
-    const referenceToggle = graph.nodes.some((node) => node.type === "ReferenceNode") ? `<button class="text-button" data-kg-toggle-reference>${state.knowledgeExpanded.has("references") ? "参照を折り畳む" : "参照を展開"}</button>` : "";
     const backButton = state.knowledgeViewMode === "focus" ? '<button class="text-button" data-kg-overview>← 訪問全体へ戻る</button>' : "";
-    return `<div class="kg-canvas-header"><span>RADIAL GRAPH</span><strong>${state.knowledgeViewMode === "focus" ? "Observation詳細・1ホップ" : "訪問全体"}</strong><span class="kg-header-actions">${backButton}${referenceToggle}</span></div><div class="kg-zoom-controls"><button data-kg-zoom="out" aria-label="縮小">−</button><button data-kg-zoom="reset" aria-label="中央へ戻す">100%</button><button data-kg-zoom="in" aria-label="拡大">＋</button></div><svg class="kg-radial-svg" viewBox="0 0 ${layout.width} ${layout.height}" role="img" aria-label="知識グラフ"><defs><marker id="kg-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" /></marker></defs><g transform="translate(500 350) scale(${zoom}) translate(-500 -350)">${edgeMarkup}${nodeMarkup}</g></svg>`;
+    return `<div class="kg-canvas-header"><span>RADIAL GRAPH</span><strong>${state.knowledgeViewMode === "focus" ? "Observation詳細・1ホップ" : "訪問全体"}</strong><span class="kg-header-actions">${backButton}</span></div><div class="kg-zoom-controls"><button data-kg-zoom="out" aria-label="縮小">−</button><button data-kg-zoom="reset" aria-label="中央へ戻す">100%</button><button data-kg-zoom="in" aria-label="拡大">＋</button></div><svg class="kg-radial-svg" viewBox="0 0 ${layout.width} ${layout.height}" role="img" aria-label="知識グラフ"><defs><marker id="kg-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" /></marker></defs><g transform="translate(${layout.centerX} ${layout.centerY}) scale(${zoom}) translate(-${layout.centerX} -${layout.centerY})">${edgeMarkup}${nodeMarkup}</g></svg>`;
+  }
+
+  function renderRadialNodeShape(node, position, selected) {
+    const x = position.x;
+    const y = position.y;
+    const radius = selected ? 29 : 24;
+    const shape = getRadialNodeShape(node);
+    const className = `kg-svg-shape kg-svg-shape-${shape}`;
+    if (shape === "hexagon") return `<polygon class="${className}" points="${x - 29},${y - 16} ${x - 15},${y - 29} ${x + 15},${y - 29} ${x + 29},${y - 16} ${x + 29},${y + 16} ${x + 15},${y + 29} ${x - 15},${y + 29} ${x - 29},${y + 16}" />`;
+    if (shape === "diamond") return `<polygon class="${className}" points="${x},${y - 31} ${x + 31},${y} ${x},${y + 31} ${x - 31},${y}" />`;
+    if (shape === "triangle") return `<polygon class="${className}" points="${x},${y - 30} ${x + 30},${y + 24} ${x - 30},${y + 24}" />`;
+    if (shape === "ellipse") return `<ellipse class="${className}" cx="${x}" cy="${y}" rx="32" ry="22" />`;
+    if (shape === "rounded-rect") return `<rect class="${className}" x="${x - 29}" y="${y - 24}" width="58" height="48" rx="10" />`;
+    if (shape === "rect") return `<rect class="${className}" x="${x - 29}" y="${y - 22}" width="58" height="44" />`;
+    return `<circle class="${className}" cx="${x}" cy="${y}" r="${radius}" />`;
   }
 
   function shortGraphLabel(value) {
@@ -1863,7 +1878,8 @@ export async function initApp(deps) {
   function renderKnowledgeNode(node) {
     const photo = node.type === "Photo" || node.type === "Observation" ? photoById(node.photoId) : null;
     const image = photo ? `<span class="kg-node-image"><img src="${escapeHtml(photo.thumbSrc || photo.src || MISSING_PHOTO_SRC)}" alt="" />${node.region ? `<i style="left:${node.region.x}%;top:${node.region.y}%;width:${node.region.w}%;height:${node.region.h}%"></i>` : ""}</span>` : "";
-    return `<button class="kg-node-card kg-shape-${node.type.toLowerCase()}" data-kg-node="${escapeHtml(node.id)}">${image}<span class="kg-node-icon">${knowledgeNodeIcon(node.type)}</span><strong>${escapeHtml(node.label || node.title || node.predicate || node.referenceId || node.type)}</strong><small>${escapeHtml(knowledgeNodeLabel(node.type))}</small></button>`;
+    const card = `<button class="kg-node-card kg-shape-${node.type.toLowerCase()}" data-kg-node="${escapeHtml(node.id)}">${image}<span class="kg-node-icon">${knowledgeNodeIcon(node.type)}</span><strong>${escapeHtml(node.label || node.title || node.predicate || node.referenceId || node.type)}</strong><small>${escapeHtml(knowledgeNodeLabel(node.type))}</small></button>`;
+    return node.type === "ReferenceNode" ? `<div class="kg-reference-node-wrap">${card}<button class="text-button kg-reference-expand" data-kg-expand-reference="reference:${escapeHtml(node.referenceId)}">${state.knowledgeExpanded.has(`reference:${node.referenceId}`) ? "折り畳む" : "展開"}</button></div>` : card;
   }
 
   function renderKnowledgeDetail(graph, nodeId) {
@@ -1881,7 +1897,7 @@ export async function initApp(deps) {
     $$('[data-knowledge-observation]').forEach((button) => button.addEventListener("click", () => { state.knowledgeObservationId = button.dataset.knowledgeObservation; state.knowledgeViewMode = "focus"; renderKnowledge(); }));
     $$('[data-kg-node]').forEach((button) => button.addEventListener("click", () => { const id = button.dataset.kgNode; state.knowledgeDetailNodeId = id; if (id?.startsWith("Observation:")) { state.knowledgeObservationId = id.slice("Observation:".length); state.knowledgeViewMode = "focus"; } renderKnowledge(); }));
     $("[data-kg-overview]")?.addEventListener("click", () => { state.knowledgeViewMode = "overview"; state.knowledgeDetailNodeId = null; renderKnowledge(); });
-    $("[data-kg-toggle-reference]")?.addEventListener("click", () => { if (state.knowledgeExpanded.has("references")) state.knowledgeExpanded.delete("references"); else state.knowledgeExpanded.add("references"); renderKnowledge(); });
+    $$('[data-kg-expand-reference]').forEach((button) => button.addEventListener("click", (event) => { event.stopPropagation(); const key = button.dataset.kgExpandReference; if (!key) return; if (state.knowledgeExpanded.has(key)) state.knowledgeExpanded.delete(key); else state.knowledgeExpanded.add(key); renderKnowledge(); }));
     $("[data-kg-zoom=out]")?.addEventListener("click", () => { state.knowledgeZoom = Math.max(0.7, state.knowledgeZoom - 0.15); renderKnowledge(); });
     $("[data-kg-zoom=in]")?.addEventListener("click", () => { state.knowledgeZoom = Math.min(1.8, state.knowledgeZoom + 0.15); renderKnowledge(); });
     $("[data-kg-zoom=reset]")?.addEventListener("click", () => { state.knowledgeZoom = 1; renderKnowledge(); });

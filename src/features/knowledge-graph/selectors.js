@@ -76,6 +76,30 @@ export function mergeReferencedReferenceGraph(viewGraph, referenceGraph) {
   return { ...viewGraph, nodes: nodes.sort(compareId), edges: edges.sort(compareId), metadata: { ...viewGraph.metadata, referenceGraphMerged: true } };
 }
 
+/** Add only the direct children of individually expanded ReferenceNodes. */
+export function expandReferenceGraphNodes(viewGraph, referenceGraph, expandedReferenceIds = []) {
+  if (!referenceGraph || !expandedReferenceIds.length) return viewGraph;
+  const nodes = [...viewGraph.nodes];
+  const edges = [...viewGraph.edges];
+  const nodeIds = new Set(nodes.map((node) => node.id));
+  for (const referenceId of expandedReferenceIds) {
+    const parent = getReferenceNodeById(referenceGraph, referenceId);
+    if (!parent) continue;
+    if (!nodeIds.has(`Reference:${referenceId}`)) continue;
+    for (const child of getReferenceChildren(referenceGraph, referenceId)) {
+      if (!child || child.internalOnly || child.visible === false) continue;
+      const displayId = `Reference:${child.id}`;
+      if (!nodeIds.has(displayId)) {
+        nodeIds.add(displayId);
+        nodes.push({ id: displayId, type: "ReferenceNode", referenceId: child.id, label: child.label, axis: child.axis, kind: child.kind, status: child.status, sourceType: child.sourceType, internalOnly: false });
+      }
+      const edgeId = `ReferenceEdge:${parent.id}:${child.id}`;
+      if (!edges.some((edge) => edge.id === edgeId)) edges.push({ id: edgeId, type: child.axis === "geological-time" ? "PART_OF" : "SUBCLASS_OF", sourceId: displayId, targetId: `Reference:${parent.id}`, reference: true });
+    }
+  }
+  return { ...viewGraph, nodes: nodes.sort(compareId), edges: edges.sort(compareId), metadata: { ...viewGraph.metadata, expandedReferenceIds: [...expandedReferenceIds].sort() } };
+}
+
 export function filterGraphByAxis(graph, axis) {
   if (axis === "all") return graph;
   if (axis === "relation") {
@@ -117,20 +141,40 @@ export function buildRadialLayout(graph, centerId) {
   ringTwo.sort(compareId);
   ringOne.forEach((node) => centerNodeIds.add(node.id));
   ringTwo.forEach((node) => centerNodeIds.add(node.id));
-  const positions = [{ id: centerId, x: 500, y: 350, ring: 0 }];
-  addRingPositions(positions, ringOne, 190, 1);
-  addRingPositions(positions, ringTwo, Math.max(300, ringTwo.length * 38), 2);
-  return { width: 1000, height: 700, centerId, centerType, nodes: positions, edges: graph.edges.filter((edge) => centerNodeIds.has(edge.sourceId) && centerNodeIds.has(edge.targetId)).sort(compareId) };
+  const ringOneRadius = Math.max(190, ringOne.length * 52);
+  const ringTwoRadius = Math.max(ringOneRadius + 150, ringTwo.length * 52);
+  const outerRadius = ringTwo.length ? ringTwoRadius : ringOneRadius;
+  const padding = 120;
+  const width = Math.max(760, Math.ceil(outerRadius * 2 + padding * 2));
+  const height = Math.max(560, Math.ceil(outerRadius * 2 + padding * 2));
+  const centerX = width / 2;
+  const centerY = height / 2;
+  const positions = [{ id: centerId, x: centerX, y: centerY, ring: 0 }];
+  addRingPositions(positions, ringOne, ringOneRadius, 1, centerX, centerY);
+  addRingPositions(positions, ringTwo, ringTwoRadius, 2, centerX, centerY);
+  return { width, height, centerX, centerY, outerRadius, centerId, centerType, nodes: positions, edges: graph.edges.filter((edge) => centerNodeIds.has(edge.sourceId) && centerNodeIds.has(edge.targetId)).sort(compareId) };
 }
 
-function addRingPositions(positions, nodes, radius, ring) {
+function addRingPositions(positions, nodes, radius, ring, centerX, centerY) {
   const count = nodes.length;
   if (!count) return;
-  const effectiveRadius = Math.max(radius, count * 42);
+  const effectiveRadius = Math.max(radius, count * 52);
   nodes.forEach((node, index) => {
     const angle = -Math.PI / 2 + (Math.PI * 2 * index) / count;
-    positions.push({ id: node.id, x: Math.round((500 + Math.cos(angle) * effectiveRadius) * 100) / 100, y: Math.round((350 + Math.sin(angle) * effectiveRadius) * 100) / 100, ring });
+    positions.push({ id: node.id, x: Math.round((centerX + Math.cos(angle) * effectiveRadius) * 100) / 100, y: Math.round((centerY + Math.sin(angle) * effectiveRadius) * 100) / 100, ring });
   });
+}
+
+export function getRadialNodeShape(node) {
+  if (node.type === "Visit") return "hexagon";
+  if (node.type === "Photo") return "rounded-rect";
+  if (node.type === "Observation") return "circle";
+  if (node.type === "Entity") return "diamond";
+  if (node.type === "ReferenceFact") return "rect";
+  if (node.type === "GenericCategory" || node.type === "DomainCategory") return "triangle";
+  if (node.type === "ReferenceNode" && node.axis === "geological-time") return "ellipse";
+  if (node.type === "ReferenceNode") return "triangle";
+  return "circle";
 }
 
 function projectGraph(graph, ids, scope) {
