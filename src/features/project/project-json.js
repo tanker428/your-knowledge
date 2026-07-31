@@ -104,12 +104,12 @@ export function buildExportDocument(input) {
     })),
     observations,
     relations: project.relations,
-    entities: project.entities || input.entities || [],
+    entities: Array.isArray(project.entities) ? project.entities : [],
     referenceFacts: project.referenceFacts || [],
     // Legacy facts are retained under an explicit quarantine key so an old
     // user's data is not silently destroyed or reclassified as ReferenceFact.
     legacyFacts: project.facts || [],
-    quizResults,
+    quizResults: project.quizResults || quizResults,
     learningEvents: project.learningEvents || learningEvents,
     userKnowledgeStates: project.userKnowledgeStates || userKnowledgeStates,
     referenceDataVersion: project.referenceDataVersion ?? null,
@@ -185,6 +185,36 @@ export function validateProjectDocument(value) {
     }
   }
 
+  const checkUniqueIds = (key, values) => {
+    if (!Array.isArray(values)) return null;
+    const seen = new Set();
+    for (const [index, item] of values.entries()) {
+      if (item?.id === undefined) continue;
+      if (typeof item.id !== "string" || !item.id) return `${key}[${index}] の id が不正です。`;
+      if (seen.has(item.id)) return `${key} の id ${JSON.stringify(item.id)} が重複しています。`;
+      seen.add(item.id);
+    }
+    return null;
+  };
+  for (const [key, values] of Object.entries({
+    visits: doc.project?.visits,
+    photos: doc.photos,
+    observations: doc.observations,
+    relations: doc.relations,
+    entities: doc.entities,
+    referenceFacts: doc.referenceFacts,
+    quizResults: doc.quizResults,
+    learningEvents: doc.learningEvents,
+  })) {
+    const error = checkUniqueIds(key, values);
+    if (error) return { ok: false, reason: error };
+  }
+
+  const visitIds = new Set((doc.project?.visits || []).map((visit) => visit.id));
+  if (doc.project?.activeVisitId != null && !visitIds.has(doc.project.activeVisitId)) {
+    return { ok: false, reason: `activeVisitId ${JSON.stringify(doc.project.activeVisitId)} が存在しません。` };
+  }
+
   for (const [index, photo] of doc.photos.entries()) {
     if (!photo || typeof photo.id !== "string" || !photo.id) {
       return { ok: false, reason: `photos[${index}] に id がありません。` };
@@ -194,6 +224,12 @@ export function validateProjectDocument(value) {
   const photoIds = new Set(
     doc.photos.map((/** @type {any} */ photo) => photo.id),
   );
+  for (const [index, photo] of doc.photos.entries()) {
+    if (typeof photo.visitId !== "string" || !visitIds.has(photo.visitId)) {
+      return { ok: false, reason: `photos[${index}] (${photo.id}) のvisitIdが存在しません。` };
+    }
+  }
+  const observationIds = new Set();
   for (const [index, observation] of doc.observations.entries()) {
     if (!observation || typeof observation.id !== "string" || !observation.id) {
       return {
@@ -209,6 +245,25 @@ export function validateProjectDocument(value) {
         ok: false,
         reason: `observations[${index}] (${observation.id}) が存在しない写真 ${JSON.stringify(observation.photoId ?? null)} を参照しています。`,
       };
+    }
+    observationIds.add(observation.id);
+  }
+
+  for (const [index, relation] of doc.relations.entries()) {
+    if (!observationIds.has(relation.sourceId) || !observationIds.has(relation.targetId)) {
+      return { ok: false, reason: `relations[${index}] が存在しないObservationを参照しています。` };
+    }
+  }
+
+  const entityIds = new Set((doc.entities || []).map((entity) => entity.id));
+  for (const [index, fact] of (doc.referenceFacts || []).entries()) {
+    if (fact.subjectId != null && !entityIds.has(fact.subjectId) && !observationIds.has(fact.subjectId)) {
+      return { ok: false, reason: `referenceFacts[${index}] のsubjectIdが存在しません。` };
+    }
+    const referenceValue = fact.valueType === "entity-reference" || fact.valueType === "observation-reference" || fact.valueType === "reference";
+    if (referenceValue && typeof fact.value === "string") {
+      const exists = entityIds.has(fact.value) || observationIds.has(fact.value);
+      if (!exists) return { ok: false, reason: `referenceFacts[${index}] のvalue参照先が存在しません。` };
     }
   }
 

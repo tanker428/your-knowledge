@@ -80,9 +80,12 @@ function sampleProject() {
       },
     ],
     facts: [{ id: "f1", status: "learned" }],
+    entities: [{ id: "e1", name: "ティラノサウルス" }],
     referenceFacts: [{ id: "rf1", subjectId: "e1", status: "verified" }],
     learningEvents: [{ id: "event-1", referenceFactId: "rf1", result: 1 }],
     userKnowledgeStates: [{ userId: "user-local", visitId: "visit-1", referenceFactId: "rf1", masteryValue: 1 }],
+    referenceDataVersion: "paleo-2026-07",
+    sourceMetadata: { curator: "museum-team", reviewedAt: "2026-07-30" },
     quizResults: [
       {
         deck: "observed",
@@ -170,6 +173,8 @@ describe("buildExportDocument", () => {
     expect(restored.referenceFacts).toEqual(source.referenceFacts);
     expect(restored.learningEvents).toEqual(source.learningEvents);
     expect(restored.userKnowledgeStates).toEqual(source.userKnowledgeStates);
+    expect(restored.referenceDataVersion).toBe("paleo-2026-07");
+    expect(restored.sourceMetadata).toEqual(source.sourceMetadata);
     expect(JSON.stringify(source)).not.toMatch(/data:image\//);
   });
 
@@ -223,6 +228,19 @@ describe("validateProjectDocument", () => {
     const result = validateProjectDocument(doc);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.reason).toContain("project.visits");
+  });
+
+  it.each([
+    ["duplicate entity id", (doc) => { doc.entities.push({ id: "e1" }); }],
+    ["dangling relation", (doc) => { doc.relations[0].targetId = "missing"; }],
+    ["invalid active visit", (doc) => { doc.project.activeVisitId = "missing"; }],
+    ["invalid photo visit", (doc) => { doc.photos[0].visitId = "missing"; }],
+    ["invalid ReferenceFact subject", (doc) => { doc.referenceFacts[0].subjectId = "missing"; }],
+    ["invalid ReferenceFact value", (doc) => { doc.referenceFacts[0].valueType = "entity-reference"; doc.referenceFacts[0].value = "missing"; }],
+  ])("rejects %s without accepting the document", (_label, mutate) => {
+    const doc = exportDoc();
+    mutate(doc);
+    expect(validateProjectDocument(doc).ok).toBe(false);
   });
 
   it("accepts a newer minor version of the same major", () => {

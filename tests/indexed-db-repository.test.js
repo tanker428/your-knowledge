@@ -129,6 +129,13 @@ describe("IndexedDbKnowledgeRepository", () => {
     expect(blob.type).toBe("application/json");
     expect(JSON.parse(await blob.text()).photos[0].id).toBe("p01");
   });
+
+  it("exports quizResults through the repository and preserves them after re-import", async () => {
+    const savedResults = [{ id: "result-1", quizId: "q1", answer: { text: "三畳紀" }, correct: true }];
+    await repository.saveProject(project({ quizResults: savedResults }));
+    const exported = JSON.parse(await (await repository.exportProject(DEFAULT_PROJECT_ID)).text());
+    expect(exported.quizResults).toEqual(savedResults);
+  });
 });
 
 describe("isQuotaExceeded", () => {
