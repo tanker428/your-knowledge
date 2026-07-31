@@ -50,7 +50,7 @@ export function generateQuizzesFromKnowledgeGraph(graph, referenceGraph) {
         referenceFactId: fact.referenceFactId,
         targetReferenceId: target.id,
         relationIds,
-        options: options.map((node) => ({ id: node.id, label: node.label, labelEn: node.labelEn || node.scientificName || null, axis: node.axis, order: node.order ?? null })),
+        options: options.map((node) => ({ id: node.id, label: node.label, labelEn: node.labelEn || node.scientificName || null, axis: node.axis, order: node.order ?? null, parentIds: node.parentIds || [], startMa: node.startMa ?? null, endMa: node.endMa ?? null })),
         explanation: `${fact.predicate}のverified ReferenceFactと参照データに基づく配置です。`,
       });
     }

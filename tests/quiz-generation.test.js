@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
-import { generateVisitQuizzes, scoreQuizAnswer } from "../src/features/knowledge-graph/quiz-generation.js";
+import { describeQuizAvailability, generateVisitQuizzes, scoreQuizAnswer } from "../src/features/knowledge-graph/quiz-generation.js";
 
 const registries = { genericCategories: [], learningRoles: [], categoriesByPack: {} };
 const referenceGraph = {
@@ -63,6 +63,20 @@ describe("quiz generation from the visit knowledge graph", () => {
     expect(reloaded.quizId).toBe(quiz.id);
     expect(reloaded.answer.placements[0].referenceId).toBe(quiz.targetReferenceId);
     expect(reloaded.correct).toBe(true);
+  });
+  it("reports missing ReferenceFacts and generates after one is supplied", () => {
+    const withoutFacts = project();
+    withoutFacts.referenceFacts = [];
+    expect(describeQuizAvailability(withoutFacts, "v1", registries, referenceGraph).reason).toContain("verified ReferenceFact");
+    withoutFacts.referenceFacts.push({ id: "created-fact", targetObservationId: "o1", predicate: "livedDuring", value: "geo:period", status: "verified", sourceType: "curated" });
+    expect(generateVisitQuizzes(withoutFacts, "v1", registries, referenceGraph).length).toBeGreaterThan(0);
+  });
+  it("keeps multiple attempt records instead of overwriting them", () => {
+    const quiz = generateVisitQuizzes(project(), "v1", registries, referenceGraph)[0];
+    const first = { attemptId: "attempt-1", answeredAt: "2026-01-01T00:00:00Z", quizId: quiz.id, score: 0 };
+    const second = { attemptId: "attempt-2", answeredAt: "2026-01-02T00:00:00Z", quizId: quiz.id, score: 1 };
+    expect([first, second].filter((result) => result.quizId === quiz.id)).toHaveLength(2);
+    expect(second.attemptId).not.toBe(first.attemptId);
   });
   it("excludes other visits, unconfirmed facts, and unknown or ineligible references", () => {
     const quizzes = generateVisitQuizzes(project(), "v1", registries, referenceGraph);

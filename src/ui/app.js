@@ -81,7 +81,7 @@ import {
   getRadialNodeShape,
 } from "../features/knowledge-graph/selectors.js";
 import { describeQuizAvailability, scoreQuizAnswer } from "../features/knowledge-graph/quiz-generation.js";
-import { getReferenceChildren } from "../domain/reference-registry.js";
+import { getReferenceChildren, getReferenceNodeById } from "../domain/reference-registry.js";
 
 const MAX_UPLOAD_BATCH = 120;
 const STATUS_LABELS = {
@@ -212,6 +212,7 @@ export async function initApp(deps) {
     quizAnswered: false,
     quizCompleted: false,
     quizCurrentAnswer: null,
+    quizRetry: false,
     importing: false,
     /** @type {AbortController|null} */
     importAbort: null,
@@ -1898,7 +1899,14 @@ export async function initApp(deps) {
     if (!detail) return '<div class="empty-state"><strong>ノードを選択してください</strong></div>';
     const node = detail.node;
     const photo = node.photoId ? photoById(node.photoId) : null;
-    return `<div class="kg-detail-header"><span>${knowledgeNodeIcon(node.type)} ${escapeHtml(knowledgeNodeLabel(node.type))}</span><h2>${escapeHtml(node.label || node.title || node.predicate || node.referenceId || node.type)}</h2>${photo ? `<button class="ghost-button dark" data-open-photo="${escapeHtml(photo.id)}">元写真を見る</button>` : ""}</div>${photo ? `<div class="kg-detail-photo"><img src="${escapeHtml(photo.src || photo.thumbSrc || MISSING_PHOTO_SRC)}" alt="${escapeHtml(photo.title)}" /><strong>${escapeHtml(photo.title)}</strong></div>` : ""}<div class="kg-detail-meta"><p>接続 ${detail.incoming.length + detail.outgoing.length}件</p>${detail.outgoing.map((edge) => `<button data-kg-node="${escapeHtml(edge.targetId)}">→ ${escapeHtml(nodeLabel(graph, edge.targetId))}</button>`).join("")}${detail.incoming.map((edge) => `<button data-kg-node="${escapeHtml(edge.sourceId)}">← ${escapeHtml(nodeLabel(graph, edge.sourceId))}</button>`).join("")}</div>`;
+    const referenceEditor = node.type === "Observation" || node.type === "Entity" ? renderReferenceFactEditor(node) : "";
+    return `<div class="kg-detail-header"><span>${knowledgeNodeIcon(node.type)} ${escapeHtml(knowledgeNodeLabel(node.type))}</span><h2>${escapeHtml(node.label || node.title || node.predicate || node.referenceId || node.type)}</h2>${photo ? `<button class="ghost-button dark" data-open-photo="${escapeHtml(photo.id)}">元写真を見る</button>` : ""}</div>${photo ? `<div class="kg-detail-photo"><img src="${escapeHtml(photo.src || photo.thumbSrc || MISSING_PHOTO_SRC)}" alt="${escapeHtml(photo.title)}" /><strong>${escapeHtml(photo.title)}</strong></div>` : ""}${referenceEditor}<div class="kg-detail-meta"><p>接続 ${detail.incoming.length + detail.outgoing.length}件</p>${detail.outgoing.map((edge) => `<button data-kg-node="${escapeHtml(edge.targetId)}">→ ${escapeHtml(nodeLabel(graph, edge.targetId))}</button>`).join("")}${detail.incoming.map((edge) => `<button data-kg-node="${escapeHtml(edge.sourceId)}">← ${escapeHtml(nodeLabel(graph, edge.sourceId))}</button>`).join("")}</div>`;
+  }
+
+  function renderReferenceFactEditor(node) {
+    const references = (referenceData?.graph?.nodes || []).filter((item) => item.status === "verified" && item.quizEligible !== false && item.internalOnly !== true && item.visible !== false).sort((a, b) => a.axis.localeCompare(b.axis) || a.order - b.order || a.id.localeCompare(b.id));
+    if (!references.length) return '<div class="kg-reference-editor"><strong>ReferenceFactを設定できません</strong><p>verified ReferenceGraphが読み込まれていません。</p></div>';
+    return `<form class="kg-reference-editor" data-reference-fact-form="${escapeHtml(node.id)}"><strong>参照知識を設定</strong><label>分類・時代<select name="referenceId" required>${references.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.axis === "taxonomy" ? "分類" : "時代")}：${escapeHtml(item.label)}</option>`).join("")}</select></label><label>出典メモ<input name="sourceNote" placeholder="確認した資料や根拠" /></label><button class="primary-button small" type="submit">verified ReferenceFactを追加</button></form>`;
   }
 
   function nodeLabel(graph, nodeId) { const node = getKnowledgeGraphNodeDetail(graph, nodeId)?.node; return node?.label || node?.title || nodeId; }
@@ -1912,6 +1920,19 @@ export async function initApp(deps) {
     $("[data-kg-zoom=out]")?.addEventListener("click", () => { state.knowledgeZoom = Math.max(0.7, state.knowledgeZoom - 0.15); renderKnowledge(); });
     $("[data-kg-zoom=in]")?.addEventListener("click", () => { state.knowledgeZoom = Math.min(1.8, state.knowledgeZoom + 0.15); renderKnowledge(); });
     $("[data-kg-zoom=reset]")?.addEventListener("click", () => { state.knowledgeZoom = 1; renderKnowledge(); });
+    $$('[data-reference-fact-form]').forEach((form) => form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const formData = new FormData(form);
+      const reference = getReferenceNodeById(referenceData?.graph, String(formData.get("referenceId") || ""));
+      const nodeId = form.dataset.referenceFactForm || "";
+      if (!reference || (!nodeId.startsWith("Observation:") && !nodeId.startsWith("Entity:"))) return;
+      const target = nodeId.startsWith("Observation:") ? { targetObservationId: nodeId.slice("Observation:".length) } : { subjectId: nodeId.slice("Entity:".length) };
+      state.referenceFacts.push({ id: uid("reference-fact"), ...target, predicate: reference.axis === "taxonomy" ? "classifiedAs" : "livedDuring", value: reference.id, axis: reference.axis, sourceType: "curated", sourceNote: String(formData.get("sourceNote") || ""), status: "verified" });
+      persist();
+      renderKnowledge();
+      renderLearn();
+      showToast("verified ReferenceFactを追加しました");
+    }));
     $$('[data-open-photo]').forEach((button) => button.addEventListener("click", () => openPhotoModal(button.dataset.openPhoto)));
   }
 
@@ -2065,30 +2086,56 @@ export async function initApp(deps) {
     const quiz = quizzes[state.quizIndex];
     const photo = photoById(quiz.photoId);
     const stored = storedResults.get(quiz.id);
-    state.quizAnswered = Boolean(stored);
-    const selectedReferenceId = stored?.answer?.placements?.find((placement) => placement.cardId === quiz.observationId)?.referenceId || null;
-    $("#quizStage").innerHTML = `<article class="quiz-card"><div class="quiz-content"><span class="quiz-counter">${quiz.questionType === "hierarchy" ? "CLASSIFICATION" : "GEOLOGICAL TIME"} ${String(state.quizIndex + 1).padStart(2, "0")} / ${String(total).padStart(2, "0")}</span><h2>${escapeHtml(quiz.prompt)}</h2><div class="quiz-placement-layout"><div class="quiz-photo-card" draggable="${stored ? "false" : "true"}" data-quiz-card="${escapeHtml(quiz.observationId)}"><img src="${escapeHtml(photo?.src || MISSING_PHOTO_SRC)}" alt="${escapeHtml(photo?.title || "写真")}" />${quiz.region ? `<i style="left:${quiz.region.x}%;top:${quiz.region.y}%;width:${quiz.region.w}%;height:${quiz.region.h}%"></i>` : ""}<strong>${escapeHtml(photo?.title || "写真")}</strong></div><div class="quiz-option-grid">${quiz.options.map((option) => `<button class="quiz-placement ${selectedReferenceId === option.id ? (stored.correct ? "correct" : "incorrect") : ""}" data-quiz-drop="${escapeHtml(option.id)}" ${stored ? "disabled" : ""}>${escapeHtml(option.label)}${option.labelEn ? `<small>${escapeHtml(option.labelEn)}</small>` : ""}</button>`).join("")}</div></div><div id="quizFeedback">${stored ? `<div class="quiz-feedback"><strong>${stored.correct ? "正解です。" : `正解は「${escapeHtml(quiz.options.find((option) => option.id === quiz.targetReferenceId)?.label || quiz.targetReferenceId)}」です。`}</strong>${escapeHtml(quiz.explanation)}</div>` : ""}</div><div class="quiz-next-row"><small>${escapeHtml(photo?.title || "写真")}</small><button class="primary-button" id="nextQuizButton" ${stored ? "" : "disabled"}>${state.quizIndex === total - 1 ? "結果を見る" : "次の問題 →"}</button></div></div></article>`;
+    const retrying = state.quizRetry === true;
+    state.quizAnswered = Boolean(stored) && !retrying;
+    const selectedReferenceId = retrying ? null : stored?.answer?.placements?.find((placement) => placement.cardId === quiz.observationId)?.referenceId || null;
+    $("#quizStage").innerHTML = `<article class="quiz-card"><div class="quiz-content"><span class="quiz-counter">${quiz.questionType === "hierarchy" ? "CLASSIFICATION" : "GEOLOGICAL TIME"} ${String(state.quizIndex + 1).padStart(2, "0")} / ${String(total).padStart(2, "0")}</span><h2>${escapeHtml(quiz.prompt)}</h2><div class="quiz-placement-layout"><div class="quiz-photo-card" draggable="${state.quizAnswered ? "false" : "true"}" data-quiz-card="${escapeHtml(quiz.observationId)}"><img src="${escapeHtml(photo?.src || MISSING_PHOTO_SRC)}" alt="${escapeHtml(photo?.title || "写真")}" />${quiz.region ? `<i style="left:${quiz.region.x}%;top:${quiz.region.y}%;width:${quiz.region.w}%;height:${quiz.region.h}%"></i>` : ""}<strong>${escapeHtml(photo?.title || "写真")}</strong></div>${renderQuizPlacementBoard(quiz, selectedReferenceId, state.quizAnswered)}</div><div id="quizFeedback">${state.quizAnswered ? `<div class="quiz-feedback"><strong>${stored.correct ? "正解です。" : `正解は「${escapeHtml(quiz.options.find((option) => option.id === quiz.targetReferenceId)?.label || quiz.targetReferenceId)}」です。`}</strong>${escapeHtml(quiz.explanation)}</div>` : ""}</div><div class="quiz-next-row"><small>${escapeHtml(photo?.title || "写真")}</small>${state.quizAnswered ? `<button class="ghost-button" id="retryQuizButton">もう一度回答</button>` : ""}<button class="primary-button" id="nextQuizButton" ${state.quizAnswered ? "" : "disabled"}>${state.quizIndex === total - 1 ? "結果を見る" : "次の問題 →"}</button></div></div></article>`;
     $$('[data-quiz-drop]').forEach((button) => {
       button.addEventListener("click", () => answerGeneratedQuiz(quiz, button.dataset.quizDrop));
       button.addEventListener("dragover", (event) => event.preventDefault());
       button.addEventListener("drop", (event) => { event.preventDefault(); answerGeneratedQuiz(quiz, button.dataset.quizDrop); });
     });
     $("[data-quiz-card]")?.addEventListener("dragstart", (event) => event.dataTransfer?.setData("text/plain", quiz.observationId));
+    $("#retryQuizButton")?.addEventListener("click", () => { state.quizRetry = true; renderQuiz(); });
     $("#nextQuizButton").addEventListener("click", () => nextGeneratedQuiz(quizzes));
   }
 
+  function renderQuizPlacementBoard(/** @type {any} */ quiz, /** @type {string|null} */ selectedReferenceId, /** @type {boolean} */ answered) {
+    const options = [...quiz.options];
+    if (quiz.questionType === "hierarchy") {
+      const depth = (option) => {
+        let value = 0;
+        let current = option;
+        const seen = new Set();
+        while (current?.parentIds?.length && !seen.has(current.id)) {
+          seen.add(current.id);
+          const parent = options.find((item) => current.parentIds.includes(item.id));
+          if (!parent) break;
+          value += 1;
+          current = parent;
+        }
+        return value;
+      };
+      return `<div class="quiz-hierarchy-board" aria-label="分類樹">${options.map((option) => `<button class="quiz-placement quiz-tree-node ${selectedReferenceId === option.id ? (answered ? "correct" : "selected") : ""}" style="--tree-depth:${depth(option)}" data-quiz-drop="${escapeHtml(option.id)}" ${answered ? "disabled" : ""}>${escapeHtml(option.label)}${option.labelEn ? `<small>${escapeHtml(option.labelEn)}</small>` : ""}</button>`).join("")}</div>`;
+    }
+    const sorted = options.sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER) || a.id.localeCompare(b.id));
+    return `<div class="quiz-timeline-board" aria-label="地質時代の時間軸"><div class="quiz-time-axis"><span>古い</span><i></i><span>新しい</span></div><div class="quiz-time-slots">${sorted.map((option) => `<button class="quiz-placement quiz-time-slot ${selectedReferenceId === option.id ? (answered ? "correct" : "selected") : ""}" data-quiz-drop="${escapeHtml(option.id)}" ${answered ? "disabled" : ""}><strong>${escapeHtml(option.label)}</strong><small>${option.startMa == null ? "" : `${option.startMa} Ma`} ${option.endMa == null ? "" : `〜 ${option.endMa} Ma`}</small></button>`).join("")}</div></div>`;
+  }
+
   function answerGeneratedQuiz(/** @type {any} */ quiz, /** @type {string} */ referenceId) {
-    if (state.quizResults.some((result) => result.quizId === quiz.id && result.visitId === state.activeVisitId)) return;
     const result = scoreQuizAnswer(quiz, { placements: [{ cardId: quiz.observationId, referenceId }] });
-    state.quizResults.push({ id: uid("quiz-result"), visitId: state.activeVisitId, quizId: quiz.id, quizType: quiz.questionType, referenceFactId: quiz.referenceFactId, answer: result.answer, score: result.score, correct: result.correct, completedAt: new Date().toISOString() });
+    const answeredAt = new Date().toISOString();
+    state.quizResults.push({ id: uid("quiz-result"), attemptId: uid("quiz-attempt"), visitId: state.activeVisitId, quizId: quiz.id, quizType: quiz.questionType, referenceFactId: quiz.referenceFactId, answer: result.answer, score: result.score, correct: result.correct, answeredAt, completedAt: answeredAt });
     persist();
     state.quizAnswered = true;
+    state.quizRetry = false;
     renderQuiz();
   }
 
   function nextGeneratedQuiz(/** @type {any[]} */ quizzes) {
     if (!state.quizAnswered) return;
     state.quizIndex += 1;
+    state.quizRetry = false;
     if (state.quizIndex >= quizzes.length) state.quizCompleted = true;
     renderQuiz();
   }
@@ -2101,6 +2148,7 @@ export async function initApp(deps) {
     state.quizScore = 0;
     state.quizAnswered = false;
     state.quizCompleted = false;
+    state.quizRetry = false;
     renderQuiz();
   }
 
