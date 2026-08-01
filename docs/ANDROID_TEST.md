@@ -135,6 +135,62 @@ Web Share Target。端末とChromeのバージョンによっては利用でき�
 
 ---
 
+## Core Loop統合受け入れ（Issue #10）
+
+この節は、ユーザーがPC幅・412px幅・Android実機で確認するための手順です。
+自動統合テストでは、同じVisitの作成からJSON v2再読み込みまでを検証します。
+
+### PC幅
+
+- [ ] 新しいユーザーVisitを作成し、デモVisitと切り替えられる
+- [ ] ユーザーVisitへ写真を追加し、Observationを確認済みにする
+- [ ] PhotoとObservationがKnowledge Graphへ表示される
+- [ ] Observation間のconfirmed Relationが表示される
+- [ ] 分類・時代のverified ReferenceFactから問題を生成できる
+- [ ] 写真とregion付きカードを分類樹・時間軸へ配置できる
+- [ ] 解説を表示してから問題へ回答できる
+- [ ] 回答ごとにLearningEventが追加される
+- [ ] UserKnowledgeStateが`userId + visitId + referenceFactId`単位で更新される
+- [ ] 正解後だけ`masteryValue = 1`のReferenceFactが「後から学ぶ知識」に表示される
+- [ ] 再挑戦の誤答で`masteryValue = 0`となり、表示から外れる
+- [ ] コレクションの件数がObservation単位で再計算される
+- [ ] JSON v2を書き出し、読み込み後もReferenceFact・回答履歴・学習状態が残る
+- [ ] デモVisitへユーザーのPhoto・Relation・学習履歴が混ざらない
+- [ ] Visit削除・ReferenceFact削除後に孤立参照が残らない
+
+### 412px幅
+
+- [ ] Knowledge Graph、クイズ、コレクションが縦方向に収まり、横スクロールしない
+- [ ] 円形／リスト表示を切り替えられる
+- [ ] 写真カードとregion枠が画面内に収まる
+- [ ] 分類樹・時間軸へタップで配置できる
+- [ ] 「回答」「もう一度挑戦」「JSON読み込み」をタップできる
+- [ ] 空状態と不足理由が読める
+- [ ] 再読み込み後も現在のVisitと表示内容が保持される
+
+### Android実機
+
+- [ ] Android Chromeで同じ一連の操作を実施する
+- [ ] 写真登録、Observation整理、Relation確認をタッチだけで完了できる
+- [ ] Knowledge Graphからクイズへ移動し、分類・時代問題へ回答できる
+- [ ] 回答後の「後から学ぶ知識」とコレクション進捗を確認する
+- [ ] 「もう一度挑戦」で過去の回答が上書きされない
+- [ ] JSON v2を書き出し、共有シートまたはダウンロードから再読み込みできる
+- [ ] GitHub Pagesの`https://<owner>.github.io/your-knowledge/`で同じ操作を確認する
+- [ ] Service Worker更新通知で「後で」を選んでも編集中データが変わらない
+- [ ] 「今すぐ更新」後もIndexedDBの写真・Observation・Relationが残る
+- [ ] コンソールエラー、白画面、404、横スクロールがない
+
+### 用語と確認対象
+
+- 参照知識は`ReferenceFact`、履歴は`LearningEvent`、現在状態は`UserKnowledgeState`を使用する
+- `masteryValue = 1`だけを学習済みとして表示する
+- `LearningFact`、`KnowledgeFact`、`LearningState`は現行の確認対象に含めない
+- `Photo.experienceMemo`は体験メモとして保持し、学習済み知識へ自動変換しない
+- Draw.ioはレビュー資料、JSONは実行時の正本として扱う
+
+---
+
 ## 不具合を見つけたとき
 
 以下を控えておくと調査が早い。
