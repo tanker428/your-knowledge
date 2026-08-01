@@ -9,6 +9,7 @@
  */
 
 import fs from "node:fs";
+import crypto from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -254,6 +255,16 @@ function assemble() {
   return walk(dist);
 }
 
+function stampServiceWorker(files) {
+  const hash = crypto.createHash("sha256");
+  for (const file of files.sort()) hash.update(rel(file)).update(fs.readFileSync(file));
+  const version = `build-${hash.digest("hex").slice(0, 16)}`;
+  const swPath = path.join(dist, "sw.js");
+  const sw = fs.readFileSync(swPath, "utf8").replaceAll("__BUILD_VERSION__", version);
+  fs.writeFileSync(swPath, sw);
+  return version;
+}
+
 // -------------------------------------------------------------------- main ---
 
 checkShipListExists();
@@ -277,6 +288,7 @@ if (errors.length) {
 }
 
 const files = assemble();
+const serviceWorkerVersion = stampServiceWorker(files);
 const bytes = files.reduce((total, file) => total + fs.statSync(file).size, 0);
 
 console.log("build ok");
@@ -285,6 +297,7 @@ console.log(`  sample photos        : ${sampleCount} 枚すべて存在`);
 console.log(`  domain packs         : ${packCount} 件`);
 console.log(`  import.meta.url refs : ${urlCount} 件すべて解決`);
 console.log("  absolute paths       : なし");
+console.log(`  service worker version: ${serviceWorkerVersion}`);
 console.log(
   `  secrets / external   : ${warnings.length ? `${warnings.length} 件の外部URL記述` : "なし"}`,
 );

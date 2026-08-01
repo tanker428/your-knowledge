@@ -10,7 +10,9 @@
  * photos need. Nothing here ever talks to a third-party origin.
  */
 
-const VERSION = "v1";
+// Replaced with a content-derived value by scripts/build.mjs. The fallback is
+// useful for the local source tree and is never used by the production build.
+const VERSION = "__BUILD_VERSION__";
 const SHELL_CACHE = `your-knowledge-shell-${VERSION}`;
 const SAMPLE_CACHE = `your-knowledge-samples-${VERSION}`;
 const SHARED_PHOTO_DB = "your-knowledge-shared-photos";
@@ -165,7 +167,7 @@ async function handleShareTarget(request) {
 
 // ------------------------------------------------------------------- fetch ---
 
-/** Cache-first for the shell; the network is only a fallback. */
+/** Static assets are cache-first; navigations must check for a new index first. */
 async function serveShell(request) {
   const cached = await caches.match(request, { ignoreSearch: true });
   if (cached) return cached;
@@ -179,6 +181,22 @@ async function serveShell(request) {
       );
       if (shell) return shell;
     }
+    throw error;
+  }
+}
+
+async function serveNavigation(request) {
+  const shellUrl = new URL("./index.html", self.registration.scope).toString();
+  try {
+    const response = await fetch(new Request(request, { cache: "no-store" }));
+    if (response.ok) {
+      const cache = await caches.open(SHELL_CACHE);
+      await cache.put(shellUrl, response.clone());
+    }
+    return response;
+  } catch (error) {
+    const cached = await caches.match(shellUrl);
+    if (cached) return cached;
     throw error;
   }
 }
@@ -215,5 +233,5 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  event.respondWith(serveShell(request));
+  event.respondWith(request.mode === "navigate" ? serveNavigation(request) : serveShell(request));
 });

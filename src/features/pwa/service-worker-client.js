@@ -10,6 +10,24 @@
 // is three levels up. Getting this wrong silently disables offline support.
 const SW_URL = new URL("../../../sw.js", import.meta.url);
 
+export function isDevelopmentEnvironment() {
+  if (typeof location === "undefined") return false;
+  return (
+    location.hostname === "localhost" ||
+    location.hostname === "127.0.0.1" ||
+    location.hostname === "::1" ||
+    location.port === "8000" ||
+    location.port === "4173"
+  );
+}
+
+async function disableDevelopmentWorker() {
+  const registration = await navigator.serviceWorker.getRegistration(SW_URL.toString());
+  if (registration) await registration.unregister();
+  const names = await caches.keys();
+  await Promise.all(names.filter((name) => name.startsWith("your-knowledge-")).map((name) => caches.delete(name)));
+}
+
 /**
  * @typedef {object} ServiceWorkerHandle
  * @property {boolean} supported
@@ -26,6 +44,10 @@ export async function registerServiceWorker(handlers = {}) {
   const handle = { supported: false, applyUpdate: async () => {} };
   if (typeof navigator === "undefined" || !("serviceWorker" in navigator))
     return handle;
+  if (isDevelopmentEnvironment()) {
+    await disableDevelopmentWorker().catch(() => {});
+    return handle;
+  }
   handle.supported = true;
 
   /** @type {ServiceWorkerRegistration|null} */
@@ -39,6 +61,10 @@ export async function registerServiceWorker(handlers = {}) {
     console.warn("Service Workerを登録できませんでした。", error);
     return handle;
   }
+
+  // Explicitly ask the browser to check on every production page load. This
+  // detects a changed worker even when the current document came from cache.
+  await registration.update().catch(() => {});
 
   const announce = () => handlers.onUpdateAvailable?.();
 
@@ -72,7 +98,11 @@ export async function registerServiceWorker(handlers = {}) {
 
   handle.applyUpdate = async () => {
     updateRequested = true;
-    const waiting = registration?.waiting;
+    let waiting = registration?.waiting;
+    if (!waiting) {
+      await registration?.update().catch(() => {});
+      waiting = registration?.waiting;
+    }
     if (!waiting) {
       window.location.reload();
       return;
