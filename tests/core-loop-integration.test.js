@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildVisitKnowledgeGraph, getGraphNodesByType, validateKnowledgeGraph } from "../src/domain/knowledge-graph.js";
 import { getLearnedReferenceFacts } from "../src/domain/learned-reference-facts.js";
 import { recordQuizLearning, removeVisitLearningRecords } from "../src/domain/learning-state.js";
+import { collectVisitCascade } from "../src/domain/visit.js";
 import { buildCollectionProgress } from "../src/features/collections/collection-progress.js";
 import { generateVisitQuizzes, scoreQuizAnswer } from "../src/features/knowledge-graph/quiz-generation.js";
 import { buildExportDocument, documentToProject, validateProjectDocument } from "../src/features/project/project-json.js";
@@ -161,6 +162,77 @@ describe("Issue #10 core loop integration", () => {
     expect(removed.states).toEqual([]);
     expect(project.visits.some((visit) => visit.id === "visit-demo")).toBe(true);
     expect(project.referenceFacts.find((fact) => fact.id === "reference-demo")).toBeDefined();
+  });
+
+  it("removes a Visit cascade without leaving related records or dangling references", () => {
+    const project = /** @type {any} */ (createProject());
+    const question = generateVisitQuizzes(project, "visit-user", registries, referenceGraph)[0];
+    const result = correctResult(question, 1);
+    const recorded = recordQuizLearning({ events: [], states: [], result, userId });
+    project.quizResults = [result];
+    project.learningEvents = recorded.events;
+    project.userKnowledgeStates = recorded.states;
+
+    const cascade = collectVisitCascade(project, "visit-user");
+    expect(cascade.photoIds).toEqual(["photo-user-1", "photo-user-2"]);
+    expect(cascade.observationIds).toEqual(["observation-bone", "observation-panel"]);
+    expect(cascade.relationIds).toEqual(["relation-explains", "relation-demo"]);
+    expect(cascade.quizResultIds).toEqual(["result-1"]);
+
+    const removedPhotoIds = new Set(cascade.photoIds);
+    const removedObservationIds = new Set(cascade.observationIds);
+    const removedRelationIds = new Set(cascade.relationIds);
+    const removedEntityIds = new Set(["entity-basilosaurus"]);
+    project.photos = project.photos.filter((photo) => !removedPhotoIds.has(photo.id));
+    project.relations = project.relations.filter((relation) => !removedRelationIds.has(relation.id));
+    project.quizResults = project.quizResults.filter((item) => !cascade.quizResultIds.includes(item.id));
+    const learning = removeVisitLearningRecords(project.learningEvents, project.userKnowledgeStates, "visit-user");
+    project.learningEvents = learning.events;
+    project.userKnowledgeStates = learning.states;
+    project.referenceFacts = project.referenceFacts.filter((fact) =>
+      !removedObservationIds.has(fact.observationId) &&
+      !removedObservationIds.has(fact.targetObservationId) &&
+      !removedEntityIds.has(fact.subjectId),
+    );
+    project.entities = project.entities.filter((entity) => !removedEntityIds.has(entity.id));
+
+    expect(project.photos.some((photo) => photo.visitId === "visit-user")).toBe(false);
+    expect(project.photos.flatMap((photo) => photo.observations).some((observation) => removedObservationIds.has(observation.id))).toBe(false);
+    expect(project.relations).toEqual([]);
+    expect(project.quizResults).toEqual([]);
+    expect(project.learningEvents).toEqual([]);
+    expect(project.userKnowledgeStates).toEqual([]);
+    expect(project.referenceFacts).toEqual([expect.objectContaining({ id: "reference-demo", subjectId: "entity-demo" })]);
+
+    const exported = /** @type {any} */ (buildExportDocument({ project }));
+    expect(validateProjectDocument(exported)).toMatchObject({ ok: true });
+    expect(exported.observations).toEqual([expect.objectContaining({ id: "observation-demo", photoId: "photo-demo" })]);
+    expect(exported.relations).toEqual([]);
+  });
+
+  it("recomputes quizzes, learned display, and collection progress after ReferenceFact deletion", () => {
+    const project = /** @type {any} */ (createProject());
+    const questions = generateVisitQuizzes(project, "visit-user", registries, referenceGraph);
+    for (const [index, question] of questions.entries()) {
+      const result = correctResult(question, index + 1);
+      project.quizResults.push(result);
+      const recorded = recordQuizLearning({ events: project.learningEvents, states: project.userKnowledgeStates, result, userId });
+      project.learningEvents = recorded.events;
+      project.userKnowledgeStates = recorded.states;
+    }
+    expect(generateVisitQuizzes(project, "visit-user", registries, referenceGraph)).toHaveLength(2);
+    expect(getLearnedReferenceFacts(project, "visit-user", userId)).toHaveLength(2);
+    expect(buildCollectionProgress(project, "visit-user", userId, registries)[0].counts.learning).toBe(1);
+
+    project.referenceFacts = project.referenceFacts.filter((fact) => fact.id !== "reference-taxonomy");
+    expect(generateVisitQuizzes(project, "visit-user", registries, referenceGraph).map((quiz) => quiz.referenceFactId)).toEqual(["reference-time"]);
+    expect(getLearnedReferenceFacts(project, "visit-user", userId).map((item) => item.fact.id)).toEqual(["reference-time"]);
+    expect(buildCollectionProgress(project, "visit-user", userId, registries)[0].counts.learning).toBe(1);
+
+    project.referenceFacts = project.referenceFacts.filter((fact) => fact.id !== "reference-time");
+    expect(generateVisitQuizzes(project, "visit-user", registries, referenceGraph)).toEqual([]);
+    expect(getLearnedReferenceFacts(project, "visit-user", userId)).toEqual([]);
+    expect(buildCollectionProgress(project, "visit-user", userId, registries)[0].counts.learning).toBe(0);
   });
 
   it("does not allow a demo Visit to leak into the user flow or JSON reload", () => {
