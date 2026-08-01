@@ -50,6 +50,13 @@ import {
   updateObservation,
 } from "../domain/observation.js";
 import {
+  TUTORIAL_STEPS,
+  isTutorialSeen,
+  markTutorialSeen,
+  nextTutorialIndex,
+  previousTutorialIndex,
+} from "./tutorial.js";
+import {
   createRelation,
   isApprovableRelation,
   isDirectedRelation,
@@ -243,6 +250,8 @@ export async function initApp(deps) {
     relationPicker: null,
     relationSearch: { source: "", target: "" },
   };
+
+  let tutorialIndex = 0;
 
   let imageSurfaceObserver = null;
   let imageSurfaceResizeBound = false;
@@ -2557,6 +2566,50 @@ export async function initApp(deps) {
     openModal("firstRunModal");
   }
 
+  function tutorialStorage() {
+    try {
+      return window.localStorage;
+    } catch {
+      return null;
+    }
+  }
+
+  function renderTutorialStep() {
+    const step = TUTORIAL_STEPS[tutorialIndex];
+    if (!step) return;
+    $("#tutorialScreen").textContent = step.screen;
+    $("#tutorialTitle").textContent = step.title;
+    $("#tutorialDescription").textContent = step.description;
+    $("#tutorialProgress").textContent = `${tutorialIndex + 1} / ${TUTORIAL_STEPS.length}`;
+    $("#tutorialBackButton").disabled = tutorialIndex === 0;
+    $("#tutorialNextButton").classList.toggle(
+      "hidden",
+      tutorialIndex === TUTORIAL_STEPS.length - 1,
+    );
+    $("#tutorialDoneButton").classList.toggle(
+      "hidden",
+      tutorialIndex !== TUTORIAL_STEPS.length - 1,
+    );
+  }
+
+  function finishTutorial() {
+    markTutorialSeen(tutorialStorage());
+    closeModal("tutorialModal");
+    if (!state.activeVisitId) maybeShowFirstRun();
+  }
+
+  function openTutorial() {
+    tutorialIndex = 0;
+    renderTutorialStep();
+    openModal("tutorialModal");
+  }
+
+  function maybeShowTutorial() {
+    if (isTutorialSeen(tutorialStorage())) return false;
+    openTutorial();
+    return true;
+  }
+
   // ------------------------------------------------------------ importing ---
 
   function populateUploadOptions() {
@@ -2805,6 +2858,17 @@ export async function initApp(deps) {
     $("#viewMapButton").addEventListener("click", () =>
       switchView("knowledge"),
     );
+    $("#openTutorialButton")?.addEventListener("click", openTutorial);
+    $("#tutorialSkipButton")?.addEventListener("click", finishTutorial);
+    $("#tutorialDoneButton")?.addEventListener("click", finishTutorial);
+    $("#tutorialNextButton")?.addEventListener("click", () => {
+      tutorialIndex = nextTutorialIndex(tutorialIndex);
+      renderTutorialStep();
+    });
+    $("#tutorialBackButton")?.addEventListener("click", () => {
+      tutorialIndex = previousTutorialIndex(tutorialIndex);
+      renderTutorialStep();
+    });
     ["openUploadButton", "photosUploadButton"].forEach((id) =>
       document
         .getElementById(id)
@@ -2828,6 +2892,10 @@ export async function initApp(deps) {
     );
     document.addEventListener("keydown", (event) => {
       if (event.key !== "Escape") return;
+      if ($("#tutorialModal")?.classList.contains("open")) {
+        finishTutorial();
+        return;
+      }
       if (state.regionDrawing) {
         cancelRegionDrawing({ restoreEditor: true });
         return;
@@ -3143,7 +3211,7 @@ export async function initApp(deps) {
   renderOrganize();
   renderKnowledge();
   renderLearn();
-  maybeShowFirstRun();
+  if (!maybeShowTutorial()) maybeShowFirstRun();
   void renderStorageNote();
   void consumeSharedPhotos();
 }

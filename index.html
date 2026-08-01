@@ -27,6 +27,7 @@
         <button class="nav-link" data-view="collection">コレクション</button>
       </nav>
       <div class="topbar-actions">
+        <button class="ghost-button dark tutorial-help-button" id="openTutorialButton" type="button" aria-label="使い方を表示">？ 使い方</button>
         <button class="visit-switch" id="visitSwitchButton" aria-haspopup="dialog">
           <small>訪問</small><strong id="visitSwitchLabel">読み込み中…</strong><i aria-hidden="true">▾</i>
         </button>
@@ -413,6 +414,29 @@
           <strong>自分の訪問を作る</strong>
           <small>自分で撮った写真から、知識を育てはじめる</small>
         </button>
+      </div>
+    </article>
+  </div>
+
+  <div class="modal-backdrop" id="tutorialModal" aria-hidden="true">
+    <article class="small-modal-card tutorial-card" role="dialog" aria-modal="true" aria-labelledby="tutorialTitle">
+      <div class="tutorial-header">
+        <div>
+          <p class="section-kicker">使い方ガイド</p>
+          <span class="tutorial-screen" id="tutorialScreen"></span>
+        </div>
+        <strong class="tutorial-progress" id="tutorialProgress" aria-live="polite"></strong>
+      </div>
+      <h2 id="tutorialTitle"></h2>
+      <p class="muted-copy" id="tutorialDescription"></p>
+      <div class="tutorial-note">写真から見たものを整理し、知識を深める流れを紹介します。</div>
+      <div class="modal-actions tutorial-actions">
+        <button class="ghost-button dark" id="tutorialSkipButton" type="button">スキップ</button>
+        <div class="tutorial-navigation">
+          <button class="ghost-button dark" id="tutorialBackButton" type="button">戻る</button>
+          <button class="primary-button" id="tutorialNextButton" type="button">次へ</button>
+          <button class="primary-button hidden" id="tutorialDoneButton" type="button">完了</button>
+        </div>
       </div>
     </article>
   </div>
