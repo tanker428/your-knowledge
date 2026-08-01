@@ -167,12 +167,17 @@ async function handleShareTarget(request) {
 
 // ------------------------------------------------------------------- fetch ---
 
-/** Static assets are cache-first; navigations must check for a new index first. */
+/** Cache-first keeps the active worker's HTML and modules on one version. */
 async function serveShell(request) {
   const cached = await caches.match(request, { ignoreSearch: true });
   if (cached) return cached;
   try {
-    return await fetch(request);
+    const response = await fetch(request);
+    if (response.ok) {
+      const cache = await caches.open(SHELL_CACHE);
+      await cache.put(request, response.clone());
+    }
+    return response;
   } catch (error) {
     // Offline and not cached: for a navigation, fall back to the app shell.
     if (request.mode === "navigate") {
@@ -181,22 +186,6 @@ async function serveShell(request) {
       );
       if (shell) return shell;
     }
-    throw error;
-  }
-}
-
-async function serveNavigation(request) {
-  const shellUrl = new URL("./index.html", self.registration.scope).toString();
-  try {
-    const response = await fetch(new Request(request, { cache: "no-store" }));
-    if (response.ok) {
-      const cache = await caches.open(SHELL_CACHE);
-      await cache.put(shellUrl, response.clone());
-    }
-    return response;
-  } catch (error) {
-    const cached = await caches.match(shellUrl);
-    if (cached) return cached;
     throw error;
   }
 }
@@ -233,5 +222,5 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  event.respondWith(request.mode === "navigate" ? serveNavigation(request) : serveShell(request));
+  event.respondWith(serveShell(request));
 });
