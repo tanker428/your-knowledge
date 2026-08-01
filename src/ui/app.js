@@ -1756,7 +1756,7 @@ export async function initApp(deps) {
         : "📷 自分の写真から";
 
     $("#knowledgeFocus").innerHTML = `
-      <div class="knowledge-map-header"><div><span class="source-badge">${sourceBadge}</span><h2>${escapeHtml(observation.label)}</h2><p>${learnedMode ? "確認済みの観察対象に、あとから追加したReferenceFactです。" : `${escapeHtml(photo.title)}の中で確認した観察対象です。`}</p></div><button class="ghost-button dark" data-open-photo="${escapeHtml(photo.id)}">元写真を見る</button></div>
+      <div class="knowledge-map-header"><div><span class="source-badge">${sourceBadge}</span><h2>${escapeHtml(observation.label)}</h2><p>${learnedMode ? "確認済みの観察対象に、あとから追加した参照知識です。" : `${escapeHtml(photo.title)}の中で確認した観察対象です。`}</p></div><button class="ghost-button dark" data-open-photo="${escapeHtml(photo.id)}">元写真を見る</button></div>
       <div class="focus-map">
         <article class="map-source-card"><small>PHOTO</small><img src="${escapeHtml(photo.thumbSrc || photo.src)}" alt="${escapeHtml(photo.title)}" /><strong>${escapeHtml(photo.title)}</strong></article>
         <div class="map-connector">→</div>
@@ -1844,18 +1844,19 @@ export async function initApp(deps) {
   function renderLearnedReferenceFacts() {
     const learned = getLearnedReferenceFacts(toProject(), state.activeVisitId, state.userId, [...entityMap.values()]);
     $("#knowledgeObservationList").innerHTML = learned.length
-      ? `<div class="learned-index-note"><strong>学習済み ${learned.length}件</strong><small>この訪問で正解したReferenceFact</small></div>`
-      : '<div class="empty-state"><strong>後から学ぶ知識はまだありません</strong><p>知識グラフから問題に回答すると、学習済みのReferenceFactがここに表示されます。</p></div>';
+      ? `<div class="learned-index-note"><strong>学習済み ${learned.length}件</strong><small>この訪問で正解した確認済みの知識</small></div>`
+      : '<div class="empty-state"><strong>後から学ぶ知識はまだありません</strong><p>知識グラフから問題に回答すると、学習済みの知識がここに表示されます。</p></div>';
     $("#knowledgeGraphCanvas").innerHTML = learned.length
-      ? `<div class="kg-canvas-header"><span>LEARNED REFERENCE FACTS</span><strong>後から学ぶ知識</strong></div><div class="learned-reference-grid">${learned.map((item) => {
+      ? `<div class="kg-canvas-header"><span>LEARNED KNOWLEDGE</span><strong>後から学ぶ知識</strong></div><div class="learned-reference-grid">${learned.map((item) => {
         const fact = item.fact;
         const photo = item.photo;
         const observation = item.observation;
         const entity = item.entity;
         const value = Array.isArray(fact.value) ? fact.value.join("、") : fact.value;
-        return `<article class="learned-reference-card"><div class="learned-reference-media">${photo ? `<img src="${escapeHtml(photo.thumbSrc || photo.src || MISSING_PHOTO_SRC)}" alt="${escapeHtml(photo.title || "写真")}" />${observation?.region ? `<i style="left:${observation.region.x}%;top:${observation.region.y}%;width:${observation.region.w}%;height:${observation.region.h}%"></i>` : ""}` : `<span>⌘</span>`}</div><div class="learned-reference-body"><span class="source-badge">✓ VERIFIED REFERENCE</span><h3>${escapeHtml(fact.predicate || "参照知識")}</h3><strong>${escapeHtml(String(value || ""))}</strong>${entity ? `<p>Entity：${escapeHtml(entity.name || entity.id)}</p>` : ""}${observation ? `<p>Observation：${escapeHtml(observation.label)}${photo ? ` ／ ${escapeHtml(photo.title)}` : ""}</p>` : ""}<dl><div><dt>最終回答</dt><dd>${escapeHtml(item.state?.lastAnsweredAt || "-")}</dd></div><div><dt>試行</dt><dd>${item.state?.attemptCount ?? 0}回</dd></div><div><dt>正解</dt><dd>${item.state?.correctCount ?? 0}回</dd></div></dl>${item.questionId ? `<small class="learned-reference-question">Question：${escapeHtml(item.questionId)}</small>` : ""}<button class="text-button" data-delete-reference-fact="${escapeHtml(fact.id)}">ReferenceFactを削除</button></div></article>`;
+        const factLabel = fact.predicate === "classifiedAs" ? "分類" : ["livedDuring", "occursDuring", "occurs_during"].includes(fact.predicate) ? "時代" : "確認済みの知識";
+        return `<article class="learned-reference-card"><div class="learned-reference-media">${photo ? `<img src="${escapeHtml(photo.thumbSrc || photo.src || MISSING_PHOTO_SRC)}" alt="${escapeHtml(photo.title || "写真")}" />${observation?.region ? `<i style="left:${observation.region.x}%;top:${observation.region.y}%;width:${observation.region.w}%;height:${observation.region.h}%"></i>` : ""}` : `<span>⌘</span>`}</div><div class="learned-reference-body"><span class="source-badge">✓ 確認済みの知識</span><h3>${factLabel}</h3><strong>${escapeHtml(String(value || ""))}</strong>${entity ? `<p>関連する対象：${escapeHtml(entity.name || entity.id)}</p>` : ""}${observation ? `<p>元の観察：${escapeHtml(observation.label)}${photo ? ` ／ ${escapeHtml(photo.title)}` : ""}</p>` : ""}<dl><div><dt>最終回答</dt><dd>${escapeHtml(item.state?.lastAnsweredAt || "-")}</dd></div><div><dt>試行</dt><dd>${item.state?.attemptCount ?? 0}回</dd></div><div><dt>正解</dt><dd>${item.state?.correctCount ?? 0}回</dd></div></dl>${item.questionId ? `<small class="learned-reference-question">問題：${escapeHtml(item.questionId)}</small>` : ""}<button class="text-button" data-delete-reference-fact="${escapeHtml(fact.id)}">確認済みの知識を削除</button></div></article>`;
       }).join("")}</div>`
-      : '<div class="empty-state large"><strong>学習済みReferenceFactはありません</strong><p>ReferenceFactを登録しただけでは表示されません。クイズへ回答し、正解すると表示されます。</p></div>';
+      : '<div class="empty-state large"><strong>学習済みの知識はありません</strong><p>知識を登録しただけでは表示されません。クイズへ回答し、正解すると表示されます。</p></div>';
     $("#knowledgeGraphDetail").innerHTML = '<div class="empty-state"><strong>学習済み知識を選択してください</strong><p>表示されているカードから、関係する写真とObservationを確認できます。</p></div>';
     bindKnowledgeGraphEvents();
   }
@@ -1954,12 +1955,12 @@ export async function initApp(deps) {
 
   function renderReferenceFactEditor(node) {
     const references = (referenceData?.graph?.nodes || []).filter((item) => item.status === "verified" && item.quizEligible !== false && item.internalOnly !== true && item.visible !== false).sort((a, b) => a.axis.localeCompare(b.axis) || a.order - b.order || a.id.localeCompare(b.id));
-    if (!references.length) return '<div class="kg-reference-editor"><strong>ReferenceFactを設定できません</strong><p>verified ReferenceGraphが読み込まれていません。</p></div>';
-    return `<form class="kg-reference-editor" data-reference-fact-form="${escapeHtml(node.id)}"><strong>参照知識を設定</strong><label>分類・時代<select name="referenceId" required>${references.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.axis === "taxonomy" ? "分類" : "時代")}：${escapeHtml(item.label)}</option>`).join("")}</select></label><label>出典メモ<input name="sourceNote" placeholder="確認した資料や根拠" /></label><button class="primary-button small" type="submit">verified ReferenceFactを追加</button></form>`;
+    if (!references.length) return '<div class="kg-reference-editor"><strong>確認済みの知識を設定できません</strong><p>確認済みの分類・時代が読み込まれていません。</p></div>';
+    return `<form class="kg-reference-editor" data-reference-fact-form="${escapeHtml(node.id)}"><strong>この対象の正しい分類・時代を登録</strong><p>クイズや知識マップで正解として使う、確認済みの情報を登録します。</p><label>分類・時代<select name="referenceId" required>${references.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.axis === "taxonomy" ? "分類" : "時代")}：${escapeHtml(item.label)}</option>`).join("")}</select></label><label>情報の根拠（任意）<input name="sourceNote" placeholder="確認した資料や展示説明" /></label><button class="primary-button small" type="submit">確認済みの知識を追加</button></form>`;
   }
 
   function nodeLabel(graph, nodeId) { const node = getKnowledgeGraphNodeDetail(graph, nodeId)?.node; return node?.label || node?.title || nodeId; }
-  function knowledgeNodeLabel(type) { return { User: "利用者", Visit: "訪問", Photo: "写真", Observation: "Observation", Entity: "Entity", ReferenceFact: "ReferenceFact", ReferenceNode: "参照分類・時代", GenericCategory: "汎用分類", DomainCategory: "分野分類", LearningRole: "学習役割" }[type] || type; }
+  function knowledgeNodeLabel(type) { return { User: "利用者", Visit: "訪問", Photo: "写真", Observation: "観察対象", Entity: "関連する対象", ReferenceFact: "確認済みの知識", ReferenceNode: "参照分類・時代", GenericCategory: "汎用分類", DomainCategory: "分野分類", LearningRole: "学習役割" }[type] || type; }
   function knowledgeNodeIcon(type) { return { User: "●", Visit: "⬡", Photo: "▣", Observation: "◎", Entity: "◇", ReferenceFact: "▤", ReferenceNode: "⌘", GenericCategory: "◌", DomainCategory: "◆", LearningRole: "✦" }[type] || "•"; }
   function bindKnowledgeGraphEvents() {
     $$('[data-knowledge-observation]').forEach((button) => button.addEventListener("click", () => { state.knowledgeObservationId = button.dataset.knowledgeObservation; state.knowledgeViewMode = "focus"; renderKnowledge(); }));
@@ -1980,14 +1981,14 @@ export async function initApp(deps) {
       persist();
       renderKnowledge();
       renderLearn();
-      showToast("verified ReferenceFactを追加しました");
+      showToast("確認済みの知識を追加しました");
     }));
     $$('[data-delete-reference-fact]').forEach((button) => button.addEventListener("click", () => {
       const factId = button.dataset.deleteReferenceFact;
       state.referenceFacts = state.referenceFacts.filter((fact) => fact.id !== factId);
       persist();
       renderKnowledge();
-      showToast("ReferenceFactを削除しました");
+      showToast("確認済みの知識を削除しました");
     }));
     $$('[data-open-photo]').forEach((button) => button.addEventListener("click", () => openPhotoModal(button.dataset.openPhoto)));
   }
@@ -2136,7 +2137,7 @@ export async function initApp(deps) {
     $("#quizRing").style.background = `conic-gradient(var(--accent) ${degree}deg, rgba(255,255,255,.12) ${degree}deg)`;
     if (!total) {
       const availability = describeQuizAvailability(toProject(), state.activeVisitId, registry, referenceData?.graph);
-      $("#quizStage").innerHTML = `<div class="locked-deck"><span>∅</span><h2>表示できる問題がありません</h2><p>${escapeHtml(availability.reason || "このデッキには問題がありません。")} 確認済みのObservationとverified ReferenceFactを整理すると問題を生成できます。</p><button class="primary-button" id="goKnowledgeButton">知識マップへ</button></div>`;
+      $("#quizStage").innerHTML = `<div class="locked-deck"><span>∅</span><h2>表示できる問題がありません</h2><p>${escapeHtml(availability.reason || "このデッキには問題がありません。")} 確認済みの観察対象と参照知識を整理すると問題を生成できます。</p><button class="primary-button" id="goKnowledgeButton">知識マップへ</button></div>`;
       $("#goKnowledgeButton").addEventListener("click", () => switchView("knowledge"));
       return;
     }

@@ -53,7 +53,7 @@ export function generateQuizzesFromKnowledgeGraph(graph, referenceGraph) {
         options: placement.options.map((node) => ({ id: node.id, label: node.label, labelEn: node.labelEn || node.scientificName || null, axis: node.axis, order: node.order ?? null, rank: node.rank ?? null, parentIds: node.parentIds || [], startMa: node.startMa ?? null, endMa: node.endMa ?? null })),
         placementPathIds: placement.pathIds,
         placementSiblingIds: placement.siblingIds,
-        explanation: `${fact.predicate}のverified ReferenceFactと参照データに基づく配置です。`,
+        explanation: "確認済みの参照知識と分類・時代データに基づく配置です。",
       });
     }
   }
@@ -113,8 +113,8 @@ export function describeQuizAvailability(project, visitId, registries = {}, refe
   if (questions.length) return { questions, reason: null };
   const graph = visitId ? buildVisitKnowledgeGraph(project, visitId, registries) : null;
   if (!graph || !graph.nodes.some((node) => node.type === "Observation" && node.status === "confirmed")) return { questions, reason: "confirmed Observationがないため問題を作成できません。" };
-  if (!graph.nodes.some((node) => node.type === "ReferenceFact" && node.status === "verified")) return { questions, reason: "verified ReferenceFactがないため問題を作成できません。" };
-  return { questions, reason: "対応するverified ReferenceFactまたは参照データがないため問題を作成できません。" };
+  if (!graph.nodes.some((node) => node.type === "ReferenceFact" && node.status === "verified")) return { questions, reason: "確認済みの知識がないため問題を作成できません。" };
+  return { questions, reason: "対応する確認済みの知識または参照データがないため問題を作成できません。" };
 }
 
 export { MAX_QUESTIONS };

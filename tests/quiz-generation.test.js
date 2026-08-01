@@ -76,7 +76,7 @@ describe("quiz generation from the visit knowledge graph", () => {
   it("reports missing ReferenceFacts and generates after one is supplied", () => {
     const withoutFacts = project();
     withoutFacts.referenceFacts = [];
-    expect(describeQuizAvailability(withoutFacts, "v1", registries, referenceGraph).reason).toContain("verified ReferenceFact");
+    expect(describeQuizAvailability(withoutFacts, "v1", registries, referenceGraph).reason).toContain("確認済みの知識");
     withoutFacts.referenceFacts.push({ id: "created-fact", targetObservationId: "o1", predicate: "livedDuring", value: "geo:period", status: "verified", sourceType: "curated" });
     expect(generateVisitQuizzes(withoutFacts, "v1", registries, referenceGraph).length).toBeGreaterThan(0);
   });
