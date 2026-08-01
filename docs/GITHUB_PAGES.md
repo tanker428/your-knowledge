@@ -146,10 +146,20 @@ npm run dev
 `npm run dev` は**わざとサブパスで配信する**。`/` で確認すると、このポートで
 避けたかった種類のバグが表に出ない。
 
+開発サーバー（localhost、ポート8000/4173）ではService Workerを登録しない。
+過去に登録済みの開発用Workerがある場合は起動時に登録解除し、`your-knowledge-`
+で始まるHTTPキャッシュだけを削除する。IndexedDBのPhoto・Observation・Relationは
+削除しない。本番のGitHub PagesではWorkerを登録し、更新時はwaiting状態を検出して
+「新しいバージョンがあります」を表示する。
+
 ```bash
 npm run dev -- --base=/ --port=3000    # ルート配信で確認したいとき
 npm run dev -- --dist                  # dist/ の中身を確認したいとき
 ```
+
+GitHub Pages相当のサブパスは`http://localhost:8000/your-knowledge/`で確認する。
+更新確認では`npm run build`後にサーバーを再起動し、既存タブを再読み込みする。
+「後で」は現在の画面を維持し、「今すぐ更新」はWorker切替後に再読み込みする。
 
 `file://` で index.html を直接開くと、ES モジュールと Service Worker と
 `fetch` がいずれも動かない。必ず HTTP サーバ経由で開くこと。

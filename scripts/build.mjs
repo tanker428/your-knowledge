@@ -9,6 +9,7 @@
  */
 
 import fs from "node:fs";
+import crypto from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -254,6 +255,49 @@ function assemble() {
   return walk(dist);
 }
 
+function stampServiceWorker(files) {
+  const hash = crypto.createHash("sha256");
+  for (const file of files.sort()) hash.update(rel(file)).update(fs.readFileSync(file));
+  const version = `build-${hash.digest("hex").slice(0, 16)}`;
+  const swPath = path.join(dist, "sw.js");
+  const generated = [
+    "./",
+    "./index.html",
+    "./manifest.webmanifest",
+    "./favicon.svg",
+    "./pwa-icon-192.png",
+    "./pwa-icon-512.png",
+    ...files
+      .map((file) => `./${path.relative(dist, file).split(path.sep).join("/")}`)
+      .filter((file) => /\.(?:js|css|json)$/.test(file)),
+  ];
+  const sw = fs.readFileSync(swPath, "utf8")
+    .replace(/const SHELL_ASSETS = \[[\s\S]*?\];/, `const SHELL_ASSETS = ${JSON.stringify([...new Set(generated)], null, 2)};`)
+    .replaceAll("__BUILD_VERSION__", version);
+  fs.writeFileSync(swPath, sw);
+  return version;
+}
+
+function checkGeneratedServiceWorkerShell() {
+  const sw = fs.readFileSync(path.join(dist, "sw.js"), "utf8");
+  const block = /const SHELL_ASSETS = (\[[\s\S]*?\]);/.exec(sw);
+  if (!block) {
+    errors.push("dist/sw.js の生成済みプリキャッシュ一覧を読めませんでした");
+    return;
+  }
+  let assets;
+  try {
+    assets = JSON.parse(block[1]);
+  } catch {
+    errors.push("dist/sw.js のプリキャッシュ一覧がJSONとして不正です");
+    return;
+  }
+  for (const asset of assets) {
+    if (asset === "./") continue;
+    if (!fs.existsSync(path.join(dist, asset.slice(2)))) errors.push(`生成済みプリキャッシュ対象がありません: ${asset}`);
+  }
+}
+
 // -------------------------------------------------------------------- main ---
 
 checkShipListExists();
@@ -277,6 +321,13 @@ if (errors.length) {
 }
 
 const files = assemble();
+const serviceWorkerVersion = stampServiceWorker(files);
+checkGeneratedServiceWorkerShell();
+if (errors.length) {
+  console.error("\nビルド失敗:");
+  for (const error of errors) console.error(`  ✗ ${error}`);
+  process.exit(1);
+}
 const bytes = files.reduce((total, file) => total + fs.statSync(file).size, 0);
 
 console.log("build ok");
@@ -285,6 +336,7 @@ console.log(`  sample photos        : ${sampleCount} 枚すべて存在`);
 console.log(`  domain packs         : ${packCount} 件`);
 console.log(`  import.meta.url refs : ${urlCount} 件すべて解決`);
 console.log("  absolute paths       : なし");
+console.log(`  service worker version: ${serviceWorkerVersion}`);
 console.log(
   `  secrets / external   : ${warnings.length ? `${warnings.length} 件の外部URL記述` : "なし"}`,
 );

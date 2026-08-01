@@ -10,7 +10,9 @@
  * photos need. Nothing here ever talks to a third-party origin.
  */
 
-const VERSION = "v1";
+// Replaced with a content-derived value by scripts/build.mjs. The fallback is
+// useful for the local source tree and is never used by the production build.
+const VERSION = "__BUILD_VERSION__";
 const SHELL_CACHE = `your-knowledge-shell-${VERSION}`;
 const SAMPLE_CACHE = `your-knowledge-samples-${VERSION}`;
 const SHARED_PHOTO_DB = "your-knowledge-shared-photos";
@@ -165,12 +167,17 @@ async function handleShareTarget(request) {
 
 // ------------------------------------------------------------------- fetch ---
 
-/** Cache-first for the shell; the network is only a fallback. */
+/** Cache-first keeps the active worker's HTML and modules on one version. */
 async function serveShell(request) {
   const cached = await caches.match(request, { ignoreSearch: true });
   if (cached) return cached;
   try {
-    return await fetch(request);
+    const response = await fetch(request);
+    if (response.ok) {
+      const cache = await caches.open(SHELL_CACHE);
+      await cache.put(request, response.clone());
+    }
+    return response;
   } catch (error) {
     // Offline and not cached: for a navigation, fall back to the app shell.
     if (request.mode === "navigate") {
