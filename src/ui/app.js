@@ -53,6 +53,7 @@ import {
   clientPointToImagePercent,
   createImageViewport,
   panImageViewport,
+  resetImageViewport,
   zoomImageViewport,
 } from "../domain/image-viewport.js";
 import {
@@ -255,6 +256,8 @@ export async function initApp(deps) {
   let imageSurfaceFrame = null;
   let organizeViewport = createImageViewport();
   let organizeInteractionMode = "pan";
+  let organizeMagnifierActive = false;
+  let organizeViewportNeedsFit = true;
   const organizePointers = new Map();
   let organizePanStart = null;
   let organizePinchStart = null;
@@ -735,7 +738,17 @@ export async function initApp(deps) {
       stage.style.top = `${area.top - containerRect.top}px`;
       stage.style.width = `${area.width}px`;
       stage.style.height = `${area.height}px`;
-      stage.style.transform = `translate3d(${organizeViewport.x}px, ${organizeViewport.y}px, 0) scale(${organizeViewport.scale})`;
+      const fitScale = image.naturalWidth ? area.width / image.naturalWidth : 1;
+      const previousFitScale = organizeViewport.fitScale || 1;
+      const shouldResetFit = organizeViewportNeedsFit || organizeViewport.photoId !== state.organizePhotoId || Math.abs(previousFitScale - fitScale) > 0.001;
+      if (shouldResetFit) {
+        const multiplier = organizeMagnifierActive ? organizeViewport.scale / previousFitScale : 1;
+        organizeViewport = resetImageViewport(state.organizePhotoId, fitScale);
+        organizeViewport.scale = fitScale * multiplier;
+        organizeViewportNeedsFit = false;
+      }
+      const multiplier = organizeViewport.scale / (organizeViewport.fitScale || 1);
+      stage.style.transform = `translate3d(${organizeViewport.x}px, ${organizeViewport.y}px, 0) scale(${multiplier})`;
     } else {
       alignImageSurface($("#observationOverlay"), container, image);
       alignImageSurface($("#regionDrawLayer"), container, image);
@@ -753,6 +766,16 @@ export async function initApp(deps) {
     }
     $("#panModeButton")?.classList.toggle("active", organizeInteractionMode === "pan");
     $("#regionModeButton")?.classList.toggle("active", organizeInteractionMode === "region");
+    const zoomLevel = $("#imageZoomLevel");
+    if (zoomLevel) zoomLevel.textContent = `${Math.round((organizeViewport.scale / (organizeViewport.fitScale || 1)) * 100)}%`;
+    const magnifier = $("#magnifierButton");
+    if (magnifier) {
+      magnifier.classList.toggle("active", organizeMagnifierActive);
+      magnifier.setAttribute("aria-pressed", String(organizeMagnifierActive));
+      magnifier.textContent = organizeMagnifierActive ? "⌕ 虫眼鏡を終了" : "⌕ 虫眼鏡で拡大";
+    }
+    $("#imageZoomControls")?.classList.toggle("hidden", !organizeMagnifierActive);
+    $("#imageZoomHint")?.classList.toggle("hidden", !organizeMagnifierActive);
     const controls = $("#regionDrawingControls");
     if (controls) controls.classList.toggle("hidden", !state.regionDrawing);
   }
@@ -825,7 +848,8 @@ export async function initApp(deps) {
   }
 
   function resetOrganizeViewport() {
-    organizeViewport = createImageViewport(state.organizePhotoId);
+    organizeViewport = resetImageViewport(state.organizePhotoId, organizeViewport.fitScale || 1);
+    organizeViewportNeedsFit = true;
     organizeInteractionMode = "pan";
     organizePointers.clear();
     organizePanStart = null;
@@ -833,12 +857,38 @@ export async function initApp(deps) {
     alignOrganizeSurfaces();
   }
 
+  function startOrganizeMagnifier() {
+    organizeMagnifierActive = true;
+    organizeInteractionMode = "pan";
+    alignOrganizeSurfaces();
+  }
+
+  function stopOrganizeMagnifier() {
+    organizeMagnifierActive = false;
+    resetOrganizeViewport();
+  }
+
+  function zoomOrganizeByStep(direction) {
+    if (!organizeMagnifierActive) return;
+    const baseRect = organizeBaseRect();
+    const container = $("#annotatedPhoto");
+    if (!baseRect || !container) return;
+    const rect = container.getBoundingClientRect();
+    const nextScale = organizeViewport.scale * (direction > 0 ? 1.25 : 0.8);
+    applyOrganizeViewport(zoomImageViewport(
+      organizeViewport,
+      baseRect,
+      nextScale,
+      { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 },
+    ));
+  }
+
   function bindImageViewport() {
     const container = $("#annotatedPhoto");
     if (!container || container.dataset.viewportBound) return;
     container.dataset.viewportBound = "true";
     container.addEventListener("wheel", (/** @type {WheelEvent} */ event) => {
-      if (organizeInteractionMode !== "pan") return;
+      if (!organizeMagnifierActive || organizeInteractionMode !== "pan") return;
       const baseRect = organizeBaseRect();
       if (!baseRect) return;
       event.preventDefault();
@@ -852,7 +902,7 @@ export async function initApp(deps) {
     }, { passive: false });
     container.addEventListener("pointerdown", (/** @type {PointerEvent} */ event) => {
       const target = /** @type {Element|null} */ (event.target);
-      if (organizeInteractionMode !== "pan" || target?.closest("button")) return;
+      if (!organizeMagnifierActive || organizeInteractionMode !== "pan" || target?.closest("button")) return;
       organizePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
       container.setPointerCapture(event.pointerId);
       if (organizePointers.size === 1) {
@@ -1184,7 +1234,9 @@ export async function initApp(deps) {
     if (!photo) return;
     cancelRegionDrawing({ clearDraft: true });
     state.organizePhotoId = photoId;
-    resetOrganizeViewport();
+    organizeMagnifierActive = false;
+    organizeViewport = resetImageViewport(photoId, 1);
+    organizeViewportNeedsFit = true;
     state.organizeStep = 1;
     state.activeObservationId =
       photo.observations.find(
@@ -1767,8 +1819,7 @@ export async function initApp(deps) {
       startRegionDrawing();
     });
     $("#panModeButton")?.addEventListener("click", () => {
-      organizeInteractionMode = "pan";
-      alignOrganizeSurfaces();
+      startOrganizeMagnifier();
     });
     $("#regionModeButton")?.addEventListener("click", () => {
       organizeInteractionMode = "region";
@@ -1776,8 +1827,15 @@ export async function initApp(deps) {
       if (state.observationDraft) state.observationDraft.regionMode = "region";
       const radio = $("#newObservationRegion input[value=region]");
       if (radio) radio.checked = true;
+      alignOrganizeSurfaces();
       showToast("名前と対象種別を入力してから範囲を指定してください");
     });
+    $("#magnifierButton")?.addEventListener("click", () => {
+      if (organizeMagnifierActive) stopOrganizeMagnifier();
+      else startOrganizeMagnifier();
+    });
+    $("#imageZoomInButton")?.addEventListener("click", () => zoomOrganizeByStep(1));
+    $("#imageZoomOutButton")?.addEventListener("click", () => zoomOrganizeByStep(-1));
     $("#resetImageViewportButton")?.addEventListener("click", resetOrganizeViewport);
   }
 

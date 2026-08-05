@@ -15,6 +15,7 @@ import {
   createImageViewport,
   getTransformedImageRect,
   panImageViewport,
+  resetImageViewport,
   zoomImageViewport,
 } from "../src/domain/image-viewport.js";
 
@@ -31,6 +32,19 @@ describe("Observation region", () => {
     expect(rect.height).toBe(600);
     expect(clientPointToImagePercent({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }, base, viewport)).toEqual({ x: 50, y: 50 });
     expect(viewport).not.toHaveProperty("region");
+  });
+
+  it("全体表示はfit倍率・移動量・一時状態を完全に初期化する", () => {
+    const reset = resetImageViewport("p1", 0.75);
+    expect(reset).toEqual({ photoId: "p1", fitScale: 0.75, scale: 0.75, x: 0, y: 0 });
+  });
+
+  it("fit倍率が1未満でも拡大率を相対的に計算する", () => {
+    const base = { left: 0, top: 0, width: 400, height: 300 };
+    const fit = resetImageViewport("p1", 0.5);
+    const zoomed = zoomImageViewport(fit, base, 1);
+    expect(zoomed.scale).toBe(1);
+    expect(getTransformedImageRect(base, zoomed)).toMatchObject({ width: 800, height: 600 });
   });
 
   it("ズームのアンカー位置を保ったまま既存regionの座標系を変えない", () => {

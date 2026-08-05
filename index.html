@@ -164,7 +164,7 @@
                 <button type="button" id="cancelRegionDrawingButton">キャンセル</button>
               </div>
             </div>
-            <div class="image-help"><span>番号を押すと対象を選択</span><div class="image-tools"><button class="text-button" id="panModeButton" type="button">移動</button><button class="text-button" id="regionModeButton" type="button">範囲を追加</button><button class="text-button" id="resetImageViewportButton" type="button">全体表示</button><button class="text-button" id="addObservationButton" type="button">＋ 対象を手動追加</button></div></div>
+            <div class="image-help"><span>番号を押すと対象を選択</span><div class="image-tools"><button class="text-button magnifier-button" id="magnifierButton" type="button" aria-pressed="false">⌕ 虫眼鏡で拡大</button><span class="image-zoom-controls hidden" id="imageZoomControls"><button class="text-button" id="imageZoomOutButton" type="button" aria-label="縮小">−</button><strong id="imageZoomLevel">100%</strong><button class="text-button" id="imageZoomInButton" type="button" aria-label="拡大">＋</button></span><button class="text-button" id="panModeButton" type="button">移動</button><button class="text-button" id="regionModeButton" type="button">範囲を追加</button><button class="text-button" id="resetImageViewportButton" type="button">全体表示</button><button class="text-button" id="addObservationButton" type="button">＋ 対象を手動追加</button></div><small class="image-zoom-hint hidden" id="imageZoomHint">＋／−で拡大・縮小、写真をドラッグして移動。ホイールも補助操作できます。</small></div>
             <div class="experience-memo">
               <label for="experienceMemoInput">この写真を撮ったときの感想</label>
               <textarea id="experienceMemoInput" rows="2" placeholder="例：実物は想像より大きかった／クジラの仲間とは思わなかった"></textarea>
@@ -442,6 +442,10 @@
     .image-stage > img { display:block; width:100%; height:100%; object-fit:fill; user-select:none; -webkit-user-drag:none; }
     .image-help { gap:10px; }
     .image-tools { display:flex; align-items:center; justify-content:flex-end; gap:7px; flex-wrap:wrap; }
+    .magnifier-button.active { color:var(--accent); font-weight:900; }
+    .image-zoom-controls { display:inline-flex; align-items:center; gap:4px; border:1px solid var(--line); border-radius:8px; padding:2px 5px; background:var(--paper); }
+    .image-zoom-controls strong { min-width:38px; text-align:center; font-size:9px; }
+    .image-zoom-hint { display:block; width:100%; color:var(--muted); font-size:9px; line-height:1.5; text-align:right; }
     .image-tools .text-button.active { color:var(--accent); font-weight:900; }
     @media(max-width:520px){ .image-help { align-items:flex-start; flex-direction:column; } .image-tools { width:100%; justify-content:flex-start; } .image-tools .text-button { font-size:9px; padding:5px 0; } }
     .image-stage #observationOverlay { position:absolute; inset:0; z-index:3; }

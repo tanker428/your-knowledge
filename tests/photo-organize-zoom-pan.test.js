@@ -7,6 +7,9 @@ describe("Photo organize zoom and pan UI", () => {
     expect(html).toContain('id="panModeButton"');
     expect(html).toContain('id="regionModeButton"');
     expect(html).toContain('id="resetImageViewportButton"');
+    expect(html).toContain('id="magnifierButton"');
+    expect(html).toContain('id="imageZoomInButton"');
+    expect(html).toContain('id="imageZoomOutButton"');
     expect(html).toContain('id="organizeImageStage"');
   });
 
@@ -17,6 +20,9 @@ describe("Photo organize zoom and pan UI", () => {
     expect(source).toContain("organizePinchStart");
     expect(source).toContain("organizeViewport");
     expect(source).toContain("createImageViewport");
+    expect(source).toContain("startOrganizeMagnifier");
+    expect(source).toContain("stopOrganizeMagnifier");
+    expect(source).toContain("event.deltaY");
   });
 
   it("keeps region persistence on the existing Observation update path", async () => {
