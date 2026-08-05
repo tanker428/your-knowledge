@@ -154,15 +154,17 @@
           <section class="organize-image-panel">
             <div class="panel-title"><span>PHOTO</span><strong id="organizePhotoTitle">写真を選択</strong></div>
             <div class="annotated-photo" id="annotatedPhoto">
-              <img id="organizeImage" alt="整理対象の写真" />
-              <div id="regionDrawLayer" aria-hidden="true"><div id="regionDraftBox" class="hidden"></div></div>
-              <div id="observationOverlay"></div>
+              <div class="image-stage" id="organizeImageStage">
+                <img id="organizeImage" alt="整理対象の写真" />
+                <div id="regionDrawLayer" aria-hidden="true"><div id="regionDraftBox" class="hidden"></div></div>
+                <div id="observationOverlay"></div>
+              </div>
               <div id="regionDrawingControls" class="region-drawing-controls hidden" role="status">
                 <span>範囲を指定してください</span>
                 <button type="button" id="cancelRegionDrawingButton">キャンセル</button>
               </div>
             </div>
-            <div class="image-help"><span>番号を押すと対象を選択</span><button class="text-button" id="addObservationButton">＋ 対象を手動追加</button></div>
+            <div class="image-help"><span>番号を押すと対象を選択</span><div class="image-tools"><button class="text-button" id="panModeButton" type="button">移動</button><button class="text-button" id="regionModeButton" type="button">範囲を追加</button><button class="text-button" id="resetImageViewportButton" type="button">全体表示</button><button class="text-button" id="addObservationButton" type="button">＋ 対象を手動追加</button></div></div>
             <div class="experience-memo">
               <label for="experienceMemoInput">この写真を撮ったときの感想</label>
               <textarea id="experienceMemoInput" rows="2" placeholder="例：実物は想像より大きかった／クジラの仲間とは思わなかった"></textarea>
@@ -436,6 +438,13 @@
 
   <script type="module" src="src/main.js"></script>
   <style>
+    .image-stage { position:absolute; transform-origin:center center; will-change:transform; }
+    .image-stage > img { display:block; width:100%; height:100%; object-fit:fill; user-select:none; -webkit-user-drag:none; }
+    .image-help { gap:10px; }
+    .image-tools { display:flex; align-items:center; justify-content:flex-end; gap:7px; flex-wrap:wrap; }
+    .image-tools .text-button.active { color:var(--accent); font-weight:900; }
+    @media(max-width:520px){ .image-help { align-items:flex-start; flex-direction:column; } .image-tools { width:100%; justify-content:flex-start; } .image-tools .text-button { font-size:9px; padding:5px 0; } }
+    .image-stage #observationOverlay { position:absolute; inset:0; z-index:3; }
     .annotated-photo #observationOverlay { z-index: 3; }
     #regionDrawLayer { position: absolute; inset: 0; z-index: 2; pointer-events: none; touch-action: none; cursor: crosshair; }
     #regionDraftBox { position: absolute; border: 2px dashed var(--accent-2); background: rgba(232,111,54,.2); pointer-events: none; }

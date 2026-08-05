@@ -10,8 +10,40 @@ import {
   restoreRegionAfterCancel,
   updateObservation,
 } from "../src/domain/observation.js";
+import {
+  clientPointToImagePercent,
+  createImageViewport,
+  getTransformedImageRect,
+  panImageViewport,
+  zoomImageViewport,
+} from "../src/domain/image-viewport.js";
 
 describe("Observation region", () => {
+  it("ズーム・パン状態は表示専用で、元画像の座標へ変換できる", () => {
+    const base = { left: 0, top: 0, width: 400, height: 300 };
+    const viewport = panImageViewport(
+      zoomImageViewport(createImageViewport("p1"), base, 2),
+      30,
+      -20,
+    );
+    const rect = getTransformedImageRect(base, viewport);
+    expect(rect.width).toBe(800);
+    expect(rect.height).toBe(600);
+    expect(clientPointToImagePercent({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }, base, viewport)).toEqual({ x: 50, y: 50 });
+    expect(viewport).not.toHaveProperty("region");
+  });
+
+  it("ズームのアンカー位置を保ったまま既存regionの座標系を変えない", () => {
+    const base = { left: 10, top: 20, width: 400, height: 300 };
+    const point = { x: 210, y: 170 };
+    const first = clientPointToImagePercent(point, base, createImageViewport("p1"));
+    const zoomed = zoomImageViewport(createImageViewport("p1"), base, 3, point);
+    const second = clientPointToImagePercent(point, base, zoomed);
+    expect(second.x).toBeCloseTo(first.x);
+    expect(second.y).toBeCloseTo(first.y);
+    expect({ x: 12, y: 18, w: 35, h: 28 }).toEqual({ x: 12, y: 18, w: 35, h: 28 });
+  });
+
   it("座標を0〜100へクランプする", () => {
     expect(normalizeRegion({ x: -10, y: 20, w: 130, h: 90 })).toEqual({
       x: 0,

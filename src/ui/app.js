@@ -50,6 +50,12 @@ import {
   updateObservation,
 } from "../domain/observation.js";
 import {
+  clientPointToImagePercent,
+  createImageViewport,
+  panImageViewport,
+  zoomImageViewport,
+} from "../domain/image-viewport.js";
+import {
   createRelation,
   isApprovableRelation,
   isDirectedRelation,
@@ -247,6 +253,11 @@ export async function initApp(deps) {
   let imageSurfaceObserver = null;
   let imageSurfaceResizeBound = false;
   let imageSurfaceFrame = null;
+  let organizeViewport = createImageViewport();
+  let organizeInteractionMode = "pan";
+  const organizePointers = new Map();
+  let organizePanStart = null;
+  let organizePinchStart = null;
 
   /**
    * The bundled demo photos, as records. The migration layers saved state on
@@ -710,8 +721,25 @@ export async function initApp(deps) {
   }
 
   function alignOrganizeSurfaces() {
-    alignImageSurface($("#observationOverlay"), $("#annotatedPhoto"), $("#organizeImage"));
-    alignImageSurface($("#regionDrawLayer"), $("#annotatedPhoto"), $("#organizeImage"));
+    const stage = $("#organizeImageStage");
+    const container = $("#annotatedPhoto");
+    const image = $("#organizeImage");
+    if (stage && container && image) {
+      const containerRect = container.getBoundingClientRect();
+      const area = displayedImageRect(
+        containerRect,
+        image.naturalWidth || image.clientWidth,
+        image.naturalHeight || image.clientHeight,
+      );
+      stage.style.left = `${area.left - containerRect.left}px`;
+      stage.style.top = `${area.top - containerRect.top}px`;
+      stage.style.width = `${area.width}px`;
+      stage.style.height = `${area.height}px`;
+      stage.style.transform = `translate3d(${organizeViewport.x}px, ${organizeViewport.y}px, 0) scale(${organizeViewport.scale})`;
+    } else {
+      alignImageSurface($("#observationOverlay"), container, image);
+      alignImageSurface($("#regionDrawLayer"), container, image);
+    }
     const layer = $("#regionDrawLayer");
     const overlay = $("#observationOverlay");
     if (layer) {
@@ -719,6 +747,12 @@ export async function initApp(deps) {
       layer.style.zIndex = state.regionDrawing ? "4" : "2";
     }
     if (overlay) overlay.style.pointerEvents = state.regionDrawing ? "none" : "auto";
+    if (container) {
+      container.dataset.interactionMode = organizeInteractionMode;
+      container.style.touchAction = organizeInteractionMode === "pan" ? "none" : "auto";
+    }
+    $("#panModeButton")?.classList.toggle("active", organizeInteractionMode === "pan");
+    $("#regionModeButton")?.classList.toggle("active", organizeInteractionMode === "region");
     const controls = $("#regionDrawingControls");
     if (controls) controls.classList.toggle("hidden", !state.regionDrawing);
   }
@@ -767,12 +801,106 @@ export async function initApp(deps) {
   }
 
   function imagePointPercent(/** @type {PointerEvent} */ event) {
-    const rect = $("#regionDrawLayer")?.getBoundingClientRect();
-    if (!rect || !rect.width || !rect.height) return null;
+    const baseRect = organizeBaseRect();
+    if (!baseRect) return null;
+    return clientPointToImagePercent({ x: event.clientX, y: event.clientY }, baseRect, organizeViewport);
+  }
+
+  function organizeBaseRect() {
+    const stage = $("#organizeImageStage");
+    const container = $("#annotatedPhoto");
+    if (!stage || !container || !stage.offsetWidth || !stage.offsetHeight) return null;
+    const containerRect = container.getBoundingClientRect();
     return {
-      x: Math.min(100, Math.max(0, ((event.clientX - rect.left) / rect.width) * 100)),
-      y: Math.min(100, Math.max(0, ((event.clientY - rect.top) / rect.height) * 100)),
+      left: containerRect.left + stage.offsetLeft,
+      top: containerRect.top + stage.offsetTop,
+      width: stage.offsetWidth,
+      height: stage.offsetHeight,
     };
+  }
+
+  function applyOrganizeViewport(next) {
+    organizeViewport = next;
+    scheduleImageSurfaceAlignment();
+  }
+
+  function resetOrganizeViewport() {
+    organizeViewport = createImageViewport(state.organizePhotoId);
+    organizeInteractionMode = "pan";
+    organizePointers.clear();
+    organizePanStart = null;
+    organizePinchStart = null;
+    alignOrganizeSurfaces();
+  }
+
+  function bindImageViewport() {
+    const container = $("#annotatedPhoto");
+    if (!container || container.dataset.viewportBound) return;
+    container.dataset.viewportBound = "true";
+    container.addEventListener("wheel", (/** @type {WheelEvent} */ event) => {
+      if (organizeInteractionMode !== "pan") return;
+      const baseRect = organizeBaseRect();
+      if (!baseRect) return;
+      event.preventDefault();
+      const factor = event.deltaY < 0 ? 1.18 : 1 / 1.18;
+      applyOrganizeViewport(zoomImageViewport(
+        organizeViewport,
+        baseRect,
+        organizeViewport.scale * factor,
+        { x: event.clientX, y: event.clientY },
+      ));
+    }, { passive: false });
+    container.addEventListener("pointerdown", (/** @type {PointerEvent} */ event) => {
+      const target = /** @type {Element|null} */ (event.target);
+      if (organizeInteractionMode !== "pan" || target?.closest("button")) return;
+      organizePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      container.setPointerCapture(event.pointerId);
+      if (organizePointers.size === 1) {
+        organizePanStart = { x: event.clientX, y: event.clientY, viewport: organizeViewport };
+      } else if (organizePointers.size === 2) {
+        const points = [...organizePointers.values()];
+        organizePinchStart = {
+          distance: Math.hypot(points[1].x - points[0].x, points[1].y - points[0].y),
+          center: { x: (points[0].x + points[1].x) / 2, y: (points[0].y + points[1].y) / 2 },
+          viewport: organizeViewport,
+        };
+        organizePanStart = null;
+      }
+      event.preventDefault();
+    });
+    container.addEventListener("pointermove", (/** @type {PointerEvent} */ event) => {
+      if (!organizePointers.has(event.pointerId) || organizeInteractionMode !== "pan") return;
+      organizePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      if (organizePointers.size >= 2 && organizePinchStart) {
+        const points = [...organizePointers.values()];
+        const distance = Math.hypot(points[1].x - points[0].x, points[1].y - points[0].y);
+        const center = { x: (points[0].x + points[1].x) / 2, y: (points[0].y + points[1].y) / 2 };
+        const baseRect = organizeBaseRect();
+        if (!baseRect || !organizePinchStart.distance) return;
+        let next = zoomImageViewport(
+          organizePinchStart.viewport,
+          baseRect,
+          organizePinchStart.viewport.scale * (distance / organizePinchStart.distance),
+          organizePinchStart.center,
+        );
+        next = panImageViewport(next, center.x - organizePinchStart.center.x, center.y - organizePinchStart.center.y);
+        applyOrganizeViewport(next);
+      } else if (organizePanStart) {
+        applyOrganizeViewport(panImageViewport(
+          organizePanStart.viewport,
+          event.clientX - organizePanStart.x,
+          event.clientY - organizePanStart.y,
+        ));
+      }
+      event.preventDefault();
+    });
+    const endPointer = (/** @type {PointerEvent} */ event) => {
+      organizePointers.delete(event.pointerId);
+      if (organizePointers.size < 2) organizePinchStart = null;
+      if (!organizePointers.size) organizePanStart = null;
+    };
+    container.addEventListener("pointerup", endPointer);
+    container.addEventListener("pointercancel", endPointer);
   }
 
   function renderRegionDraft() {
@@ -833,6 +961,7 @@ export async function initApp(deps) {
         return;
       }
       state.regionDrawing = false;
+      organizeInteractionMode = "pan";
       state.pendingObservationRegion = region;
       if (state.observationDraft) {
         state.observationDraft.region = region;
@@ -848,6 +977,7 @@ export async function initApp(deps) {
 
   function startRegionDrawing() {
     if (!state.observationDraft) return;
+    organizeInteractionMode = "region";
     state.regionDrawingOriginalRegion = restoreRegionAfterCancel(
       state.observationDraft.region,
     );
@@ -866,6 +996,7 @@ export async function initApp(deps) {
   function cancelRegionDrawing(options = {}) {
     const { clearDraft = false, restoreEditor = false } = options;
     state.regionDrawing = false;
+    organizeInteractionMode = "pan";
     const reset = resetRegionDraft();
     state.regionPointerId = reset.pointerId;
     state.regionDrawStart = reset.start;
@@ -1053,6 +1184,7 @@ export async function initApp(deps) {
     if (!photo) return;
     cancelRegionDrawing({ clearDraft: true });
     state.organizePhotoId = photoId;
+    resetOrganizeViewport();
     state.organizeStep = 1;
     state.activeObservationId =
       photo.observations.find(
@@ -1435,6 +1567,7 @@ export async function initApp(deps) {
       : "";
     renderOverlay($("#observationOverlay"), photo, { interactive: true });
     bindRegionDrawing();
+    bindImageViewport();
     $("#organizeImage").onload = alignOrganizeSurfaces;
     observeImageSurfaceSizes();
     alignOrganizeSurfaces();
@@ -1633,6 +1766,19 @@ export async function initApp(deps) {
       state.pendingObservationRegion = null;
       startRegionDrawing();
     });
+    $("#panModeButton")?.addEventListener("click", () => {
+      organizeInteractionMode = "pan";
+      alignOrganizeSurfaces();
+    });
+    $("#regionModeButton")?.addEventListener("click", () => {
+      organizeInteractionMode = "region";
+      openObservationEditor(null);
+      if (state.observationDraft) state.observationDraft.regionMode = "region";
+      const radio = $("#newObservationRegion input[value=region]");
+      if (radio) radio.checked = true;
+      showToast("名前と対象種別を入力してから範囲を指定してください");
+    });
+    $("#resetImageViewportButton")?.addEventListener("click", resetOrganizeViewport);
   }
 
   function completeOrganizePhoto() {
