@@ -50,14 +50,6 @@ import {
   updateObservation,
 } from "../domain/observation.js";
 import {
-  clientPointToImagePercent,
-  createImageViewport,
-  panImageViewport,
-  resetImageViewport,
-  zoomImageViewport,
-  zoomImageViewportToCenter,
-} from "../domain/image-viewport.js";
-import {
   createRelation,
   isApprovableRelation,
   isDirectedRelation,
@@ -255,15 +247,17 @@ export async function initApp(deps) {
   let imageSurfaceObserver = null;
   let imageSurfaceResizeBound = false;
   let imageSurfaceFrame = null;
-  let organizeViewport = createImageViewport();
   let organizeInteractionMode = "pan";
   let organizeMagnifierActive = false;
-  let organizeViewportNeedsFit = true;
-  const organizePointers = new Map();
-  let organizePanStart = null;
-  let organizePinchStart = null;
-  let organizeTapCandidate = null;
-  let organizeZoomCenter = null;
+  let organizeLensPointerId = null;
+  let organizeLensPoint = null;
+  let organizeLensLongPressTimer = null;
+  let organizeLensLongPressStart = null;
+  let organizeLensZoom = 2;
+  const ORGANIZE_LENS_MIN_ZOOM = 2;
+  const ORGANIZE_LENS_MAX_ZOOM = 6;
+  const ORGANIZE_LENS_STEP = 0.5;
+  const ORGANIZE_LENS_SIZE = 200;
 
   /**
    * The bundled demo photos, as records. The migration layers saved state on
@@ -741,17 +735,6 @@ export async function initApp(deps) {
       stage.style.top = `${area.top - containerRect.top}px`;
       stage.style.width = `${area.width}px`;
       stage.style.height = `${area.height}px`;
-      const fitScale = image.naturalWidth ? area.width / image.naturalWidth : 1;
-      const previousFitScale = organizeViewport.fitScale || 1;
-      const shouldResetFit = organizeViewportNeedsFit || organizeViewport.photoId !== state.organizePhotoId || Math.abs(previousFitScale - fitScale) > 0.001;
-      if (shouldResetFit) {
-        const multiplier = organizeMagnifierActive ? organizeViewport.scale / previousFitScale : 1;
-        organizeViewport = resetImageViewport(state.organizePhotoId, fitScale);
-        organizeViewport.scale = fitScale * multiplier;
-        organizeViewportNeedsFit = false;
-      }
-      const multiplier = organizeViewport.scale / (organizeViewport.fitScale || 1);
-      stage.style.transform = `translate3d(${organizeViewport.x}px, ${organizeViewport.y}px, 0) scale(${multiplier})`;
     } else {
       alignImageSurface($("#observationOverlay"), container, image);
       alignImageSurface($("#regionDrawLayer"), container, image);
@@ -765,25 +748,19 @@ export async function initApp(deps) {
     if (overlay) overlay.style.pointerEvents = state.regionDrawing ? "none" : "auto";
     if (container) {
       container.dataset.interactionMode = organizeInteractionMode;
-      container.dataset.zoomCenter = organizeZoomCenter ? `${organizeZoomCenter.x},${organizeZoomCenter.y}` : "";
-      container.style.touchAction = organizeInteractionMode === "pan" ? "none" : "auto";
+      container.style.touchAction = organizeMagnifierActive ? "none" : "auto";
     }
-    $("#panModeButton")?.classList.toggle("active", organizeInteractionMode === "pan");
     $("#regionModeButton")?.classList.toggle("active", organizeInteractionMode === "region");
-    const zoomLevel = $("#imageZoomLevel");
-    if (zoomLevel) zoomLevel.textContent = `${Math.round((organizeViewport.scale / (organizeViewport.fitScale || 1)) * 100)}%`;
     const magnifier = $("#magnifierButton");
     if (magnifier) {
       magnifier.classList.toggle("active", organizeMagnifierActive);
       magnifier.setAttribute("aria-pressed", String(organizeMagnifierActive));
-      magnifier.textContent = organizeMagnifierActive ? "⌕ 虫眼鏡を終了" : "⌕ 虫眼鏡で拡大";
     }
-    $("#imageZoomControls")?.classList.toggle("hidden", !organizeMagnifierActive);
     const zoomHint = $("#imageZoomHint");
     if (zoomHint) {
-      zoomHint.textContent = "写真をクリック／タップすると、その場所を中心に拡大。＋／−で倍率変更、ドラッグ／スワイプで移動できます。";
-      zoomHint.classList.toggle("hidden", !organizeMagnifierActive);
+      zoomHint.classList.toggle("hidden", !image.src);
     }
+    renderOrganizeMagnifier();
     const controls = $("#regionDrawingControls");
     if (controls) controls.classList.toggle("hidden", !state.regionDrawing);
   }
@@ -834,7 +811,10 @@ export async function initApp(deps) {
   function imagePointPercent(/** @type {PointerEvent} */ event) {
     const baseRect = organizeBaseRect();
     if (!baseRect) return null;
-    return clientPointToImagePercent({ x: event.clientX, y: event.clientY }, baseRect, organizeViewport);
+    return {
+      x: Math.min(100, Math.max(0, ((event.clientX - baseRect.left) / baseRect.width) * 100)),
+      y: Math.min(100, Math.max(0, ((event.clientY - baseRect.top) / baseRect.height) * 100)),
+    };
   }
 
   function organizeBaseRect() {
@@ -850,150 +830,134 @@ export async function initApp(deps) {
     };
   }
 
-  function applyOrganizeViewport(next) {
-    organizeViewport = next;
-    scheduleImageSurfaceAlignment();
+  function clearOrganizeLensTimer() {
+    if (organizeLensLongPressTimer !== null) clearTimeout(organizeLensLongPressTimer);
+    organizeLensLongPressTimer = null;
+    organizeLensLongPressStart = null;
   }
 
-  function resetOrganizeViewport() {
-    organizeViewport = resetImageViewport(state.organizePhotoId, organizeViewport.fitScale || 1);
-    organizeViewportNeedsFit = true;
-    organizeInteractionMode = "pan";
-    organizePointers.clear();
-    organizePanStart = null;
-    organizePinchStart = null;
-    organizeTapCandidate = null;
-    organizeZoomCenter = null;
-    alignOrganizeSurfaces();
-  }
-
-  function startOrganizeMagnifier() {
-    organizeMagnifierActive = true;
-    organizeInteractionMode = "pan";
-    alignOrganizeSurfaces();
-  }
-
-  function stopOrganizeMagnifier() {
+  function hideOrganizeLens() {
+    clearOrganizeLensTimer();
     organizeMagnifierActive = false;
-    resetOrganizeViewport();
+    organizeLensPointerId = null;
+    organizeLensPoint = null;
+    const lens = $("#imageMagnifierLens");
+    const controls = $("#imageMagnifierControls");
+    lens?.classList.add("hidden");
+    controls?.classList.add("hidden");
+    alignOrganizeSurfaces();
   }
 
-  function zoomOrganizeByStep(direction) {
-    if (!organizeMagnifierActive) return;
+  function updateOrganizeLens(point) {
     const baseRect = organizeBaseRect();
     const container = $("#annotatedPhoto");
-    if (!baseRect || !container) return;
-    const rect = container.getBoundingClientRect();
-    const nextScale = organizeViewport.scale * (direction > 0 ? 1.25 : 0.8);
-    applyOrganizeViewport(zoomImageViewport(
-      organizeViewport,
-      baseRect,
-      nextScale,
-      { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 },
-    ));
+    const lens = $("#imageMagnifierLens");
+    const lensImage = $("#imageMagnifierLensImage");
+    const controls = $("#imageMagnifierControls");
+    if (!baseRect || !container || !lens || !lensImage) return;
+    const containerRect = container.getBoundingClientRect();
+    const size = Math.max(120, Math.min(ORGANIZE_LENS_SIZE, containerRect.width - 8, containerRect.height - 8));
+    const x = Math.min(baseRect.left + baseRect.width, Math.max(baseRect.left, point.x));
+    const y = Math.min(baseRect.top + baseRect.height, Math.max(baseRect.top, point.y));
+    const left = Math.min(Math.max(0, x - containerRect.left - size / 2), Math.max(0, containerRect.width - size));
+    const top = Math.min(Math.max(0, y - containerRect.top - size / 2), Math.max(0, containerRect.height - size));
+    const imageX = (x - baseRect.left) / baseRect.width;
+    const imageY = (y - baseRect.top) / baseRect.height;
+    lens.style.width = `${size}px`;
+    lens.style.height = `${size}px`;
+    lens.style.left = `${left}px`;
+    lens.style.top = `${top}px`;
+    lensImage.src = $("#organizeImage")?.src || lensImage.src;
+    lensImage.style.width = `${baseRect.width * organizeLensZoom}px`;
+    lensImage.style.height = `${baseRect.height * organizeLensZoom}px`;
+    lensImage.style.left = `${baseRect.left - containerRect.left - imageX * baseRect.width * organizeLensZoom + size / 2}px`;
+    lensImage.style.top = `${baseRect.top - containerRect.top - imageY * baseRect.height * organizeLensZoom + size / 2}px`;
+    $("#imageMagnifierLevel").textContent = `${organizeLensZoom.toFixed(1)}×`;
+    if (controls) {
+      controls.style.left = `${Math.min(Math.max(0, left + size - 76), Math.max(0, containerRect.width - 76))}px`;
+      controls.style.top = `${top + size + 8 <= containerRect.height ? top + size + 8 : Math.max(0, top - 42)}px`;
+    }
+    lens.classList.remove("hidden");
+    controls?.classList.remove("hidden");
   }
 
-  function zoomOrganizeAtPoint(point) {
-    if (!organizeMagnifierActive) return;
-    const baseRect = organizeBaseRect();
-    const container = $("#annotatedPhoto");
-    if (!baseRect || !container) return;
-    const rect = container.getBoundingClientRect();
-    const imagePoint = clientPointToImagePercent(point, baseRect, organizeViewport);
-    if (!imagePoint) return;
-    applyOrganizeViewport(zoomImageViewportToCenter(
-      organizeViewport,
-      baseRect,
-      organizeViewport.scale * 1.5,
-      point,
-      { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 },
-    ));
-    organizeZoomCenter = imagePoint;
+  function renderOrganizeMagnifier() {
+    if (organizeMagnifierActive && organizeLensPoint) updateOrganizeLens(organizeLensPoint);
+    else {
+      $("#imageMagnifierLens")?.classList.add("hidden");
+      $("#imageMagnifierControls")?.classList.add("hidden");
+    }
   }
 
-  function bindImageViewport() {
+  function setOrganizeLensZoom(direction) {
+    organizeLensZoom = Math.min(
+      ORGANIZE_LENS_MAX_ZOOM,
+      Math.max(ORGANIZE_LENS_MIN_ZOOM, Math.round((organizeLensZoom + direction * ORGANIZE_LENS_STEP) * 10) / 10),
+    );
+    if (organizeLensPoint) updateOrganizeLens(organizeLensPoint);
+  }
+
+  function bindMagnifierLens() {
     const container = $("#annotatedPhoto");
-    if (!container || container.dataset.viewportBound) return;
-    container.dataset.viewportBound = "true";
-    container.addEventListener("wheel", (/** @type {WheelEvent} */ event) => {
-      if (!organizeMagnifierActive || organizeInteractionMode !== "pan") return;
-      const baseRect = organizeBaseRect();
-      if (!baseRect) return;
+    if (!container || container.dataset.magnifierBound) return;
+    container.dataset.magnifierBound = "true";
+    container.addEventListener("contextmenu", (/** @type {MouseEvent} */ event) => {
       event.preventDefault();
-      const factor = event.deltaY < 0 ? 1.18 : 1 / 1.18;
-      applyOrganizeViewport(zoomImageViewport(
-        organizeViewport,
-        baseRect,
-        organizeViewport.scale * factor,
-        { x: event.clientX, y: event.clientY },
-      ));
+    });
+    container.addEventListener("wheel", (/** @type {WheelEvent} */ event) => {
+      if (!organizeMagnifierActive) return;
+      event.preventDefault();
+      setOrganizeLensZoom(event.deltaY < 0 ? 1 : -1);
     }, { passive: false });
     container.addEventListener("pointerdown", (/** @type {PointerEvent} */ event) => {
       const target = /** @type {Element|null} */ (event.target);
-      if (!organizeMagnifierActive || organizeInteractionMode !== "pan" || target?.closest("button")) return;
-      organizeTapCandidate = { x: event.clientX, y: event.clientY, moved: false };
-      organizePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
-      container.setPointerCapture(event.pointerId);
-      if (organizePointers.size === 1) {
-        organizePanStart = { x: event.clientX, y: event.clientY, viewport: organizeViewport };
-      } else if (organizePointers.size === 2) {
-        const points = [...organizePointers.values()];
-        organizePinchStart = {
-          distance: Math.hypot(points[1].x - points[0].x, points[1].y - points[0].y),
-          center: { x: (points[0].x + points[1].x) / 2, y: (points[0].y + points[1].y) / 2 },
-          viewport: organizeViewport,
-        };
-        organizePanStart = null;
+      if (target?.closest("button") || state.regionDrawing || organizeInteractionMode === "region") return;
+      if (event.pointerType === "mouse") {
+        if (event.button !== 2) return;
+        organizeMagnifierActive = true;
+        organizeLensPointerId = event.pointerId;
+        organizeLensPoint = { x: event.clientX, y: event.clientY };
+        container.setPointerCapture(event.pointerId);
+        event.preventDefault();
+        alignOrganizeSurfaces();
+        return;
       }
-      event.preventDefault();
+      organizeLensLongPressStart = { x: event.clientX, y: event.clientY, pointerId: event.pointerId };
+      clearOrganizeLensTimer();
+      organizeLensLongPressStart = { x: event.clientX, y: event.clientY, pointerId: event.pointerId };
+      organizeLensLongPressTimer = setTimeout(() => {
+        if (!organizeLensLongPressStart || organizeLensLongPressStart.pointerId !== event.pointerId) return;
+        organizeMagnifierActive = true;
+        organizeLensPointerId = event.pointerId;
+        organizeLensPoint = { x: event.clientX, y: event.clientY };
+        event.preventDefault();
+        alignOrganizeSurfaces();
+      }, 350);
     });
     container.addEventListener("pointermove", (/** @type {PointerEvent} */ event) => {
-      if (!organizePointers.has(event.pointerId) || organizeInteractionMode !== "pan") return;
-      organizePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
-      if (organizeTapCandidate && Math.hypot(event.clientX - organizeTapCandidate.x, event.clientY - organizeTapCandidate.y) > 8) {
-        organizeTapCandidate.moved = true;
+      if (organizeMagnifierActive && event.pointerId === organizeLensPointerId) {
+        organizeLensPoint = { x: event.clientX, y: event.clientY };
+        updateOrganizeLens(organizeLensPoint);
+        event.preventDefault();
+        return;
       }
-      if (organizePointers.size >= 2 && organizePinchStart) {
-        const points = [...organizePointers.values()];
-        const distance = Math.hypot(points[1].x - points[0].x, points[1].y - points[0].y);
-        const center = { x: (points[0].x + points[1].x) / 2, y: (points[0].y + points[1].y) / 2 };
-        const baseRect = organizeBaseRect();
-        if (!baseRect || !organizePinchStart.distance) return;
-        let next = zoomImageViewport(
-          organizePinchStart.viewport,
-          baseRect,
-          organizePinchStart.viewport.scale * (distance / organizePinchStart.distance),
-          organizePinchStart.center,
-        );
-        next = panImageViewport(next, center.x - organizePinchStart.center.x, center.y - organizePinchStart.center.y);
-        applyOrganizeViewport(next);
-      } else if (organizePanStart) {
-        applyOrganizeViewport(panImageViewport(
-          organizePanStart.viewport,
-          event.clientX - organizePanStart.x,
-          event.clientY - organizePanStart.y,
-        ));
-      }
-      event.preventDefault();
+      if (organizeLensLongPressStart?.pointerId === event.pointerId && Math.hypot(
+        event.clientX - organizeLensLongPressStart.x,
+        event.clientY - organizeLensLongPressStart.y,
+      ) > 10) clearOrganizeLensTimer();
     });
-    const endPointer = (/** @type {PointerEvent} */ event) => {
-      const target = /** @type {Element|null} */ (event.target);
-      const shouldTapZoom = organizePointers.size === 1
-        && organizeTapCandidate
-        && !organizeTapCandidate.moved
-        && !target?.closest("button")
-        && organizeMagnifierActive
-        && organizeInteractionMode === "pan";
-      organizePointers.delete(event.pointerId);
-      if (organizePointers.size < 2) organizePinchStart = null;
-      if (!organizePointers.size) {
-        organizePanStart = null;
-        if (shouldTapZoom) zoomOrganizeAtPoint({ x: event.clientX, y: event.clientY });
-        organizeTapCandidate = null;
-      }
+    const endLens = (/** @type {PointerEvent} */ event) => {
+      if (event.pointerId === organizeLensPointerId || event.pointerType === "mouse") hideOrganizeLens();
+      else if (organizeLensLongPressStart?.pointerId === event.pointerId) clearOrganizeLensTimer();
     };
-    container.addEventListener("pointerup", endPointer);
-    container.addEventListener("pointercancel", endPointer);
+    container.addEventListener("pointerup", endLens);
+    container.addEventListener("pointercancel", endLens);
+    container.addEventListener("pointerleave", (/** @type {PointerEvent} */ event) => {
+      if (event.pointerType === "mouse") hideOrganizeLens();
+    });
+    window.addEventListener("blur", hideOrganizeLens);
+    $("#imageMagnifierInButton")?.addEventListener("click", () => setOrganizeLensZoom(1));
+    $("#imageMagnifierOutButton")?.addEventListener("click", () => setOrganizeLensZoom(-1));
   }
 
   function renderRegionDraft() {
@@ -1278,10 +1242,10 @@ export async function initApp(deps) {
     cancelRegionDrawing({ clearDraft: true });
     state.organizePhotoId = photoId;
     organizeMagnifierActive = false;
-    organizeViewport = resetImageViewport(photoId, 1);
-    organizeViewportNeedsFit = true;
-    organizeZoomCenter = null;
-    organizeTapCandidate = null;
+    clearOrganizeLensTimer();
+    organizeLensPointerId = null;
+    organizeLensPoint = null;
+    organizeLensZoom = ORGANIZE_LENS_MIN_ZOOM;
     state.organizeStep = 1;
     state.activeObservationId =
       photo.observations.find(
@@ -1664,7 +1628,7 @@ export async function initApp(deps) {
       : "";
     renderOverlay($("#observationOverlay"), photo, { interactive: true });
     bindRegionDrawing();
-    bindImageViewport();
+    bindMagnifierLens();
     $("#organizeImage").onload = alignOrganizeSurfaces;
     observeImageSurfaceSizes();
     alignOrganizeSurfaces();
@@ -1863,9 +1827,6 @@ export async function initApp(deps) {
       state.pendingObservationRegion = null;
       startRegionDrawing();
     });
-    $("#panModeButton")?.addEventListener("click", () => {
-      startOrganizeMagnifier();
-    });
     $("#regionModeButton")?.addEventListener("click", () => {
       organizeInteractionMode = "region";
       openObservationEditor(null);
@@ -1876,12 +1837,8 @@ export async function initApp(deps) {
       showToast("名前と対象種別を入力してから範囲を指定してください");
     });
     $("#magnifierButton")?.addEventListener("click", () => {
-      if (organizeMagnifierActive) stopOrganizeMagnifier();
-      else startOrganizeMagnifier();
+      showToast("PCは写真上で右ボタン、Androidは写真の長押しで虫眼鏡を使えます");
     });
-    $("#imageZoomInButton")?.addEventListener("click", () => zoomOrganizeByStep(1));
-    $("#imageZoomOutButton")?.addEventListener("click", () => zoomOrganizeByStep(-1));
-    $("#resetImageViewportButton")?.addEventListener("click", resetOrganizeViewport);
   }
 
   function completeOrganizePhoto() {
