@@ -49,6 +49,24 @@ export function zoomImageViewport(viewport, baseRect, nextScale, anchor = null) 
   };
 }
 
+export function zoomImageViewportToCenter(viewport, baseRect, nextScale, imagePoint, viewportCenter) {
+  const currentRect = getTransformedImageRect(baseRect, viewport);
+  const fitScale = Number(viewport?.fitScale) || 1;
+  const scale = clampImageZoom(nextScale, fitScale, fitScale * MAX_IMAGE_ZOOM);
+  const point = imagePoint || { x: currentRect.left + currentRect.width / 2, y: currentRect.top + currentRect.height / 2 };
+  const relativeX = currentRect.width ? (point.x - currentRect.left) / currentRect.width : 0.5;
+  const relativeY = currentRect.height ? (point.y - currentRect.top) / currentRect.height : 0.5;
+  const multiplier = scale / fitScale;
+  const centeredLeft = baseRect.left + (baseRect.width * (1 - multiplier)) / 2;
+  const centeredTop = baseRect.top + (baseRect.height * (1 - multiplier)) / 2;
+  return {
+    ...viewport,
+    scale,
+    x: viewportCenter.x - centeredLeft - relativeX * baseRect.width * multiplier,
+    y: viewportCenter.y - centeredTop - relativeY * baseRect.height * multiplier,
+  };
+}
+
 export function clientPointToImagePercent(point, baseRect, viewport) {
   const rect = getTransformedImageRect(baseRect, viewport);
   if (!rect.width || !rect.height) return null;

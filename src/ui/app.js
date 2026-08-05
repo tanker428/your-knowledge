@@ -55,6 +55,7 @@ import {
   panImageViewport,
   resetImageViewport,
   zoomImageViewport,
+  zoomImageViewportToCenter,
 } from "../domain/image-viewport.js";
 import {
   createRelation,
@@ -261,6 +262,8 @@ export async function initApp(deps) {
   const organizePointers = new Map();
   let organizePanStart = null;
   let organizePinchStart = null;
+  let organizeTapCandidate = null;
+  let organizeZoomCenter = null;
 
   /**
    * The bundled demo photos, as records. The migration layers saved state on
@@ -762,6 +765,7 @@ export async function initApp(deps) {
     if (overlay) overlay.style.pointerEvents = state.regionDrawing ? "none" : "auto";
     if (container) {
       container.dataset.interactionMode = organizeInteractionMode;
+      container.dataset.zoomCenter = organizeZoomCenter ? `${organizeZoomCenter.x},${organizeZoomCenter.y}` : "";
       container.style.touchAction = organizeInteractionMode === "pan" ? "none" : "auto";
     }
     $("#panModeButton")?.classList.toggle("active", organizeInteractionMode === "pan");
@@ -775,7 +779,11 @@ export async function initApp(deps) {
       magnifier.textContent = organizeMagnifierActive ? "⌕ 虫眼鏡を終了" : "⌕ 虫眼鏡で拡大";
     }
     $("#imageZoomControls")?.classList.toggle("hidden", !organizeMagnifierActive);
-    $("#imageZoomHint")?.classList.toggle("hidden", !organizeMagnifierActive);
+    const zoomHint = $("#imageZoomHint");
+    if (zoomHint) {
+      zoomHint.textContent = "写真をクリック／タップすると、その場所を中心に拡大。＋／−で倍率変更、ドラッグ／スワイプで移動できます。";
+      zoomHint.classList.toggle("hidden", !organizeMagnifierActive);
+    }
     const controls = $("#regionDrawingControls");
     if (controls) controls.classList.toggle("hidden", !state.regionDrawing);
   }
@@ -854,6 +862,8 @@ export async function initApp(deps) {
     organizePointers.clear();
     organizePanStart = null;
     organizePinchStart = null;
+    organizeTapCandidate = null;
+    organizeZoomCenter = null;
     alignOrganizeSurfaces();
   }
 
@@ -883,6 +893,24 @@ export async function initApp(deps) {
     ));
   }
 
+  function zoomOrganizeAtPoint(point) {
+    if (!organizeMagnifierActive) return;
+    const baseRect = organizeBaseRect();
+    const container = $("#annotatedPhoto");
+    if (!baseRect || !container) return;
+    const rect = container.getBoundingClientRect();
+    const imagePoint = clientPointToImagePercent(point, baseRect, organizeViewport);
+    if (!imagePoint) return;
+    applyOrganizeViewport(zoomImageViewportToCenter(
+      organizeViewport,
+      baseRect,
+      organizeViewport.scale * 1.5,
+      point,
+      { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 },
+    ));
+    organizeZoomCenter = imagePoint;
+  }
+
   function bindImageViewport() {
     const container = $("#annotatedPhoto");
     if (!container || container.dataset.viewportBound) return;
@@ -903,6 +931,7 @@ export async function initApp(deps) {
     container.addEventListener("pointerdown", (/** @type {PointerEvent} */ event) => {
       const target = /** @type {Element|null} */ (event.target);
       if (!organizeMagnifierActive || organizeInteractionMode !== "pan" || target?.closest("button")) return;
+      organizeTapCandidate = { x: event.clientX, y: event.clientY, moved: false };
       organizePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
       container.setPointerCapture(event.pointerId);
       if (organizePointers.size === 1) {
@@ -921,6 +950,9 @@ export async function initApp(deps) {
     container.addEventListener("pointermove", (/** @type {PointerEvent} */ event) => {
       if (!organizePointers.has(event.pointerId) || organizeInteractionMode !== "pan") return;
       organizePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      if (organizeTapCandidate && Math.hypot(event.clientX - organizeTapCandidate.x, event.clientY - organizeTapCandidate.y) > 8) {
+        organizeTapCandidate.moved = true;
+      }
       if (organizePointers.size >= 2 && organizePinchStart) {
         const points = [...organizePointers.values()];
         const distance = Math.hypot(points[1].x - points[0].x, points[1].y - points[0].y);
@@ -945,9 +977,20 @@ export async function initApp(deps) {
       event.preventDefault();
     });
     const endPointer = (/** @type {PointerEvent} */ event) => {
+      const target = /** @type {Element|null} */ (event.target);
+      const shouldTapZoom = organizePointers.size === 1
+        && organizeTapCandidate
+        && !organizeTapCandidate.moved
+        && !target?.closest("button")
+        && organizeMagnifierActive
+        && organizeInteractionMode === "pan";
       organizePointers.delete(event.pointerId);
       if (organizePointers.size < 2) organizePinchStart = null;
-      if (!organizePointers.size) organizePanStart = null;
+      if (!organizePointers.size) {
+        organizePanStart = null;
+        if (shouldTapZoom) zoomOrganizeAtPoint({ x: event.clientX, y: event.clientY });
+        organizeTapCandidate = null;
+      }
     };
     container.addEventListener("pointerup", endPointer);
     container.addEventListener("pointercancel", endPointer);
@@ -1237,6 +1280,8 @@ export async function initApp(deps) {
     organizeMagnifierActive = false;
     organizeViewport = resetImageViewport(photoId, 1);
     organizeViewportNeedsFit = true;
+    organizeZoomCenter = null;
+    organizeTapCandidate = null;
     state.organizeStep = 1;
     state.activeObservationId =
       photo.observations.find(

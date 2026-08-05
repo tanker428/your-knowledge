@@ -17,6 +17,7 @@ import {
   panImageViewport,
   resetImageViewport,
   zoomImageViewport,
+  zoomImageViewportToCenter,
 } from "../src/domain/image-viewport.js";
 
 describe("Observation region", () => {
@@ -56,6 +57,21 @@ describe("Observation region", () => {
     expect(second.x).toBeCloseTo(first.x);
     expect(second.y).toBeCloseTo(first.y);
     expect({ x: 12, y: 18, w: 35, h: 28 }).toEqual({ x: 12, y: 18, w: 35, h: 28 });
+  });
+
+  it("クリック位置を表示領域の中央へ移動して拡大する", () => {
+    const base = { left: 0, top: 0, width: 400, height: 300 };
+    const point = { x: 80, y: 60 };
+    const zoomed = zoomImageViewportToCenter(
+      createImageViewport("p1"),
+      base,
+      2,
+      point,
+      { x: 200, y: 150 },
+    );
+    const rect = getTransformedImageRect(base, zoomed);
+    expect(rect.left + point.x * 2).toBeCloseTo(200);
+    expect(rect.top + point.y * 2).toBeCloseTo(150);
   });
 
   it("座標を0〜100へクランプする", () => {

@@ -25,6 +25,17 @@ describe("Photo organize zoom and pan UI", () => {
     expect(source).toContain("event.deltaY");
   });
 
+  it("supports click-centered zoom and the highest available image surface", async () => {
+    const [html, source] = await Promise.all([
+      readFile("index.html", "utf8"),
+      readFile("src/ui/app.js", "utf8"),
+    ]);
+    expect(html).toContain("image-rendering:auto");
+    expect(source).toContain("zoomImageViewportToCenter");
+    expect(source).toContain("organizeZoomCenter");
+    expect(source).toContain("organizeTapCandidate");
+  });
+
   it("keeps region persistence on the existing Observation update path", async () => {
     const source = await readFile("src/ui/app.js", "utf8");
     expect(source).toContain("updateObservation(observation");
