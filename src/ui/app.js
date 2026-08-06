@@ -751,7 +751,6 @@ export async function initApp(deps) {
       container.dataset.interactionMode = organizeInteractionMode;
       container.style.touchAction = organizeMagnifierActive ? "none" : "auto";
     }
-    $("#regionModeButton")?.classList.toggle("active", organizeInteractionMode === "region");
     const zoomHint = $("#imageZoomHint");
     if (zoomHint) {
       zoomHint.classList.toggle("hidden", !image.src);
@@ -1839,15 +1838,6 @@ export async function initApp(deps) {
       }
       state.pendingObservationRegion = null;
       startRegionDrawing();
-    });
-    $("#regionModeButton")?.addEventListener("click", () => {
-      organizeInteractionMode = "region";
-      openObservationEditor(null);
-      if (state.observationDraft) state.observationDraft.regionMode = "region";
-      const radio = $("#newObservationRegion input[value=region]");
-      if (radio) radio.checked = true;
-      alignOrganizeSurfaces();
-      showToast("名前と対象種別を入力してから範囲を指定してください");
     });
   }
 
@@ -3085,9 +3075,6 @@ export async function initApp(deps) {
       if (photoId) setOrganizePhoto(photoId);
       switchView("organize");
     });
-    $("#addObservationButton").addEventListener("click", () =>
-      openObservationEditor(null),
-    );
     $("#saveObservationButton").addEventListener("click", saveObservation);
     $("#saveRelationButton")?.addEventListener("click", saveRelation);
     $("#chooseRelationSourceButton")?.addEventListener("click", () => showRelationPicker("source"));
