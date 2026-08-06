@@ -85,6 +85,7 @@ import { getReferenceChildren, getReferenceNodeById } from "../domain/reference-
 import { LOCAL_USER_ID, mergeQuizResultsIntoLearningEvents, rebuildUserKnowledgeStates, recordQuizLearning, removeVisitLearningRecords } from "../domain/learning-state.js";
 import { getLearnedReferenceFacts } from "../domain/learned-reference-facts.js";
 import { buildCollectionProgress } from "../features/collections/collection-progress.js";
+import { normalizePhotoRotation, rotatePhoto, unrotateImagePoint } from "../domain/photo-rotation.js";
 
 const MAX_UPLOAD_BATCH = 120;
 const STATUS_LABELS = {
@@ -199,6 +200,7 @@ export async function initApp(deps) {
     photoFilter: "all",
     /** @type {File[]} */
     selectedFiles: [],
+    selectedFileRotations: [],
     /** @type {string|null} */
     modalPhotoId: null,
     organizePhotoId: "p03",
@@ -443,7 +445,7 @@ export async function initApp(deps) {
         status: photo.status,
         source: photo.source,
         domainHint: photo.domainHint,
-        rotation: photo.rotation,
+        rotation: normalizePhotoRotation(photo.rotation),
 
         capturedAt: photo.capturedAt ?? null,
         fileLastModified: photo.fileLastModified ?? null,
@@ -649,7 +651,7 @@ export async function initApp(deps) {
         <article class="photo-card">
           <button class="photo-card-button" data-photo-id="${escapeHtml(photo.id)}">
             <div class="photo-thumb${photo.photoMissing ? " photo-missing" : ""}">
-              <img src="${escapeHtml(photo.thumbSrc || photo.src)}" alt="${escapeHtml(photo.title)}" loading="lazy" ${photo.rotation ? `style="transform:rotate(${photo.rotation}deg) scale(.82)"` : ""} />
+              <img src="${escapeHtml(photo.thumbSrc || photo.src)}" alt="${escapeHtml(photo.title)}" loading="lazy" ${rotationStyle(photo.rotation) ? `style="${rotationStyle(photo.rotation)}"` : ""} />
               <span class="photo-order">${String(photo.order || 0).padStart(2, "0")}</span>
               <span class="photo-status status-${escapeHtml(photo.status)}">${escapeHtml(STATUS_LABELS[photo.status] || "未整理")}</span>
               ${photo.photoMissing ? '<span class="photo-missing-flag">写真未接続</span>' : ""}
@@ -812,23 +814,35 @@ export async function initApp(deps) {
   function imagePointPercent(/** @type {PointerEvent} */ event) {
     const baseRect = organizeBaseRect();
     if (!baseRect) return null;
-    return {
-      x: Math.min(100, Math.max(0, ((event.clientX - baseRect.left) / baseRect.width) * 100)),
-      y: Math.min(100, Math.max(0, ((event.clientY - baseRect.top) / baseRect.height) * 100)),
-    };
+    const point = unrotateImagePoint({
+      x: (event.clientX - baseRect.left) / baseRect.width,
+      y: (event.clientY - baseRect.top) / baseRect.height,
+    }, currentOrganizePhoto()?.rotation);
+    return { x: point.x * 100, y: point.y * 100 };
   }
 
   function organizeBaseRect() {
     const stage = $("#organizeImageStage");
-    const container = $("#annotatedPhoto");
-    if (!stage || !container || !stage.offsetWidth || !stage.offsetHeight) return null;
-    const containerRect = container.getBoundingClientRect();
-    return {
-      left: containerRect.left + stage.offsetLeft,
-      top: containerRect.top + stage.offsetTop,
-      width: stage.offsetWidth,
-      height: stage.offsetHeight,
-    };
+    if (!stage) return null;
+    const rect = stage.getBoundingClientRect();
+    if (!rect.width || !rect.height) return null;
+    return { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
+  }
+
+  function rotationStyle(rotation) {
+    const value = normalizePhotoRotation(rotation);
+    return value ? `transform:rotate(${value}deg) scale(.82)` : "";
+  }
+
+  function rotatePhotoById(photoId) {
+    const photo = photoById(photoId);
+    if (!photo) return;
+    photo.rotation = rotatePhoto(photo.rotation);
+    persist();
+    renderAll();
+    if (state.modalPhotoId === photoId) openPhotoModal(photoId);
+    if (state.organizePhotoId === photoId) renderOrganize();
+    showToast(`写真の向きを${photo.rotation}度にしました`);
   }
 
   function clearOrganizeLensTimer() {
@@ -862,17 +876,38 @@ export async function initApp(deps) {
     const y = Math.min(baseRect.top + baseRect.height, Math.max(baseRect.top, point.y));
     const left = Math.min(Math.max(0, x - containerRect.left - size / 2), Math.max(0, containerRect.width - size));
     const top = Math.min(Math.max(0, y - containerRect.top - size / 2), Math.max(0, containerRect.height - size));
-    const imageX = (x - baseRect.left) / baseRect.width;
-    const imageY = (y - baseRect.top) / baseRect.height;
+    const rotation = normalizePhotoRotation(currentOrganizePhoto()?.rotation);
+    const visualPoint = {
+      x: (x - baseRect.left) / baseRect.width,
+      y: (y - baseRect.top) / baseRect.height,
+    };
+    const imagePoint = unrotateImagePoint(visualPoint, rotation);
+    const unrotatedWidth = rotation === 90 || rotation === 270
+      ? baseRect.height
+      : baseRect.width;
+    const unrotatedHeight = rotation === 90 || rotation === 270
+      ? baseRect.width
+      : baseRect.height;
+    const vectorX = (imagePoint.x - 0.5) * unrotatedWidth * organizeLensZoom;
+    const vectorY = (imagePoint.y - 0.5) * unrotatedHeight * organizeLensZoom;
+    const rotatedVector = rotation === 90
+      ? { x: -vectorY, y: vectorX }
+      : rotation === 180
+        ? { x: -vectorX, y: -vectorY }
+        : rotation === 270
+          ? { x: vectorY, y: -vectorX }
+          : { x: vectorX, y: vectorY };
     lens.style.width = `${size}px`;
     lens.style.height = `${size}px`;
     lens.style.left = `${left}px`;
     lens.style.top = `${top}px`;
     lensImage.src = $("#organizeImage")?.src || lensImage.src;
-    lensImage.style.width = `${baseRect.width * organizeLensZoom}px`;
-    lensImage.style.height = `${baseRect.height * organizeLensZoom}px`;
-    lensImage.style.left = `${baseRect.left - containerRect.left - imageX * baseRect.width * organizeLensZoom + size / 2}px`;
-    lensImage.style.top = `${baseRect.top - containerRect.top - imageY * baseRect.height * organizeLensZoom + size / 2}px`;
+    lensImage.style.width = `${unrotatedWidth * organizeLensZoom}px`;
+    lensImage.style.height = `${unrotatedHeight * organizeLensZoom}px`;
+    lensImage.style.transformOrigin = "50% 50%";
+    lensImage.style.transform = `rotate(${rotation}deg)`;
+    lensImage.style.left = `${left + size / 2 - rotatedVector.x - unrotatedWidth * organizeLensZoom / 2}px`;
+    lensImage.style.top = `${top + size / 2 - rotatedVector.y - unrotatedHeight * organizeLensZoom / 2}px`;
     $("#imageMagnifierLevel").textContent = `${organizeLensZoom.toFixed(1)}×`;
     if (controls) {
       controls.style.left = `${Math.min(Math.max(0, left + size - 76), Math.max(0, containerRect.width - 76))}px`;
@@ -1216,9 +1251,9 @@ export async function initApp(deps) {
     state.modalPhotoId = photoId;
     $("#modalImage").src = photo.src;
     $("#modalImage").alt = photo.title;
-    $("#modalImage").style.transform = photo.rotation
-      ? `rotate(${photo.rotation}deg) scale(.82)`
-      : "";
+    $("#modalImage").style.transform = rotationStyle(photo.rotation);
+    $("#modalOverlay").style.transform = rotationStyle(photo.rotation);
+    $("#modalRotationLabel").textContent = `向き ${normalizePhotoRotation(photo.rotation)}度`;
     $("#modalStatus").textContent = STATUS_LABELS[photo.status] || "未整理";
     const observations = photo.observations.filter(
       (/** @type {any} */ item) => item.included !== false,
@@ -1277,7 +1312,7 @@ export async function initApp(deps) {
       .map(
         (photo) => `
       <button class="strip-photo ${photo.id === state.organizePhotoId ? "active" : ""}" data-organize-photo="${escapeHtml(photo.id)}" title="${escapeHtml(photo.title)}">
-        <img src="${escapeHtml(photo.thumbSrc || photo.src)}" alt="" /><span>${photo.order}</span><i class="status-dot status-${escapeHtml(photo.status)}"></i>
+        <img src="${escapeHtml(photo.thumbSrc || photo.src)}" alt="" ${rotationStyle(photo.rotation) ? `style="${rotationStyle(photo.rotation)}"` : ""} /><span>${photo.order}</span><i class="status-dot status-${escapeHtml(photo.status)}"></i>
       </button>`,
       )
       .join("");
@@ -1415,7 +1450,7 @@ export async function initApp(deps) {
   function relationEndpoint(/** @type {any} */ found) {
     if (!found) return "";
     const photo = found.photo;
-    return `<div class="relation-endpoint"><img src="${escapeHtml(photo.thumbSrc || photo.src)}" alt="" /><span><strong>${escapeHtml(found.observation.label)}</strong><small>#${escapeHtml(photo.order)} ${escapeHtml(photo.title)}</small></span></div>`;
+    return `<div class="relation-endpoint"><img src="${escapeHtml(photo.thumbSrc || photo.src)}" alt="" style="${rotationStyle(photo.rotation)}" /><span><strong>${escapeHtml(found.observation.label)}</strong><small>#${escapeHtml(photo.order)} ${escapeHtml(photo.title)}</small></span></div>`;
   }
 
   function relationCard(/** @type {any} */ relation) {
@@ -1459,7 +1494,7 @@ export async function initApp(deps) {
     const regionStyle = presentation.region
       ? `left:${presentation.region.x}%;top:${presentation.region.y}%;width:${presentation.region.w}%;height:${presentation.region.h}%;`
       : "";
-    return `<button type="button" class="endpoint-card" data-endpoint-id="${escapeHtml(entry.observation.id)}"><span class="endpoint-card-inner"><span class="endpoint-image"><img src="${escapeHtml(entry.photo.thumbSrc || entry.photo.src)}" alt="" />${presentation.region ? `<i class="endpoint-region" style="${regionStyle}"></i>` : '<em class="endpoint-whole-label">写真全体</em>'}</span><span><strong>${escapeHtml(entry.observation.label)}</strong><small>${escapeHtml(OBSERVATION_TYPE_LABELS[entry.observation.observationType] || "観察対象")}・#${escapeHtml(entry.photo.order)} ${escapeHtml(entry.photo.title)}</small></span></span></button>`;
+    return `<button type="button" class="endpoint-card" data-endpoint-id="${escapeHtml(entry.observation.id)}"><span class="endpoint-card-inner"><span class="endpoint-image"><img src="${escapeHtml(entry.photo.thumbSrc || entry.photo.src)}" alt="" style="${rotationStyle(entry.photo.rotation)}" />${presentation.region ? `<i class="endpoint-region" style="${regionStyle}"></i>` : '<em class="endpoint-whole-label">写真全体</em>'}</span><span><strong>${escapeHtml(entry.observation.label)}</strong><small>${escapeHtml(OBSERVATION_TYPE_LABELS[entry.observation.observationType] || "観察対象")}・#${escapeHtml(entry.photo.order)} ${escapeHtml(entry.photo.title)}</small></span></span></button>`;
   }
 
   function optionMarkup(entry) {
@@ -1467,7 +1502,7 @@ export async function initApp(deps) {
     const regionStyle = presentation.region
       ? `left:${presentation.region.x}%;top:${presentation.region.y}%;width:${presentation.region.w}%;height:${presentation.region.h}%;`
       : "";
-    return `<button type="button" class="endpoint-option" data-endpoint-option="${escapeHtml(entry.observation.id)}"><span class="endpoint-image"><img src="${escapeHtml(entry.photo.thumbSrc || entry.photo.src)}" alt="" />${presentation.region ? `<i class="endpoint-region" style="${regionStyle}"></i>` : '<em class="endpoint-whole-label">写真全体</em>'}</span><span><strong>${escapeHtml(entry.observation.label)}</strong><small>${escapeHtml(entry.photo.title)}・#${escapeHtml(entry.photo.order)}・${escapeHtml(OBSERVATION_TYPE_LABELS[entry.observation.observationType] || "観察対象")}</small></span></button>`;
+    return `<button type="button" class="endpoint-option" data-endpoint-option="${escapeHtml(entry.observation.id)}"><span class="endpoint-image"><img src="${escapeHtml(entry.photo.thumbSrc || entry.photo.src)}" alt="" style="${rotationStyle(entry.photo.rotation)}" />${presentation.region ? `<i class="endpoint-region" style="${regionStyle}"></i>` : '<em class="endpoint-whole-label">写真全体</em>'}</span><span><strong>${escapeHtml(entry.observation.label)}</strong><small>${escapeHtml(entry.photo.title)}・#${escapeHtml(entry.photo.order)}・${escapeHtml(OBSERVATION_TYPE_LABELS[entry.observation.observationType] || "観察対象")}</small></span></button>`;
   }
 
   function renderRelationOptions(/** @type {"source"|"target"} */ kind) {
@@ -1641,9 +1676,11 @@ export async function initApp(deps) {
       memoInput.dataset.photoId = photo.id;
     }
     $("#organizeImage").src = photo.src;
-    $("#organizeImage").style.transform = photo.rotation
-      ? `rotate(${photo.rotation}deg) scale(.82)`
+    $("#organizeImageStage").style.transform = photo.rotation
+      ? `rotate(${normalizePhotoRotation(photo.rotation)}deg)`
       : "";
+    $("#organizeImage").style.transform = "";
+    $("#organizeRotationLabel").textContent = `向き ${normalizePhotoRotation(photo.rotation)}度`;
     renderOverlay($("#observationOverlay"), photo, { interactive: true });
     bindRegionDrawing();
     bindMagnifierLens();
@@ -1924,7 +1961,7 @@ export async function initApp(deps) {
           .map((item) => {
             const photo = photoById(item.photoId);
             return `<button class="knowledge-list-item ${item.id === state.knowledgeObservationId ? "active" : ""}" data-knowledge-observation="${escapeHtml(item.id)}">
-        <img src="${escapeHtml(photo.thumbSrc || photo.src)}" alt="" /><span><strong>${escapeHtml(item.label)}</strong><small>${escapeHtml(photo.title)}</small></span><i>${item.status === "confirmed" ? "✓" : "?"}</i>
+        <img src="${escapeHtml(photo.thumbSrc || photo.src)}" alt="" style="${rotationStyle(photo.rotation)}" /><span><strong>${escapeHtml(item.label)}</strong><small>${escapeHtml(photo.title)}</small></span><i>${item.status === "confirmed" ? "✓" : "?"}</i>
       </button>`;
           })
           .join("")
@@ -1982,7 +2019,7 @@ export async function initApp(deps) {
     $("#knowledgeFocus").innerHTML = `
       <div class="knowledge-map-header"><div><span class="source-badge">${sourceBadge}</span><h2>${escapeHtml(observation.label)}</h2><p>${learnedMode ? "確認済みの観察対象に、あとから追加した参照知識です。" : `${escapeHtml(photo.title)}の中で確認した観察対象です。`}</p></div><button class="ghost-button dark" data-open-photo="${escapeHtml(photo.id)}">元写真を見る</button></div>
       <div class="focus-map">
-        <article class="map-source-card"><small>PHOTO</small><img src="${escapeHtml(photo.thumbSrc || photo.src)}" alt="${escapeHtml(photo.title)}" /><strong>${escapeHtml(photo.title)}</strong></article>
+        <article class="map-source-card"><small>PHOTO</small><img src="${escapeHtml(photo.thumbSrc || photo.src)}" alt="${escapeHtml(photo.title)}" style="${rotationStyle(photo.rotation)}" /><strong>${escapeHtml(photo.title)}</strong></article>
         <div class="map-connector">→</div>
         <article class="map-center-card"><span>${escapeHtml(OBSERVATION_TYPE_LABELS[observation.observationType] || "観察対象")}</span><h3>${escapeHtml(observation.label)}</h3>${entity ? `<p class="optional-entity">任意の具体名：${escapeHtml(entity.name)}</p>` : '<p class="optional-entity">具体名がなくても保存可能</p>'}</article>
         <div class="map-connector">→</div>
@@ -2360,7 +2397,9 @@ export async function initApp(deps) {
     const degree = total ? Math.round((Math.min(state.quizIndex, total) / total) * 360) : 0;
     $("#quizRing").style.background = `conic-gradient(var(--accent) ${degree}deg, rgba(255,255,255,.12) ${degree}deg)`;
     if (!total) {
-      const availability = describeQuizAvailability(toProject(), state.activeVisitId, registry, referenceData?.graph);
+      const availability = state.activeVisitId
+        ? describeQuizAvailability(toProject(), state.activeVisitId, registry, referenceData?.graph)
+        : { reason: "まず訪問を選択または作成してください。" };
       $("#quizStage").innerHTML = `<div class="locked-deck"><span>∅</span><h2>表示できる問題がありません</h2><p>${escapeHtml(availability.reason || "このデッキには問題がありません。")} 確認済みの観察対象と参照知識を整理すると問題を生成できます。</p><button class="primary-button" id="goKnowledgeButton">知識マップへ</button></div>`;
       $("#goKnowledgeButton").addEventListener("click", () => switchView("knowledge"));
       return;
@@ -2796,7 +2835,7 @@ export async function initApp(deps) {
     $("#uploadPreview").innerHTML = state.selectedFiles
       .map(
         (file, index) =>
-          `<figure><img src="${escapeHtml(URL.createObjectURL(file))}" alt="${escapeHtml(file.name)}" /><button type="button" data-remove-upload="${index}" aria-label="削除">×</button></figure>`,
+          `<figure><img src="${escapeHtml(URL.createObjectURL(file))}" alt="${escapeHtml(file.name)}" style="transform:rotate(${state.selectedFileRotations[index] || 0}deg)" /><span class="upload-rotation-label">${state.selectedFileRotations[index] || 0}度</span><button type="button" data-rotate-upload="${index}" aria-label="90度回転">↻</button><button type="button" data-remove-upload="${index}" aria-label="削除">×</button></figure>`,
       )
       .join("");
     const disabled = !state.selectedFiles.length || state.importing;
@@ -2805,7 +2844,16 @@ export async function initApp(deps) {
       disabled || !analysisProvider.isConnected();
     $$("[data-remove-upload]").forEach((button) =>
       button.addEventListener("click", () => {
-        state.selectedFiles.splice(Number(button.dataset.removeUpload), 1);
+        const index = Number(button.dataset.removeUpload);
+        state.selectedFiles.splice(index, 1);
+        state.selectedFileRotations.splice(index, 1);
+        updateUploadPreview();
+      }),
+    );
+    $$(`[data-rotate-upload]`).forEach((button) =>
+      button.addEventListener("click", () => {
+        const index = Number(button.dataset.rotateUpload);
+        state.selectedFileRotations[index] = rotatePhoto(state.selectedFileRotations[index]);
         updateUploadPreview();
       }),
     );
@@ -2818,6 +2866,7 @@ export async function initApp(deps) {
       MAX_UPLOAD_BATCH,
     );
     state.selectedFiles.push(...accepted);
+    state.selectedFileRotations.push(...accepted.map(() => 0));
     updateUploadPreview();
     if (rejected)
       showToast(
@@ -2853,6 +2902,7 @@ export async function initApp(deps) {
       return;
     }
     const files = state.selectedFiles.splice(0);
+    const rotations = state.selectedFileRotations.splice(0);
     if (!files.length) return;
 
     state.importing = true;
@@ -2867,6 +2917,7 @@ export async function initApp(deps) {
       visitId: visit.id,
       domainHint: $("#visitTypeSelect").value || visit.domainPackIds[0] || "other",
       startOrder: visitPhotos().length + 1,
+      getRotation: (_file, index) => rotations[index] || 0,
       createId: () => uid("photo"),
       signal: state.importAbort.signal,
       onProgress: renderImportProgress,
@@ -3093,7 +3144,13 @@ export async function initApp(deps) {
       if (photoId) setOrganizePhoto(photoId);
       switchView("organize");
     });
-    $("#addObservationButton").addEventListener("click", () =>
+    $("#rotateModalPhotoButton")?.addEventListener("click", () => {
+      if (state.modalPhotoId) rotatePhotoById(state.modalPhotoId);
+    });
+    $("#rotateOrganizePhotoButton")?.addEventListener("click", () => {
+      if (state.organizePhotoId) rotatePhotoById(state.organizePhotoId);
+    });
+    $("#addObservationButton")?.addEventListener("click", () =>
       openObservationEditor(null),
     );
     $("#saveObservationButton").addEventListener("click", saveObservation);

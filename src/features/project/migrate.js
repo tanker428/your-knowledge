@@ -16,6 +16,7 @@ import {
   DEMO_VISIT_ID,
   MIGRATED_VISIT_ID,
 } from "../../domain/visit.js";
+import { normalizePhotoRotation } from "../../domain/photo-rotation.js";
 
 /** 保存データの版。JSON の schemaVersion と同じ値を使う。 */
 export const PROJECT_SCHEMA_VERSION = "2.0.0";
@@ -62,7 +63,7 @@ function normalisePhoto(photo, visitId) {
     status: photo.status || "unorganized",
     source: photo.source || "upload",
     domainHint: photo.domainHint ?? null,
-    rotation: photo.rotation ?? 0,
+    rotation: normalizePhotoRotation(photo.rotation),
 
     // 撮影日時。EXIF から取れたときだけ入る。
     capturedAt: photo.capturedAt ?? null,
