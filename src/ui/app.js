@@ -876,17 +876,38 @@ export async function initApp(deps) {
     const y = Math.min(baseRect.top + baseRect.height, Math.max(baseRect.top, point.y));
     const left = Math.min(Math.max(0, x - containerRect.left - size / 2), Math.max(0, containerRect.width - size));
     const top = Math.min(Math.max(0, y - containerRect.top - size / 2), Math.max(0, containerRect.height - size));
-    const imageX = (x - baseRect.left) / baseRect.width;
-    const imageY = (y - baseRect.top) / baseRect.height;
+    const rotation = normalizePhotoRotation(currentOrganizePhoto()?.rotation);
+    const visualPoint = {
+      x: (x - baseRect.left) / baseRect.width,
+      y: (y - baseRect.top) / baseRect.height,
+    };
+    const imagePoint = unrotateImagePoint(visualPoint, rotation);
+    const unrotatedWidth = rotation === 90 || rotation === 270
+      ? baseRect.height
+      : baseRect.width;
+    const unrotatedHeight = rotation === 90 || rotation === 270
+      ? baseRect.width
+      : baseRect.height;
+    const vectorX = (imagePoint.x - 0.5) * unrotatedWidth * organizeLensZoom;
+    const vectorY = (imagePoint.y - 0.5) * unrotatedHeight * organizeLensZoom;
+    const rotatedVector = rotation === 90
+      ? { x: -vectorY, y: vectorX }
+      : rotation === 180
+        ? { x: -vectorX, y: -vectorY }
+        : rotation === 270
+          ? { x: vectorY, y: -vectorX }
+          : { x: vectorX, y: vectorY };
     lens.style.width = `${size}px`;
     lens.style.height = `${size}px`;
     lens.style.left = `${left}px`;
     lens.style.top = `${top}px`;
     lensImage.src = $("#organizeImage")?.src || lensImage.src;
-    lensImage.style.width = `${baseRect.width * organizeLensZoom}px`;
-    lensImage.style.height = `${baseRect.height * organizeLensZoom}px`;
-    lensImage.style.left = `${baseRect.left - containerRect.left - imageX * baseRect.width * organizeLensZoom + size / 2}px`;
-    lensImage.style.top = `${baseRect.top - containerRect.top - imageY * baseRect.height * organizeLensZoom + size / 2}px`;
+    lensImage.style.width = `${unrotatedWidth * organizeLensZoom}px`;
+    lensImage.style.height = `${unrotatedHeight * organizeLensZoom}px`;
+    lensImage.style.transformOrigin = "50% 50%";
+    lensImage.style.transform = `rotate(${rotation}deg)`;
+    lensImage.style.left = `${left + size / 2 - rotatedVector.x - unrotatedWidth * organizeLensZoom / 2}px`;
+    lensImage.style.top = `${top + size / 2 - rotatedVector.y - unrotatedHeight * organizeLensZoom / 2}px`;
     $("#imageMagnifierLevel").textContent = `${organizeLensZoom.toFixed(1)}×`;
     if (controls) {
       controls.style.left = `${Math.min(Math.max(0, left + size - 76), Math.max(0, containerRect.width - 76))}px`;

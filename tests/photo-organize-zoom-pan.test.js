@@ -37,6 +37,8 @@ describe("Photo organize zoom and pan UI", () => {
     expect(source).toContain('lensImage.src = $("#organizeImage")?.src');
     expect(source).toContain("organizeLensZoom");
     expect(source).toContain("organizeImageStage");
+    expect(source).toContain("lensImage.style.transform = `rotate(${rotation}deg)`");
+    expect(source).toContain("unrotateImagePoint(visualPoint, rotation)");
   });
 
   it("allows the same lens interaction over image and Observation rectangles", async () => {
