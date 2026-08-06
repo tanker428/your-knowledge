@@ -172,7 +172,7 @@
                 <button type="button" id="cancelRegionDrawingButton">キャンセル</button>
               </div>
             </div>
-            <div class="image-help"><span>番号を押すと対象を選択</span><div class="image-tools"><button class="text-button magnifier-button" id="magnifierButton" type="button" aria-pressed="false">⌕ 虫眼鏡の使い方</button><button class="text-button" id="regionModeButton" type="button">範囲を追加</button><button class="text-button" id="addObservationButton" type="button">＋ 対象を手動追加</button></div><small class="image-zoom-hint" id="imageZoomHint">PCは写真上で右ボタンを押している間、Androidは写真を長押ししている間、円形レンズで拡大します。</small></div>
+            <div class="image-help"><span>番号を押すと対象を選択</span><div class="photo-rotation-actions"><span id="organizeRotationLabel">向き 0度</span><button class="text-button" id="rotateOrganizePhotoButton" type="button">↻ 90度回転</button></div><small class="image-zoom-hint" id="imageZoomHint">PCは写真上で右ボタンを押している間、Androidは写真を長押ししている間、円形レンズで拡大します。</small></div>
             <div class="experience-memo">
               <label for="experienceMemoInput">この写真を撮ったときの感想</label>
               <textarea id="experienceMemoInput" rows="2" placeholder="例：実物は想像より大きかった／クジラの仲間とは思わなかった"></textarea>
@@ -297,7 +297,7 @@
         <h2 id="modalTitle"></h2>
         <p>この写真から抽出された観察対象です。具体名が未確定でも、汎用分類と分野別分類だけで保存できます。</p>
         <div class="modal-section"><h3>観察対象</h3><div id="modalObservations" class="modal-observation-list"></div></div>
-        <div class="modal-actions"><button class="primary-button" id="organizeFromModalButton">この写真を整理</button></div>
+        <div class="modal-actions"><span class="photo-rotation-label" id="modalRotationLabel">向き 0度</span><button class="ghost-button dark" id="rotateModalPhotoButton" type="button">↻ 90度回転</button><button class="primary-button" id="organizeFromModalButton">この写真を整理</button></div>
       </div>
     </article>
   </div>
@@ -455,13 +455,19 @@
     .image-magnifier-controls button { width:34px; height:34px; border:1px solid var(--line); border-radius:50%; background:rgba(255,255,255,.95); color:var(--ink); font-size:20px; line-height:1; box-shadow:0 3px 8px rgba(0,0,0,.18); }
     .image-magnifier-controls button:active { transform:scale(.96); }
     .image-help { gap:10px; }
+    .photo-rotation-actions { display:flex; align-items:center; gap:8px; color:var(--muted); font-size:9px; font-weight:800; }
+    .photo-rotation-label { margin-right:auto; color:var(--muted); font-size:10px; font-weight:800; }
+    .upload-preview figure { position:relative; }
+    .upload-preview figure img { transition:transform .2s; }
+    .upload-rotation-label { position:absolute; left:5px; bottom:5px; padding:3px 5px; border-radius:5px; background:rgba(20,21,19,.78); color:white; font-size:8px; font-weight:800; }
+    .upload-preview figure [data-rotate-upload] { right:31px; }
     .image-tools { display:flex; align-items:center; justify-content:flex-end; gap:7px; flex-wrap:wrap; }
     .magnifier-button.active { color:var(--accent); font-weight:900; }
     .image-zoom-controls { display:inline-flex; align-items:center; gap:4px; border:1px solid var(--line); border-radius:8px; padding:2px 5px; background:var(--paper); }
     .image-zoom-controls strong { min-width:38px; text-align:center; font-size:9px; }
     .image-zoom-hint { display:block; width:100%; color:var(--muted); font-size:9px; line-height:1.5; text-align:right; }
     .image-tools .text-button.active { color:var(--accent); font-weight:900; }
-    @media(max-width:520px){ .image-help { align-items:flex-start; flex-direction:column; } .image-tools { width:100%; justify-content:flex-start; } .image-tools .text-button { font-size:9px; padding:5px 0; } }
+    @media(max-width:520px){ .image-help { align-items:flex-start; flex-direction:column; } .photo-rotation-actions { width:100%; justify-content:space-between; } .photo-rotation-label { margin-right:8px; } }
     .image-stage #observationOverlay { position:absolute; inset:0; z-index:3; }
     .annotated-photo #observationOverlay { z-index: 3; }
     #regionDrawLayer { position: absolute; inset: 0; z-index: 2; pointer-events: none; touch-action: none; cursor: crosshair; }

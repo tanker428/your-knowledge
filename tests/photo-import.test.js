@@ -161,6 +161,14 @@ describe("importPhotos", () => {
     expect(outcome.added.map((p) => p.order)).toEqual([21, 22]);
   });
 
+  it("carries the registration preview rotation into each Photo record", async () => {
+    const outcome = await importPhotos(
+      [file("a.jpg"), file("b.jpg")],
+      options(fakeRepository(), { getRotation: (_file, index) => index === 0 ? 270 : 90 }),
+    );
+    expect(outcome.added.map((photo) => photo.rotation)).toEqual([270, 90]);
+  });
+
   it("derives a title from the filename", async () => {
     const outcome = await importPhotos(
       [file("IMG_0042.jpg")],

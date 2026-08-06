@@ -1,3 +1,5 @@
+import { normalizePhotoRotation } from "../../domain/photo-rotation.js";
+
 /**
  * JSON export / import for a whole project.
  *
@@ -91,7 +93,7 @@ export function buildExportDocument(input) {
       status: photo.status,
       source: photo.source,
       domainHint: photo.domainHint || null,
-      rotation: photo.rotation ?? 0,
+      rotation: normalizePhotoRotation(photo.rotation),
       capturedAt: photo.capturedAt ?? null,
       fileLastModified: photo.fileLastModified ?? null,
       importedAt: photo.importedAt ?? null,
