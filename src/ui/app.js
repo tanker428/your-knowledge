@@ -573,6 +573,7 @@ export async function initApp(deps) {
 
   function switchView(/** @type {string} */ viewName) {
     cancelRegionDrawing({ clearDraft: true });
+    if (viewName !== "organize") hideOrganizeLens();
     $$(".view").forEach((view) =>
       view.classList.toggle("active", view.id === `view-${viewName}`),
     );
@@ -902,7 +903,14 @@ export async function initApp(deps) {
     if (!container || container.dataset.magnifierBound) return;
     container.dataset.magnifierBound = "true";
     container.addEventListener("contextmenu", (/** @type {MouseEvent} */ event) => {
-      event.preventDefault();
+      const baseRect = organizeBaseRect();
+      const target = /** @type {Element|null} */ (event.target);
+      const inImage = baseRect
+        && event.clientX >= baseRect.left
+        && event.clientX <= baseRect.left + baseRect.width
+        && event.clientY >= baseRect.top
+        && event.clientY <= baseRect.top + baseRect.height;
+      if (inImage || target?.closest("#observationOverlay, #regionDrawLayer")) event.preventDefault();
     });
     container.addEventListener("wheel", (/** @type {WheelEvent} */ event) => {
       if (!organizeMagnifierActive) return;
@@ -911,7 +919,13 @@ export async function initApp(deps) {
     }, { passive: false });
     container.addEventListener("pointerdown", (/** @type {PointerEvent} */ event) => {
       const target = /** @type {Element|null} */ (event.target);
-      if (target?.closest("button") || state.regionDrawing || organizeInteractionMode === "region") return;
+      if (target?.closest("#imageMagnifierControls") || state.regionDrawing || organizeInteractionMode === "region") return;
+      const baseRect = organizeBaseRect();
+      if (!baseRect
+        || event.clientX < baseRect.left
+        || event.clientX > baseRect.left + baseRect.width
+        || event.clientY < baseRect.top
+        || event.clientY > baseRect.top + baseRect.height) return;
       if (event.pointerType === "mouse") {
         if (event.button !== 2) return;
         organizeMagnifierActive = true;
@@ -930,6 +944,7 @@ export async function initApp(deps) {
         organizeMagnifierActive = true;
         organizeLensPointerId = event.pointerId;
         organizeLensPoint = { x: event.clientX, y: event.clientY };
+        container.setPointerCapture(event.pointerId);
         event.preventDefault();
         alignOrganizeSurfaces();
       }, 350);
@@ -947,7 +962,10 @@ export async function initApp(deps) {
       ) > 10) clearOrganizeLensTimer();
     });
     const endLens = (/** @type {PointerEvent} */ event) => {
-      if (event.pointerId === organizeLensPointerId || event.pointerType === "mouse") hideOrganizeLens();
+      if (event.pointerId === organizeLensPointerId || event.pointerType === "mouse") {
+        event.preventDefault();
+        hideOrganizeLens();
+      }
       else if (organizeLensLongPressStart?.pointerId === event.pointerId) clearOrganizeLensTimer();
     };
     container.addEventListener("pointerup", endLens);
