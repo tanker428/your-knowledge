@@ -2376,7 +2376,9 @@ export async function initApp(deps) {
     const degree = total ? Math.round((Math.min(state.quizIndex, total) / total) * 360) : 0;
     $("#quizRing").style.background = `conic-gradient(var(--accent) ${degree}deg, rgba(255,255,255,.12) ${degree}deg)`;
     if (!total) {
-      const availability = describeQuizAvailability(toProject(), state.activeVisitId, registry, referenceData?.graph);
+      const availability = state.activeVisitId
+        ? describeQuizAvailability(toProject(), state.activeVisitId, registry, referenceData?.graph)
+        : { reason: "まず訪問を選択または作成してください。" };
       $("#quizStage").innerHTML = `<div class="locked-deck"><span>∅</span><h2>表示できる問題がありません</h2><p>${escapeHtml(availability.reason || "このデッキには問題がありません。")} 確認済みの観察対象と参照知識を整理すると問題を生成できます。</p><button class="primary-button" id="goKnowledgeButton">知識マップへ</button></div>`;
       $("#goKnowledgeButton").addEventListener("click", () => switchView("knowledge"));
       return;
@@ -3127,13 +3129,7 @@ export async function initApp(deps) {
     $("#rotateOrganizePhotoButton")?.addEventListener("click", () => {
       if (state.organizePhotoId) rotatePhotoById(state.organizePhotoId);
     });
-    $("#rotateModalPhotoButton")?.addEventListener("click", () => {
-      if (state.modalPhotoId) rotatePhotoById(state.modalPhotoId);
-    });
-    $("#rotateOrganizePhotoButton")?.addEventListener("click", () => {
-      if (state.organizePhotoId) rotatePhotoById(state.organizePhotoId);
-    });
-    $("#addObservationButton").addEventListener("click", () =>
+    $("#addObservationButton")?.addEventListener("click", () =>
       openObservationEditor(null),
     );
     $("#saveObservationButton").addEventListener("click", saveObservation);
