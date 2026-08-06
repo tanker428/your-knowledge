@@ -154,15 +154,25 @@
           <section class="organize-image-panel">
             <div class="panel-title"><span>PHOTO</span><strong id="organizePhotoTitle">写真を選択</strong></div>
             <div class="annotated-photo" id="annotatedPhoto">
-              <img id="organizeImage" alt="整理対象の写真" />
-              <div id="regionDrawLayer" aria-hidden="true"><div id="regionDraftBox" class="hidden"></div></div>
-              <div id="observationOverlay"></div>
+              <div class="image-stage" id="organizeImageStage">
+                <img id="organizeImage" alt="整理対象の写真" />
+                <div id="regionDrawLayer" aria-hidden="true"><div id="regionDraftBox" class="hidden"></div></div>
+                <div id="observationOverlay"></div>
+              </div>
+              <div id="imageMagnifierLens" class="image-magnifier-lens hidden" aria-hidden="true">
+                <img id="imageMagnifierLensImage" alt="" />
+                <strong id="imageMagnifierLevel">2.0×</strong>
+              </div>
+              <div id="imageMagnifierControls" class="image-magnifier-controls hidden" aria-label="虫眼鏡の倍率">
+                <button type="button" id="imageMagnifierOutButton" aria-label="虫眼鏡を縮小">−</button>
+                <button type="button" id="imageMagnifierInButton" aria-label="虫眼鏡を拡大">＋</button>
+              </div>
               <div id="regionDrawingControls" class="region-drawing-controls hidden" role="status">
                 <span>範囲を指定してください</span>
                 <button type="button" id="cancelRegionDrawingButton">キャンセル</button>
               </div>
             </div>
-            <div class="image-help"><span>番号を押すと対象を選択</span><button class="text-button" id="addObservationButton">＋ 対象を手動追加</button></div>
+            <div class="image-help"><span>番号を押すと対象を選択</span><div class="image-tools"><button class="text-button magnifier-button" id="magnifierButton" type="button" aria-pressed="false">⌕ 虫眼鏡の使い方</button><button class="text-button" id="regionModeButton" type="button">範囲を追加</button><button class="text-button" id="addObservationButton" type="button">＋ 対象を手動追加</button></div><small class="image-zoom-hint" id="imageZoomHint">PCは写真上で右ボタンを押している間、Androidは写真を長押ししている間、円形レンズで拡大します。</small></div>
             <div class="experience-memo">
               <label for="experienceMemoInput">この写真を撮ったときの感想</label>
               <textarea id="experienceMemoInput" rows="2" placeholder="例：実物は想像より大きかった／クジラの仲間とは思わなかった"></textarea>
@@ -436,6 +446,23 @@
 
   <script type="module" src="src/main.js"></script>
   <style>
+    .image-stage { position:absolute; transform-origin:center center; will-change:transform; }
+    .image-stage > img { display:block; width:100%; height:100%; object-fit:fill; image-rendering:auto; user-select:none; -webkit-user-drag:none; }
+    .image-magnifier-lens { position:absolute; z-index:8; width:200px; height:200px; border:3px solid rgba(255,255,255,.95); border-radius:50%; overflow:hidden; pointer-events:none; box-shadow:0 6px 18px rgba(0,0,0,.28), 0 0 0 2px rgba(20,35,50,.35); background:#fff; }
+    .image-magnifier-lens > img { position:absolute; max-width:none; transform-origin:0 0; pointer-events:none; user-select:none; -webkit-user-drag:none; image-rendering:auto; }
+    .image-magnifier-lens > strong { position:absolute; z-index:1; right:8px; bottom:7px; padding:2px 6px; border-radius:999px; color:#fff; background:rgba(20,35,50,.78); font-size:12px; }
+    .image-magnifier-controls { position:absolute; z-index:9; display:flex; gap:4px; pointer-events:auto; }
+    .image-magnifier-controls button { width:34px; height:34px; border:1px solid var(--line); border-radius:50%; background:rgba(255,255,255,.95); color:var(--ink); font-size:20px; line-height:1; box-shadow:0 3px 8px rgba(0,0,0,.18); }
+    .image-magnifier-controls button:active { transform:scale(.96); }
+    .image-help { gap:10px; }
+    .image-tools { display:flex; align-items:center; justify-content:flex-end; gap:7px; flex-wrap:wrap; }
+    .magnifier-button.active { color:var(--accent); font-weight:900; }
+    .image-zoom-controls { display:inline-flex; align-items:center; gap:4px; border:1px solid var(--line); border-radius:8px; padding:2px 5px; background:var(--paper); }
+    .image-zoom-controls strong { min-width:38px; text-align:center; font-size:9px; }
+    .image-zoom-hint { display:block; width:100%; color:var(--muted); font-size:9px; line-height:1.5; text-align:right; }
+    .image-tools .text-button.active { color:var(--accent); font-weight:900; }
+    @media(max-width:520px){ .image-help { align-items:flex-start; flex-direction:column; } .image-tools { width:100%; justify-content:flex-start; } .image-tools .text-button { font-size:9px; padding:5px 0; } }
+    .image-stage #observationOverlay { position:absolute; inset:0; z-index:3; }
     .annotated-photo #observationOverlay { z-index: 3; }
     #regionDrawLayer { position: absolute; inset: 0; z-index: 2; pointer-events: none; touch-action: none; cursor: crosshair; }
     #regionDraftBox { position: absolute; border: 2px dashed var(--accent-2); background: rgba(232,111,54,.2); pointer-events: none; }
