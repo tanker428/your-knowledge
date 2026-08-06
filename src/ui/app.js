@@ -752,11 +752,6 @@ export async function initApp(deps) {
       container.style.touchAction = organizeMagnifierActive ? "none" : "auto";
     }
     $("#regionModeButton")?.classList.toggle("active", organizeInteractionMode === "region");
-    const magnifier = $("#magnifierButton");
-    if (magnifier) {
-      magnifier.classList.toggle("active", organizeMagnifierActive);
-      magnifier.setAttribute("aria-pressed", String(organizeMagnifierActive));
-    }
     const zoomHint = $("#imageZoomHint");
     if (zoomHint) {
       zoomHint.classList.toggle("hidden", !image.src);
@@ -1853,9 +1848,6 @@ export async function initApp(deps) {
       if (radio) radio.checked = true;
       alignOrganizeSurfaces();
       showToast("名前と対象種別を入力してから範囲を指定してください");
-    });
-    $("#magnifierButton")?.addEventListener("click", () => {
-      showToast("PCは写真上で右ボタン、Androidは写真の長押しで虫眼鏡を使えます");
     });
   }
 
