@@ -56,6 +56,7 @@ export function rebuildUserKnowledgeStates(events = []) {
     return byTime || String(a.id || "").localeCompare(String(b.id || ""));
   });
   for (const event of ordered) {
+    if (!event.referenceFactId) continue;
     const key = stateKey(event.userId, event.visitId, event.referenceFactId);
     const previous = states.get(key) || {
       userId: event.userId,

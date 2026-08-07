@@ -57,6 +57,7 @@
  * @property {{id:string,status:string}[]} facts
  * @property {object[]} [entities]                  Optional project entities.
  * @property {object[]} [referenceFacts]            Curated quiz/reference facts.
+ * @property {string|null} [demoKnowledgeVersion]   Version of bundled demo knowledge.
  * @property {object[]} [quizResults]
  * @property {object[]} [learningEvents]            Append-only learning history.
  * @property {object[]} [userKnowledgeStates]       Per-user/fact learning summaries.
