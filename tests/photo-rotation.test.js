@@ -14,7 +14,11 @@ describe("photo rotation", () => {
   it("anchors Observation numbers to the displayed upper-left corner after rotation", async () => {
     const source = await readFile("src/ui/app.js", "utf8");
     expect(source).toContain("observation-number-anchor-${normalizePhotoRotation(photo.rotation)}");
-    expect(await readFile("styles.css", "utf8")).toContain("observation-number-anchor-90");
+    const styles = await readFile("styles.css", "utf8");
+    expect(styles).toContain("observation-number-anchor-90");
+    expect(styles).toContain("transform:rotate(-90deg)");
+    expect(styles).toContain("transform:rotate(-180deg)");
+    expect(styles).toContain("transform:rotate(-270deg)");
   });
 
   it("normalizes missing and unsupported values to the compatible default", () => {
