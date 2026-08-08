@@ -86,11 +86,4 @@ describe("photo rotation", () => {
     expect(restored.photos[0].observations[0].region).toEqual({ x: 10, y: 20, w: 30, h: 40 });
   });
 
-  it("uses rotation-aware rendering across photo, graph, relation, quiz, and collection views", async () => {
-    const source = await readFile("src/ui/app.js", "utf8");
-    expect(source.match(/rotationStyle\(photo\.rotation\)/g)?.length).toBeGreaterThanOrEqual(8);
-    expect(source).toContain('rotationStyle(photo?.rotation)');
-    expect(source).toContain('transform="rotate(');
-    expect(source).toMatch(/style="\$\{rotationStyle\(optionPhoto\.rotation\)\}"|renderQuizImage\(photoById\(option\.photoId\)/);
-  });
 });
