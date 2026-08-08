@@ -3,11 +3,20 @@ import { describe, expect, it } from "vitest";
 
 describe("Photo organize zoom and pan UI", () => {
   it("provides the lens, region, and observation controls", async () => {
-    const html = await readFile("index.html", "utf8");
+    const [html, source] = await Promise.all([
+      readFile("index.html", "utf8"),
+      readFile("src/ui/app.js", "utf8"),
+    ]);
     expect(html).toContain('id="imageMagnifierLens"');
     expect(html).toContain('id="imageMagnifierInButton"');
     expect(html).toContain('id="imageMagnifierOutButton"');
     expect(html).toContain('id="organizeImageStage"');
+    expect(source).toContain("id=\"stepAddObservation\"");
+    expect(html).toContain('id="newObservationRegion"');
+    expect(html).toContain("写真全体");
+    expect(html).toContain("写真内の範囲");
+    expect(html).not.toContain('id="regionModeButton"');
+    expect(html).not.toContain('id="addObservationButton"');
     expect(html).toContain('id="rotateOrganizePhotoButton"');
     expect(html).toContain('id="rotateModalPhotoButton"');
   });
@@ -60,5 +69,19 @@ describe("Photo organize zoom and pan UI", () => {
     expect(source).toContain("updateObservation(observation");
     expect(source).toContain("region,");
     expect(source).toContain("persist();");
+  });
+
+  it("uses one clear route for adding observations and preserves direct magnifier operation", async () => {
+    const [html, source] = await Promise.all([
+      readFile("index.html", "utf8"),
+      readFile("src/ui/app.js", "utf8"),
+    ]);
+    expect(html).not.toContain("虫眼鏡の使い方");
+    expect(source).not.toContain("magnifierButton");
+    expect(source).not.toContain("regionModeButton");
+    expect(source).not.toContain("addObservationButton");
+    expect(source).toContain("stepAddObservation");
+    expect(html).toContain("PCは写真上で右ボタンを押している間");
+    expect(source).toContain("event.button !== 2");
   });
 });

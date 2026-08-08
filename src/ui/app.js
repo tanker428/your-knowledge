@@ -768,12 +768,6 @@ export async function initApp(deps) {
       container.dataset.interactionMode = organizeInteractionMode;
       container.style.touchAction = organizeMagnifierActive ? "none" : "auto";
     }
-    $("#regionModeButton")?.classList.toggle("active", organizeInteractionMode === "region");
-    const magnifier = $("#magnifierButton");
-    if (magnifier) {
-      magnifier.classList.toggle("active", organizeMagnifierActive);
-      magnifier.setAttribute("aria-pressed", String(organizeMagnifierActive));
-    }
     const zoomHint = $("#imageZoomHint");
     if (zoomHint) {
       zoomHint.classList.toggle("hidden", !image.src);
@@ -1896,18 +1890,6 @@ export async function initApp(deps) {
       }
       state.pendingObservationRegion = null;
       startRegionDrawing();
-    });
-    $("#regionModeButton")?.addEventListener("click", () => {
-      organizeInteractionMode = "region";
-      openObservationEditor(null);
-      if (state.observationDraft) state.observationDraft.regionMode = "region";
-      const radio = $("#newObservationRegion input[value=region]");
-      if (radio) radio.checked = true;
-      alignOrganizeSurfaces();
-      showToast("名前と対象種別を入力してから範囲を指定してください");
-    });
-    $("#magnifierButton")?.addEventListener("click", () => {
-      showToast("PCは写真上で右ボタン、Androidは写真の長押しで虫眼鏡を使えます");
     });
   }
 
@@ -3227,9 +3209,6 @@ export async function initApp(deps) {
     $("#rotateOrganizePhotoButton")?.addEventListener("click", () => {
       if (state.organizePhotoId) rotatePhotoById(state.organizePhotoId);
     });
-    $("#addObservationButton")?.addEventListener("click", () =>
-      openObservationEditor(null),
-    );
     $("#saveObservationButton").addEventListener("click", saveObservation);
     $("#saveRelationButton")?.addEventListener("click", saveRelation);
     $("#chooseRelationSourceButton")?.addEventListener("click", () => showRelationPicker("source"));
