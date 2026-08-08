@@ -43,6 +43,13 @@ function project() {
 }
 
 describe("quiz generation from the visit knowledge graph", () => {
+  it("represents geological periods with data-driven duration bars", async () => {
+    const source = await readFile("src/ui/app.js", "utf8");
+    expect(source).toContain("--time-span:${width}%");
+    expect(source).toContain("Math.abs(option.startMa - option.endMa)");
+    expect(await readFile("styles.css", "utf8")).toContain("quiz-time-duration");
+  });
+
   it("generates deterministic hierarchy and timeline-map questions", () => {
     const first = generateVisitQuizzes(project(), "v1", registries, referenceGraph);
     const second = generateVisitQuizzes(project(), "v1", registries, referenceGraph);
