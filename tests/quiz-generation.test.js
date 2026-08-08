@@ -43,6 +43,12 @@ function project() {
 }
 
 describe("quiz generation from the visit knowledge graph", () => {
+  it("uses concise photo question wording", async () => {
+    const source = await readFile("src/features/knowledge-graph/quiz-generation.js", "utf8");
+    expect(source).toContain('prompt: "この対象はなんですか？"');
+    expect(source).not.toContain("写真で示されている対象はどれですか？");
+  });
+
   it("generates deterministic hierarchy and timeline-map questions", () => {
     const first = generateVisitQuizzes(project(), "v1", registries, referenceGraph);
     const second = generateVisitQuizzes(project(), "v1", registries, referenceGraph);
