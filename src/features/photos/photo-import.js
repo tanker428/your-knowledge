@@ -1,4 +1,5 @@
 import { processImageFile } from "./image-processing.js";
+import { normalizePhotoRotation } from "../../domain/photo-rotation.js";
 
 /**
  * Sequential, interruptible photo import.
@@ -45,6 +46,7 @@ function yieldToBrowser() {
  * @param {number} options.startOrder
  * @param {() => string} options.createId
  * @param {(progress: ImportProgress) => void} [options.onProgress]
+ * @param {(file: File, index: number) => number} [options.getRotation]
  * @param {(record: import('../../repositories/knowledge-repository.js').PhotoRecord, binary: import('../../repositories/knowledge-repository.js').PhotoBinary) => Promise<void>|void} [options.onPhotoSaved]
  * @param {AbortSignal} [options.signal]
  * @param {(file: File|Blob) => Promise<import('../../repositories/knowledge-repository.js').PhotoBinary>} [options.processImage]
@@ -59,6 +61,7 @@ export async function importPhotos(files, options) {
     startOrder,
     createId,
     onProgress,
+    getRotation,
     onPhotoSaved,
     signal,
     processImage = processImageFile,
@@ -99,6 +102,7 @@ export async function importPhotos(files, options) {
         status: /** @type {const} */ ("unorganized"),
         source: /** @type {const} */ ("upload"),
         domainHint,
+        rotation: normalizePhotoRotation(getRotation?.(file, index)),
 
         // 撮影日時は EXIF からしか取れない。未実装のため null のままにする。
         // file.lastModified はコピーで書き換わるので代わりに使わない。

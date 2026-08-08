@@ -17,6 +17,8 @@ describe("Photo organize zoom and pan UI", () => {
     expect(html).toContain("写真内の範囲");
     expect(html).not.toContain('id="regionModeButton"');
     expect(html).not.toContain('id="addObservationButton"');
+    expect(html).toContain('id="rotateOrganizePhotoButton"');
+    expect(html).toContain('id="rotateModalPhotoButton"');
   });
 
   it("binds right-button, wheel, and long-press lens interactions without serializing viewport state", async () => {
@@ -43,7 +45,9 @@ describe("Photo organize zoom and pan UI", () => {
     expect(html).toContain("pointer-events:none");
     expect(source).toContain('lensImage.src = $("#organizeImage")?.src');
     expect(source).toContain("organizeLensZoom");
-    expect(source).not.toContain("stage.style.transform =");
+    expect(source).toContain("organizeImageStage");
+    expect(source).toContain("lensImage.style.transform = `rotate(${rotation}deg)`");
+    expect(source).toContain("unrotateImagePoint(visualPoint, rotation)");
   });
 
   it("allows the same lens interaction over image and Observation rectangles", async () => {

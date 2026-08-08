@@ -1,3 +1,5 @@
+import { normalizePhotoRotation } from "../../domain/photo-rotation.js";
+
 /**
  * JSON export / import for a whole project.
  *
@@ -91,7 +93,7 @@ export function buildExportDocument(input) {
       status: photo.status,
       source: photo.source,
       domainHint: photo.domainHint || null,
-      rotation: photo.rotation ?? 0,
+      rotation: normalizePhotoRotation(photo.rotation),
       capturedAt: photo.capturedAt ?? null,
       fileLastModified: photo.fileLastModified ?? null,
       importedAt: photo.importedAt ?? null,
@@ -105,7 +107,8 @@ export function buildExportDocument(input) {
     observations,
     relations: project.relations,
     entities: Array.isArray(project.entities) ? project.entities : [],
-    referenceFacts: project.referenceFacts || [],
+     referenceFacts: project.referenceFacts || [],
+     demoKnowledgeVersion: project.demoKnowledgeVersion ?? null,
     // Legacy facts are retained under an explicit quarantine key so an old
     // user's data is not silently destroyed or reclassified as ReferenceFact.
     legacyFacts: project.facts || [],
@@ -365,6 +368,7 @@ export function documentToProject(doc, availablePhotoIds, projectId) {
       relations: doc.relations || [],
       entities: (doc.entities || []).map((entity) => ({ ...entity })),
       referenceFacts: (doc.referenceFacts || []).map((fact) => ({ ...fact })),
+      demoKnowledgeVersion: doc.demoKnowledgeVersion ?? null,
       facts: (doc.legacyFacts || doc.facts || []).map((fact) => ({ ...fact })),
       quizResults: doc.quizResults || [],
       learningEvents: doc.learningEvents || [],

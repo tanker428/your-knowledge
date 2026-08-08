@@ -16,6 +16,7 @@ import {
   DEMO_VISIT_ID,
   MIGRATED_VISIT_ID,
 } from "../../domain/visit.js";
+import { normalizePhotoRotation } from "../../domain/photo-rotation.js";
 
 /** 保存データの版。JSON の schemaVersion と同じ値を使う。 */
 export const PROJECT_SCHEMA_VERSION = "2.0.0";
@@ -62,7 +63,7 @@ function normalisePhoto(photo, visitId) {
     status: photo.status || "unorganized",
     source: photo.source || "upload",
     domainHint: photo.domainHint ?? null,
-    rotation: photo.rotation ?? 0,
+    rotation: normalizePhotoRotation(photo.rotation),
 
     // 撮影日時。EXIF から取れたときだけ入る。
     capturedAt: photo.capturedAt ?? null,
@@ -98,6 +99,8 @@ function normalisePhoto(photo, visitId) {
  * @param {any[]} context.demoPhotos デモ写真（`source: 'sample'`）
  * @param {any[]} context.demoRelations
  * @param {any[]} context.demoFacts
+ * @param {any[]} [context.demoReferenceFacts]
+ * @param {string} [context.demoKnowledgeVersion]
  * @param {{title?: string, placeName?: string, domainPackIds?: string[]}} [context.demoVisitSeed]
  * @returns {MigrationResult}
  */
@@ -127,7 +130,8 @@ export function migrateProjectDocument(stored, context) {
           ),
           relations: context.demoRelations.map((relation) => ({ ...relation })),
           facts: context.demoFacts.map((fact) => ({ ...fact })),
-          referenceFacts: [],
+          referenceFacts: (context.demoReferenceFacts || []).map((fact) => ({ ...fact })),
+          demoKnowledgeVersion: context.demoKnowledgeVersion || null,
           quizResults: [],
           learningEvents: [],
           userKnowledgeStates: [],
@@ -145,6 +149,19 @@ export function migrateProjectDocument(stored, context) {
 
     // -------------------------------------------- すでに v2 ---
     if (Array.isArray(stored.visits) && stored.visits.length) {
+      const hasDemoVisit = stored.visits.some((visit) => visit.id === DEMO_VISIT_ID);
+      const shouldSeedDemo = hasDemoVisit && stored.demoKnowledgeVersion !== context.demoKnowledgeVersion;
+      const storedReferenceFacts = Array.isArray(stored.referenceFacts)
+        ? stored.referenceFacts.map((fact) => ({ ...fact }))
+        : [];
+      const knownReferenceFactIds = new Set(storedReferenceFacts.map((fact) => fact.id));
+      if (shouldSeedDemo) {
+        storedReferenceFacts.push(
+          ...(context.demoReferenceFacts || [])
+            .filter((fact) => !knownReferenceFactIds.has(fact.id))
+            .map((fact) => ({ ...fact })),
+        );
+      }
       return {
         ok: true,
         changed: false,
@@ -159,6 +176,10 @@ export function migrateProjectDocument(stored, context) {
             : [],
           learningEvents: Array.isArray(stored.learningEvents) ? stored.learningEvents : [],
           userKnowledgeStates: Array.isArray(stored.userKnowledgeStates) ? stored.userKnowledgeStates : [],
+          referenceFacts: storedReferenceFacts,
+          demoKnowledgeVersion: shouldSeedDemo
+            ? context.demoKnowledgeVersion
+            : stored.demoKnowledgeVersion || null,
         },
       };
     }
@@ -261,7 +282,15 @@ export function migrateProjectDocument(stored, context) {
         photos,
         relations,
         facts,
-        referenceFacts: Array.isArray(stored.referenceFacts) ? stored.referenceFacts.map((fact) => ({ ...fact })) : [],
+        referenceFacts: [
+          ...(Array.isArray(stored.referenceFacts)
+            ? stored.referenceFacts.map((fact) => ({ ...fact }))
+            : []),
+          ...(context.demoReferenceFacts || []).filter(
+            (fact) => !(Array.isArray(stored.referenceFacts) ? stored.referenceFacts : []).some((storedFact) => storedFact.id === fact.id),
+          ).map((fact) => ({ ...fact })),
+        ],
+        demoKnowledgeVersion: context.demoKnowledgeVersion || null,
         quizResults,
         learningEvents: Array.isArray(stored.learningEvents) ? stored.learningEvents.map((event) => ({ ...event })) : [],
         userKnowledgeStates: Array.isArray(stored.userKnowledgeStates) ? stored.userKnowledgeStates.map((state) => ({ ...state })) : [],
