@@ -43,15 +43,6 @@ function project() {
 }
 
 describe("quiz generation from the visit knowledge graph", () => {
-  it("generates a single-answer feature question from a verified ReferenceFact", () => {
-    const input = project();
-    input.referenceFacts.push({ id: "f-feature", targetObservationId: "o1", predicate: "hasFeature", value: "taxon:child", status: "verified", sourceType: "curated" });
-    const feature = generateVisitQuizzes(input, "v1", registries, referenceGraph).find((quiz) => quiz.questionType === "feature-choice");
-    expect(feature).toBeDefined();
-    expect(feature.targetReferenceId).toBe("taxon:child");
-    expect(scoreQuizAnswer(feature, { placements: [{ cardId: "o1", referenceId: "taxon:child" }] }).correct).toBe(true);
-  });
-
   it("generates deterministic hierarchy and timeline-map questions", () => {
     const first = generateVisitQuizzes(project(), "v1", registries, referenceGraph);
     const second = generateVisitQuizzes(project(), "v1", registries, referenceGraph);

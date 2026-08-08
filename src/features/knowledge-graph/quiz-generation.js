@@ -4,7 +4,6 @@ import { getReferenceNodeById, getReferenceParents, getReferenceChildren } from 
 const MAX_QUESTIONS = 10;
 const TYPE_BY_AXIS = { taxonomy: "hierarchy", "geological-time": "timeline-map" };
 const PREDICATE_BY_AXIS = { taxonomy: new Set(["classifiedas", "classified_as", "classified-as"]), "geological-time": new Set(["livedduring", "occursduring", "occurreduring", "occurs-during"]) };
-const FEATURE_PREDICATES = new Set(["feature", "hasfeature", "has_feature", "characteristic", "hascharacteristic", "has_characteristic", "material", "technique"]);
 
 export function generateVisitQuizzes(project, visitId, registries = {}, referenceGraph) {
   const graph = buildVisitKnowledgeGraph(project, visitId, registries);
@@ -31,9 +30,7 @@ export function generateQuizzesFromKnowledgeGraph(graph, referenceGraph) {
       if (!target || target.status !== "verified" || target.quizEligible === false) continue;
       const axis = target.axis;
       const predicate = String(fact.predicate || "").toLowerCase();
-      const isStructural = PREDICATE_BY_AXIS[axis]?.has(predicate) === true;
-      const isFeature = FEATURE_PREDICATES.has(predicate);
-      if (!isStructural && !isFeature) continue;
+      if (!PREDICATE_BY_AXIS[axis]?.has(predicate)) continue;
       const subjectEdge = factEdges.find((edge) => edge.targetId === fact.id);
       if (!subjectEdge) continue;
       const candidateObservationIds = subjectEdge.sourceId.startsWith("Observation:") ? [subjectEdge.sourceId] : entityObservationIds.get(subjectEdge.sourceId) || [];
@@ -44,10 +41,10 @@ export function generateQuizzesFromKnowledgeGraph(graph, referenceGraph) {
       const observationNodeId = `Observation:${observation.observationId}`;
       const relationIds = [...confirmedRelationIds].filter((id) => graph.edges.some((edge) => edge.relationId === id && (edge.sourceId === observationNodeId || edge.targetId === observationNodeId))).sort();
       questions.push({
-        id: `quiz:${isFeature ? "feature-choice" : TYPE_BY_AXIS[axis]}:${fact.referenceFactId}:${observation.observationId}:${target.id}`,
-        questionType: isFeature ? "feature-choice" : TYPE_BY_AXIS[axis],
+        id: `quiz:${TYPE_BY_AXIS[axis]}:${fact.referenceFactId}:${observation.observationId}:${target.id}`,
+        questionType: TYPE_BY_AXIS[axis],
         axis,
-        prompt: isFeature ? `${observation.label}の特徴として確認されているものはどれですか？` : axis === "taxonomy" ? `${observation.label}を正しい分類へ配置してください。` : `${observation.label}が生きた時代を配置してください。`,
+        prompt: axis === "taxonomy" ? `${observation.label}を正しい分類へ配置してください。` : `${observation.label}が生きた時代を配置してください。`,
         observationId: observation.observationId,
         photoId: observation.photoId,
         region: observation.region || null,
