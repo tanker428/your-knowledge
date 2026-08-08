@@ -76,7 +76,7 @@ export function generateQuizzesFromKnowledgeGraph(graph, referenceGraph) {
       questions.push({
         id: `quiz:observation:${observation.observationId}`,
         questionType: "observation-choice",
-        prompt: "写真で示されている対象はどれですか？",
+        prompt: "この対象はなんですか？",
         observationId: observation.observationId,
         photoId: observation.photoId,
         region: observation.region || null,
