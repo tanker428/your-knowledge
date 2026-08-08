@@ -2522,8 +2522,11 @@ export async function initApp(deps) {
   }
 
   function renderCollections() {
+    // toProject intentionally strips transient Blob/asset URLs for persistence.
+    // Collection covers are a view concern, so keep the in-memory image URLs here.
+    const collectionProject = { ...toProject(), photos: state.photos };
     const collections = buildCollectionProgress(
-      toProject(),
+      collectionProject,
       state.activeVisitId,
       state.userId,
       registry,
