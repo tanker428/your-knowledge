@@ -7,6 +7,7 @@
 export const RELATION_SCOPES = Object.freeze({
   PHOTO: "photo",
   NEARBY: "nearby",
+  CATEGORY: "category",
   VISIT: "visit",
 });
 
@@ -172,6 +173,12 @@ export function relationCandidates(input) {
       return photo.id === source.photo.id;
     if (scope === RELATION_SCOPES.NEARBY)
       return Math.abs(Number(photo.order || 0) - Number(source.photo.order || 0)) <= nearbyDistance;
+    if (scope === RELATION_SCOPES.CATEGORY) return photo.observations.some((observation) =>
+      isSelectableObservation(observation) && (
+        (observation.genericCategories || []).some((id) => (source.observation.genericCategories || []).includes(id)) ||
+        (observation.domainCategories || []).some((id) => (source.observation.domainCategories || []).includes(id))
+      ),
+    );
     return true;
   });
 
@@ -189,4 +196,26 @@ export function relationCandidates(input) {
         Number(left.photo.order || 0) - Number(right.photo.order || 0) ||
         left.observation.id.localeCompare(right.observation.id),
     );
+}
+
+/**
+ * @param {any[]} entries
+ * @param {{sourceId?: string, relations?: any[]}} options
+ */
+export function rankRelationCandidates(entries, { sourceId, relations = [] } = {}) {
+  const source = (entries || []).find(({ observation }) => observation.id === sourceId);
+  if (!source) return entries || [];
+  const linked = new Set(relations.filter((relation) => relation.sourceId === sourceId || relation.targetId === sourceId).map((relation) => relation.sourceId === sourceId ? relation.targetId : relation.sourceId));
+  return (entries || []).map((entry) => {
+    const samePhoto = entry.photo.id === source.photo.id;
+    const sameGeneric = (entry.observation.genericCategories || []).some((id) => (source.observation.genericCategories || []).includes(id));
+    const sameDomain = (entry.observation.domainCategories || []).some((id) => (source.observation.domainCategories || []).includes(id));
+    const reasons = [];
+    if (samePhoto) reasons.push("同じ写真");
+    else if (entry.photo.visitId === source.photo.visitId) reasons.push("同じ訪問");
+    if (sameGeneric || sameDomain) reasons.push("同じ分類");
+    if (!linked.has(entry.observation.id)) reasons.push("未登録の関係");
+    const score = (samePhoto ? 100 : 0) + (sameGeneric ? 30 : 0) + (sameDomain ? 20 : 0) + (!linked.has(entry.observation.id) ? 10 : 0) - Math.abs(Number(entry.photo.order || 0) - Number(source.photo.order || 0));
+    return { ...entry, recommendationScore: score, recommendationReason: reasons.join("・") || "同じ訪問" };
+  }).sort((left, right) => right.recommendationScore - left.recommendationScore || left.observation.id.localeCompare(right.observation.id));
 }

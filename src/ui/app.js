@@ -63,6 +63,7 @@ import {
   isDirectedRelation,
   isSelectableObservation,
   relationCandidates,
+  rankRelationCandidates,
   RELATION_SCOPES,
   relationReviewActions,
   removeRelation,
@@ -1515,7 +1516,7 @@ export async function initApp(deps) {
     const regionStyle = presentation.region
       ? `left:${presentation.region.x}%;top:${presentation.region.y}%;width:${presentation.region.w}%;height:${presentation.region.h}%;`
       : "";
-    return `<button type="button" class="endpoint-option" data-endpoint-option="${escapeHtml(entry.observation.id)}"><span class="endpoint-image">${rotatedPhotoFrame(entry.photo, `<img src="${escapeHtml(entry.photo.thumbSrc || entry.photo.src)}" alt="" />${presentation.region ? `<i class="endpoint-region" style="${regionStyle}"></i>` : '<em class="endpoint-whole-label">写真全体</em>'}`)}</span><span><strong>${escapeHtml(entry.observation.label)}</strong><small>${escapeHtml(entry.photo.title)}・#${escapeHtml(entry.photo.order)}・${escapeHtml(OBSERVATION_TYPE_LABELS[entry.observation.observationType] || "観察対象")}</small></span></button>`;
+    return `<button type="button" class="endpoint-option" data-endpoint-option="${escapeHtml(entry.observation.id)}"><span class="endpoint-image">${rotatedPhotoFrame(entry.photo, `<img src="${escapeHtml(entry.photo.thumbSrc || entry.photo.src)}" alt="" />${presentation.region ? `<i class="endpoint-region" style="${regionStyle}"></i>` : '<em class="endpoint-whole-label">写真全体</em>'}`)}</span><span><strong>${escapeHtml(entry.observation.label)}</strong><small>${escapeHtml(entry.photo.title)}・#${escapeHtml(entry.photo.order)}・${escapeHtml(OBSERVATION_TYPE_LABELS[entry.observation.observationType] || "観察対象")}</small>${entry.recommendationReason ? `<em class="endpoint-reason">${escapeHtml(entry.recommendationReason)}</em>` : ""}</span></button>`;
   }
 
   function renderRelationOptions(/** @type {"source"|"target"} */ kind) {
@@ -1525,7 +1526,8 @@ export async function initApp(deps) {
     const entries = kind === "source"
       ? relationEntriesForVisit()
       : relationCandidates({ photos: state.photos, activeVisitId: state.activeVisitId, sourceId: state.relationDraft.sourceId, scope: state.relationScope });
-    const filtered = searchRelationEntries(entries, query);
+    const ranked = kind === "target" ? rankRelationCandidates(entries, { sourceId: state.relationDraft.sourceId, relations: state.relations }) : entries;
+    const filtered = searchRelationEntries(ranked, query);
     options.innerHTML = `<input class="endpoint-search" type="search" placeholder="写真名・Observation名で検索" value="${escapeHtml(query)}" data-endpoint-search="${kind}" />${filtered.length ? filtered.map(optionMarkup).join("") : '<p class="muted-copy">該当する候補はありません。</p>'}`;
     options.classList.toggle("hidden", state.relationPicker !== kind);
   }

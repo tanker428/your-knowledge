@@ -6,6 +6,7 @@ import {
   isDirectedRelation,
   isSelectableObservation,
   relationCandidates,
+  rankRelationCandidates,
   relationDuplicate,
   relationKey,
   relationReviewActions,
@@ -161,6 +162,20 @@ describe("Relation data contract", () => {
 });
 
 describe("Relation candidates", () => {
+  it("ranks same-photo and same-category candidates with reasons", () => {
+    const entries = [
+      { observation: { id: "o2", genericCategories: ["panel"], domainCategories: [] }, photo: { id: "p1", visitId: "v1", order: 1 } },
+      { observation: { id: "o3", genericCategories: [], domainCategories: [] }, photo: { id: "p2", visitId: "v1", order: 2 } },
+    ];
+    const ranked = rankRelationCandidates([{ ...entries[0], observation: { ...entries[0].observation, id: "o1" } }, ...entries], { sourceId: "o1" }).filter((entry) => entry.observation.id !== "o1");
+    expect(ranked[0].observation.id).toBe("o2");
+    expect(ranked[0].recommendationReason).toContain("同じ写真");
+  });
+
+  it("supports same-category filtering without crossing visits", () => {
+    const categorized = photos.map((photo) => ({ ...photo, observations: photo.observations.map((observation) => ({ ...observation, genericCategories: observation.id === "o1" || observation.id === "o2" ? ["panel"] : [] })) }));
+    expect(relationCandidates({ photos: categorized, activeVisitId: "v1", sourceId: "o1", scope: "category" }).map((item) => item.observation.id)).toEqual(["o2"]);
+  });
   it("同じ写真の候補だけを返す", () => {
     expect(relationCandidates({ photos, activeVisitId: "v1", sourceId: "o1" }).map((item) => item.observation.id)).toEqual(["o2"]);
   });

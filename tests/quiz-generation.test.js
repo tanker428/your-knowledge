@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
-import { buildPlacementBoardData, describeQuizAvailability, generateVisitQuizzes, scoreQuizAnswer } from "../src/features/knowledge-graph/quiz-generation.js";
+import { buildPlacementBoardData, describeQuizAvailability, generateVisitQuizzes, RELATION_QUIZ_TEMPLATES, scoreQuizAnswer } from "../src/features/knowledge-graph/quiz-generation.js";
 
 const registries = { genericCategories: [], learningRoles: [], categoriesByPack: {} };
 const referenceGraph = {
@@ -43,6 +43,10 @@ function project() {
 }
 
 describe("quiz generation from the visit knowledge graph", () => {
+  it("uses natural Japanese allowlisted templates for learning-value relations", () => {
+    expect(RELATION_QUIZ_TEMPLATES.explains({ label: "説明パネル" })).toBe("説明パネルの説明で説明されている対象はどれですか？");
+    expect(RELATION_QUIZ_TEMPLATES["same-exhibit"]).toBeUndefined();
+  });
   it("generates deterministic hierarchy and timeline-map questions", () => {
     const first = generateVisitQuizzes(project(), "v1", registries, referenceGraph);
     const second = generateVisitQuizzes(project(), "v1", registries, referenceGraph);
