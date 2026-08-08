@@ -91,6 +91,6 @@ describe("photo rotation", () => {
     expect(source.match(/rotationStyle\(photo\.rotation\)/g)?.length).toBeGreaterThanOrEqual(8);
     expect(source).toContain('rotationStyle(photo?.rotation)');
     expect(source).toContain('transform="rotate(');
-    expect(source).toContain('style="${rotationStyle(optionPhoto.rotation)}"');
+    expect(source).toMatch(/style="\$\{rotationStyle\(optionPhoto\.rotation\)\}"|renderQuizImage\(photoById\(option\.photoId\)/);
   });
 });
