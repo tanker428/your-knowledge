@@ -88,6 +88,7 @@ import {
   getKnowledgeGraphNodeDetail,
   getRadialNodeShape,
 } from "../features/knowledge-graph/selectors.js";
+import { mountMagnifier } from "./magnifier.js";
 import { describeQuizAvailability, scoreQuizAnswer } from "../features/knowledge-graph/quiz-generation.js";
 import { getReferenceChildren, getReferenceNodeById } from "../domain/reference-registry.js";
 import { LOCAL_USER_ID, mergeQuizResultsIntoLearningEvents, rebuildUserKnowledgeStates, recordQuizLearning, removeVisitLearningRecords } from "../domain/learning-state.js";
@@ -1528,6 +1529,7 @@ export async function initApp(deps) {
     const filtered = searchRelationEntries(entries, query);
     options.innerHTML = `<input class="endpoint-search" type="search" placeholder="写真名・Observation名で検索" value="${escapeHtml(query)}" data-endpoint-search="${kind}" />${filtered.length ? filtered.map(optionMarkup).join("") : '<p class="muted-copy">該当する候補はありません。</p>'}`;
     options.classList.toggle("hidden", state.relationPicker !== kind);
+    options.querySelectorAll(".endpoint-option").forEach((card) => mountMagnifier(card.querySelector(".endpoint-image"), card.querySelector("img"), { showControls: false }));
   }
 
   function renderRelationEditor() {
@@ -1537,6 +1539,10 @@ export async function initApp(deps) {
     const targetEntry = relationEntryById(draft.targetId);
     $("#relationSourceCard").innerHTML = endpointMarkup(sourceEntry);
     $("#relationTargetCard").innerHTML = endpointMarkup(targetEntry);
+    [$("#relationSourceCard"), $("#relationTargetCard")].forEach((card) => {
+      const imageHost = card?.querySelector(".endpoint-image");
+      mountMagnifier(imageHost, imageHost?.querySelector("img"), { showControls: false });
+    });
     $("#chooseRelationSourceButton").textContent = endpointSelectionLabel("source", Boolean(sourceEntry));
     $("#chooseRelationTargetButton").textContent = endpointSelectionLabel("target", Boolean(targetEntry));
     $("#relationTypeSelect").innerHTML = registry.relationTypes
@@ -2424,6 +2430,8 @@ export async function initApp(deps) {
     state.quizAnswered = Boolean(stored) && !retrying;
     const selectedReferenceId = retrying ? null : stored?.answer?.placements?.find((placement) => placement.cardId === quiz.observationId)?.referenceId || null;
      $("#quizStage").innerHTML = `<article class="quiz-card"><div class="quiz-content"><span class="quiz-counter">${quiz.questionType === "hierarchy" ? "CLASSIFICATION" : quiz.questionType === "timeline-map" ? "GEOLOGICAL TIME" : quiz.questionType === "matching" ? "RELATION" : "OBSERVATION"} ${String(state.quizIndex + 1).padStart(2, "0")} / ${String(total).padStart(2, "0")}</span><h2>${escapeHtml(quiz.prompt)}</h2><div class="quiz-placement-layout"><div class="quiz-photo-card" draggable="${state.quizAnswered ? "false" : "true"}" data-quiz-card="${escapeHtml(quiz.observationId)}"><img src="${escapeHtml(photo?.src || MISSING_PHOTO_SRC)}" alt="${escapeHtml(photo?.title || "写真")}" />${quiz.region ? `<i style="left:${quiz.region.x}%;top:${quiz.region.y}%;width:${quiz.region.w}%;height:${quiz.region.h}%"></i>` : ""}<strong>${escapeHtml(photo?.title || "写真")}</strong></div>${renderQuizPlacementBoard(quiz, selectedReferenceId, state.quizAnswered)}</div><div id="quizFeedback">${state.quizAnswered ? `<div class="quiz-feedback"><strong>${stored.correct ? "正解です。" : `正解は「${escapeHtml(quiz.options.find((option) => option.id === quiz.targetReferenceId)?.label || quiz.targetReferenceId)}」です。`}</strong>${escapeHtml(quiz.explanation)}</div>` : ""}</div><div class="quiz-next-row"><small>${escapeHtml(photo?.title || "写真")}</small>${state.quizAnswered ? `<button class="ghost-button" id="retryQuizButton">もう一度回答</button>` : ""}<button class="primary-button" id="nextQuizButton" ${state.quizAnswered ? "" : "disabled"}>${state.quizIndex === total - 1 ? "結果を見る" : "次の問題 →"}</button></div></div></article>`;
+    const quizPhotoCard = $("[data-quiz-card]");
+    mountMagnifier(quizPhotoCard, quizPhotoCard?.querySelector("img"));
     $$('[data-quiz-drop]').forEach((button) => {
       button.addEventListener("click", () => answerGeneratedQuiz(quiz, button.dataset.quizDrop));
       button.addEventListener("dragover", (event) => event.preventDefault());
