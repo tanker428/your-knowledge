@@ -1,6 +1,5 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
-import { readFile } from "node:fs/promises";
 import {
   displayedPointToStoredPoint,
   normalizePhotoRotation,
