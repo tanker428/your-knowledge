@@ -93,7 +93,7 @@ import { getReferenceChildren, getReferenceNodeById } from "../domain/reference-
 import { LOCAL_USER_ID, mergeQuizResultsIntoLearningEvents, rebuildUserKnowledgeStates, recordQuizLearning, removeVisitLearningRecords } from "../domain/learning-state.js";
 import { getLearnedReferenceFacts } from "../domain/learned-reference-facts.js";
 import { buildCollectionProgress } from "../features/collections/collection-progress.js";
-import { normalizePhotoRotation, rotatePhoto, unrotateImagePoint } from "../domain/photo-rotation.js";
+import { displayedPointToStoredPoint, normalizePhotoRotation, rotatePhoto, unrotateImagePoint } from "../domain/photo-rotation.js";
 
 const MAX_UPLOAD_BATCH = 120;
 const STATUS_LABELS = {
@@ -823,7 +823,7 @@ export async function initApp(deps) {
   function imagePointPercent(/** @type {PointerEvent} */ event) {
     const baseRect = organizeBaseRect();
     if (!baseRect) return null;
-    const point = unrotateImagePoint({
+    const point = displayedPointToStoredPoint({
       x: (event.clientX - baseRect.left) / baseRect.width,
       y: (event.clientY - baseRect.top) / baseRect.height,
     }, currentOrganizePhoto()?.rotation);
