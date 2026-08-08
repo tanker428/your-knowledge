@@ -517,7 +517,8 @@
     .endpoint-card:hover { border-color:var(--accent); }
     .endpoint-card-inner { display:grid; grid-template-columns:76px 1fr; gap:9px; align-items:center; min-width:0; }
     .endpoint-image { position:relative; width:76px; height:55px; overflow:hidden; border-radius:7px; background:#ddd; }
-    .endpoint-image>img { width:100%; height:100%; object-fit:cover; }
+    .endpoint-image>img, .endpoint-image>.photo-rotation-frame { width:100%; height:100%; object-fit:cover; }
+    .endpoint-image>.photo-rotation-frame { position:absolute; inset:0; }
     .endpoint-region { position:absolute; border:2px solid var(--accent-2); background:rgba(232,111,54,.22); pointer-events:none; }
     .endpoint-whole-label { position:absolute; left:4px; bottom:4px; padding:2px 4px; border-radius:4px; background:rgba(20,21,19,.8); color:white; font-size:7px; font-weight:800; }
     .endpoint-card strong,.endpoint-card small { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
