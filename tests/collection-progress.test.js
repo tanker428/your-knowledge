@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 import { buildCollectionProgress } from "../src/features/collections/collection-progress.js";
 
@@ -42,6 +43,12 @@ const registry = {
 };
 
 describe("collection progress", () => {
+  it("keeps transient photo URLs for collection rendering without persisting them", async () => {
+    const source = await readFile("src/ui/app.js", "utf8");
+    expect(source).toContain("const collectionProject = { ...toProject(), photos: state.photos }");
+    expect(source).toContain("buildCollectionProgress(\n      collectionProject");
+  });
+
   it("derives five stages from the active visit only", () => {
     const [visit] = buildCollectionProgress(project(), "visit-1", "user-1", registry);
     expect(visit.counts).toEqual({ discovery: 2, organize: 1, classification: 2, relation: 2, learning: 1 });
