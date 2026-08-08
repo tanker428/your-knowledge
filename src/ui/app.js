@@ -708,7 +708,7 @@ export async function initApp(deps) {
         const { x, y, w, h } = observation.region;
         return `
         <button class="observation-box ${observation.id === state.activeObservationId ? "active" : ""}" style="left:${x}%;top:${y}%;width:${w}%;height:${h}%" data-overlay-observation="${escapeHtml(observation.id)}" aria-label="${escapeHtml(observation.label)}" ${interactive ? "" : 'tabindex="-1"'}>
-          <span>${index + 1}</span>
+          <span class="observation-number-anchor-${normalizePhotoRotation(photo.rotation)}">${index + 1}</span>
         </button>`;
       })
       .join("");

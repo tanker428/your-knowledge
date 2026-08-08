@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { readFile } from "node:fs/promises";
 import {
   displayedPointToStoredPoint,
   normalizePhotoRotation,
@@ -10,6 +11,12 @@ import { buildExportDocument } from "../src/features/project/project-json.js";
 import { migrateProjectDocument } from "../src/features/project/migrate.js";
 
 describe("photo rotation", () => {
+  it("anchors Observation numbers to the displayed upper-left corner after rotation", async () => {
+    const source = await readFile("src/ui/app.js", "utf8");
+    expect(source).toContain("observation-number-anchor-${normalizePhotoRotation(photo.rotation)}");
+    expect(await readFile("styles.css", "utf8")).toContain("observation-number-anchor-90");
+  });
+
   it("normalizes missing and unsupported values to the compatible default", () => {
     expect(normalizePhotoRotation(undefined)).toBe(0);
     expect(normalizePhotoRotation(45)).toBe(0);
