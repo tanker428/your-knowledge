@@ -99,6 +99,8 @@ function normalisePhoto(photo, visitId) {
  * @param {any[]} context.demoPhotos デモ写真（`source: 'sample'`）
  * @param {any[]} context.demoRelations
  * @param {any[]} context.demoFacts
+ * @param {any[]} [context.demoReferenceFacts]
+ * @param {string} [context.demoKnowledgeVersion]
  * @param {{title?: string, placeName?: string, domainPackIds?: string[]}} [context.demoVisitSeed]
  * @returns {MigrationResult}
  */
@@ -128,7 +130,8 @@ export function migrateProjectDocument(stored, context) {
           ),
           relations: context.demoRelations.map((relation) => ({ ...relation })),
           facts: context.demoFacts.map((fact) => ({ ...fact })),
-          referenceFacts: [],
+          referenceFacts: (context.demoReferenceFacts || []).map((fact) => ({ ...fact })),
+          demoKnowledgeVersion: context.demoKnowledgeVersion || null,
           quizResults: [],
           learningEvents: [],
           userKnowledgeStates: [],
@@ -146,6 +149,19 @@ export function migrateProjectDocument(stored, context) {
 
     // -------------------------------------------- すでに v2 ---
     if (Array.isArray(stored.visits) && stored.visits.length) {
+      const hasDemoVisit = stored.visits.some((visit) => visit.id === DEMO_VISIT_ID);
+      const shouldSeedDemo = hasDemoVisit && stored.demoKnowledgeVersion !== context.demoKnowledgeVersion;
+      const storedReferenceFacts = Array.isArray(stored.referenceFacts)
+        ? stored.referenceFacts.map((fact) => ({ ...fact }))
+        : [];
+      const knownReferenceFactIds = new Set(storedReferenceFacts.map((fact) => fact.id));
+      if (shouldSeedDemo) {
+        storedReferenceFacts.push(
+          ...(context.demoReferenceFacts || [])
+            .filter((fact) => !knownReferenceFactIds.has(fact.id))
+            .map((fact) => ({ ...fact })),
+        );
+      }
       return {
         ok: true,
         changed: false,
@@ -160,6 +176,10 @@ export function migrateProjectDocument(stored, context) {
             : [],
           learningEvents: Array.isArray(stored.learningEvents) ? stored.learningEvents : [],
           userKnowledgeStates: Array.isArray(stored.userKnowledgeStates) ? stored.userKnowledgeStates : [],
+          referenceFacts: storedReferenceFacts,
+          demoKnowledgeVersion: shouldSeedDemo
+            ? context.demoKnowledgeVersion
+            : stored.demoKnowledgeVersion || null,
         },
       };
     }
@@ -262,7 +282,15 @@ export function migrateProjectDocument(stored, context) {
         photos,
         relations,
         facts,
-        referenceFacts: Array.isArray(stored.referenceFacts) ? stored.referenceFacts.map((fact) => ({ ...fact })) : [],
+        referenceFacts: [
+          ...(Array.isArray(stored.referenceFacts)
+            ? stored.referenceFacts.map((fact) => ({ ...fact }))
+            : []),
+          ...(context.demoReferenceFacts || []).filter(
+            (fact) => !(Array.isArray(stored.referenceFacts) ? stored.referenceFacts : []).some((storedFact) => storedFact.id === fact.id),
+          ).map((fact) => ({ ...fact })),
+        ],
+        demoKnowledgeVersion: context.demoKnowledgeVersion || null,
         quizResults,
         learningEvents: Array.isArray(stored.learningEvents) ? stored.learningEvents.map((event) => ({ ...event })) : [],
         userKnowledgeStates: Array.isArray(stored.userKnowledgeStates) ? stored.userKnowledgeStates.map((state) => ({ ...state })) : [],

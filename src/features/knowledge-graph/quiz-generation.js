@@ -11,7 +11,7 @@ export function generateVisitQuizzes(project, visitId, registries = {}, referenc
 }
 
 export function generateQuizzesFromKnowledgeGraph(graph, referenceGraph) {
-  if (!graph || !referenceGraph) return [];
+  if (!graph) return [];
   const observations = new Map(graph.nodes.filter((node) => node.type === "Observation" && node.status === "confirmed" && node.included !== false).map((node) => [node.id, node]));
   const confirmedRelationIds = new Set(graph.edges.filter((edge) => edge.type === "RELATES_TO" && edge.status === "confirmed" && observations.has(edge.sourceId) && observations.has(edge.targetId)).map((edge) => edge.relationId));
   const factEdges = graph.edges.filter((edge) => edge.type === "HAS_REFERENCE_FACT");
@@ -23,6 +23,7 @@ export function generateQuizzesFromKnowledgeGraph(graph, referenceGraph) {
   }
   const questions = [];
   for (const fact of graph.nodes.filter((node) => node.type === "ReferenceFact" && node.status === "verified")) {
+    if (!referenceGraph) break;
     const values = Array.isArray(fact.value) ? fact.value : [fact.value];
     for (const value of values) {
       const target = typeof value === "string" ? getReferenceNodeById(referenceGraph, value) : null;
@@ -54,6 +55,55 @@ export function generateQuizzesFromKnowledgeGraph(graph, referenceGraph) {
         placementPathIds: placement.pathIds,
         placementSiblingIds: placement.siblingIds,
         explanation: "確認済みの参照知識と分類・時代データに基づく配置です。",
+      });
+    }
+  }
+  const visit = graph.nodes.find((node) => node.type === "Visit");
+  if (visit?.source === "demo") {
+    const observationOptions = [...observations.values()]
+      .sort((a, b) => a.id.localeCompare(b.id))
+      .map((node) => ({
+        id: node.observationId,
+        label: node.label,
+        photoId: node.photoId,
+        region: node.region || null,
+      }));
+    for (const observation of [...observations.values()].slice(0, 2)) {
+      questions.push({
+        id: `quiz:observation:${observation.observationId}`,
+        questionType: "observation-choice",
+        prompt: "写真で示されている対象はどれですか？",
+        observationId: observation.observationId,
+        photoId: observation.photoId,
+        region: observation.region || null,
+        referenceFactId: null,
+        targetReferenceId: observation.observationId,
+        relationIds: [],
+        options: observationOptions,
+        explanation: "写真とObservationの対応を確認する問題です。",
+      });
+    }
+    for (const relation of graph.edges.filter((edge) => edge.type === "RELATES_TO" && edge.status === "confirmed")) {
+      const source = observations.get(relation.sourceId);
+      const target = observations.get(relation.targetId);
+      if (!source || !target) continue;
+      questions.push({
+        id: `quiz:matching:${relation.relationId}`,
+        questionType: "matching",
+        prompt: `${source.label}と「${relation.relationType || "関連"}」でつながる対象はどれですか？`,
+        observationId: source.observationId,
+        photoId: source.photoId,
+        region: source.region || null,
+        referenceFactId: null,
+        targetReferenceId: target.observationId,
+        relationIds: [relation.relationId],
+        options: [...observations.values()].sort((a, b) => a.id.localeCompare(b.id)).map((node) => ({
+          id: node.observationId,
+          label: node.label,
+          photoId: node.photoId,
+          region: node.region || null,
+        })),
+        explanation: "デモVisitに保存された確認済みRelationに基づく問題です。",
       });
     }
   }

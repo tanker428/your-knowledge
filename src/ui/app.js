@@ -27,6 +27,7 @@ import {
   SAMPLE_STORIES,
   SAMPLE_VISIT,
 } from "../data/demo/sample-data.js";
+import { DEMO_KNOWLEDGE_VERSION, DEMO_REFERENCE_FACTS } from "../data/demo/demo-knowledge.js";
 import {
   collectVisitCascade,
   copyFactsForProject,
@@ -191,6 +192,7 @@ export async function initApp(deps) {
     facts: [],
     entities: SAMPLE_ENTITIES.map((item) => ({ ...item })),
     referenceFacts: [],
+    demoKnowledgeVersion: null,
     referenceDataVersion: null,
     sourceMetadata: {},
     /** @type {any[]} */
@@ -288,6 +290,8 @@ export async function initApp(deps) {
       demoPhotos: demoPhotos(),
       demoRelations: clone(SAMPLE_RELATIONS),
       demoFacts: clone(LEARNING_FACTS),
+      demoReferenceFacts: clone(DEMO_REFERENCE_FACTS),
+      demoKnowledgeVersion: DEMO_KNOWLEDGE_VERSION,
       demoVisitSeed: {
         title: SAMPLE_VISIT.title,
         placeName: SAMPLE_VISIT.place,
@@ -328,6 +332,7 @@ export async function initApp(deps) {
       : SAMPLE_ENTITIES.map((entity) => ({ ...entity }));
     entityMap = new Map(state.entities.map((entity) => [entity.id, entity]));
     state.referenceFacts = project.referenceFacts || [];
+    state.demoKnowledgeVersion = project.demoKnowledgeVersion || null;
     state.referenceDataVersion = project.referenceDataVersion ?? null;
     state.sourceMetadata = project.sourceMetadata || {};
     state.quizResults = project.quizResults || [];
@@ -463,6 +468,7 @@ export async function initApp(deps) {
       facts: copyFactsForProject(state.facts),
       entities: state.entities.map((entity) => ({ ...entity })),
       referenceFacts: state.referenceFacts.map((fact) => ({ ...fact })),
+      demoKnowledgeVersion: state.demoKnowledgeVersion,
       referenceDataVersion: state.referenceDataVersion,
       sourceMetadata: { ...state.sourceMetadata },
       quizResults: state.quizResults,
@@ -2415,7 +2421,7 @@ export async function initApp(deps) {
     const retrying = state.quizRetry === true;
     state.quizAnswered = Boolean(stored) && !retrying;
     const selectedReferenceId = retrying ? null : stored?.answer?.placements?.find((placement) => placement.cardId === quiz.observationId)?.referenceId || null;
-    $("#quizStage").innerHTML = `<article class="quiz-card"><div class="quiz-content"><span class="quiz-counter">${quiz.questionType === "hierarchy" ? "CLASSIFICATION" : "GEOLOGICAL TIME"} ${String(state.quizIndex + 1).padStart(2, "0")} / ${String(total).padStart(2, "0")}</span><h2>${escapeHtml(quiz.prompt)}</h2><div class="quiz-placement-layout"><div class="quiz-photo-card" draggable="${state.quizAnswered ? "false" : "true"}" data-quiz-card="${escapeHtml(quiz.observationId)}"><img src="${escapeHtml(photo?.src || MISSING_PHOTO_SRC)}" alt="${escapeHtml(photo?.title || "写真")}" />${quiz.region ? `<i style="left:${quiz.region.x}%;top:${quiz.region.y}%;width:${quiz.region.w}%;height:${quiz.region.h}%"></i>` : ""}<strong>${escapeHtml(photo?.title || "写真")}</strong></div>${renderQuizPlacementBoard(quiz, selectedReferenceId, state.quizAnswered)}</div><div id="quizFeedback">${state.quizAnswered ? `<div class="quiz-feedback"><strong>${stored.correct ? "正解です。" : `正解は「${escapeHtml(quiz.options.find((option) => option.id === quiz.targetReferenceId)?.label || quiz.targetReferenceId)}」です。`}</strong>${escapeHtml(quiz.explanation)}</div>` : ""}</div><div class="quiz-next-row"><small>${escapeHtml(photo?.title || "写真")}</small>${state.quizAnswered ? `<button class="ghost-button" id="retryQuizButton">もう一度回答</button>` : ""}<button class="primary-button" id="nextQuizButton" ${state.quizAnswered ? "" : "disabled"}>${state.quizIndex === total - 1 ? "結果を見る" : "次の問題 →"}</button></div></div></article>`;
+     $("#quizStage").innerHTML = `<article class="quiz-card"><div class="quiz-content"><span class="quiz-counter">${quiz.questionType === "hierarchy" ? "CLASSIFICATION" : quiz.questionType === "timeline-map" ? "GEOLOGICAL TIME" : quiz.questionType === "matching" ? "RELATION" : "OBSERVATION"} ${String(state.quizIndex + 1).padStart(2, "0")} / ${String(total).padStart(2, "0")}</span><h2>${escapeHtml(quiz.prompt)}</h2><div class="quiz-placement-layout"><div class="quiz-photo-card" draggable="${state.quizAnswered ? "false" : "true"}" data-quiz-card="${escapeHtml(quiz.observationId)}"><img src="${escapeHtml(photo?.src || MISSING_PHOTO_SRC)}" alt="${escapeHtml(photo?.title || "写真")}" />${quiz.region ? `<i style="left:${quiz.region.x}%;top:${quiz.region.y}%;width:${quiz.region.w}%;height:${quiz.region.h}%"></i>` : ""}<strong>${escapeHtml(photo?.title || "写真")}</strong></div>${renderQuizPlacementBoard(quiz, selectedReferenceId, state.quizAnswered)}</div><div id="quizFeedback">${state.quizAnswered ? `<div class="quiz-feedback"><strong>${stored.correct ? "正解です。" : `正解は「${escapeHtml(quiz.options.find((option) => option.id === quiz.targetReferenceId)?.label || quiz.targetReferenceId)}」です。`}</strong>${escapeHtml(quiz.explanation)}</div>` : ""}</div><div class="quiz-next-row"><small>${escapeHtml(photo?.title || "写真")}</small>${state.quizAnswered ? `<button class="ghost-button" id="retryQuizButton">もう一度回答</button>` : ""}<button class="primary-button" id="nextQuizButton" ${state.quizAnswered ? "" : "disabled"}>${state.quizIndex === total - 1 ? "結果を見る" : "次の問題 →"}</button></div></div></article>`;
     $$('[data-quiz-drop]').forEach((button) => {
       button.addEventListener("click", () => answerGeneratedQuiz(quiz, button.dataset.quizDrop));
       button.addEventListener("dragover", (event) => event.preventDefault());
@@ -2443,6 +2449,9 @@ export async function initApp(deps) {
         return value;
       };
       return `<div class="quiz-hierarchy-board" aria-label="分類樹">${options.map((option) => `<button class="quiz-placement quiz-tree-node ${selectedReferenceId === option.id ? (answered ? "correct" : "selected") : ""}" style="--tree-depth:${depth(option)}" data-quiz-drop="${escapeHtml(option.id)}" ${answered ? "disabled" : ""}>${escapeHtml(option.label)}${option.labelEn ? `<small>${escapeHtml(option.labelEn)}</small>` : ""}</button>`).join("")}</div>`;
+    }
+    if (quiz.questionType !== "timeline-map") {
+      return `<div class="quiz-choice-board" aria-label="候補一覧">${options.map((option) => `<button class="quiz-placement quiz-choice-option ${selectedReferenceId === option.id ? (answered ? "correct" : "selected") : ""}" data-quiz-drop="${escapeHtml(option.id)}" ${answered ? "disabled" : ""}>${option.photoId ? `<img src="${escapeHtml(photoById(option.photoId)?.src || MISSING_PHOTO_SRC)}" alt="" />` : ""}<span>${escapeHtml(option.label)}</span></button>`).join("")}</div>`;
     }
     const sorted = options.sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER) || a.id.localeCompare(b.id));
     return `<div class="quiz-timeline-board" aria-label="地質時代の時間軸"><div class="quiz-time-axis"><span>古い</span><i></i><span>新しい</span></div><div class="quiz-time-slots">${sorted.map((option) => `<button class="quiz-placement quiz-time-slot ${selectedReferenceId === option.id ? (answered ? "correct" : "selected") : ""}" data-quiz-drop="${escapeHtml(option.id)}" ${answered ? "disabled" : ""}><strong>${escapeHtml(option.label)}</strong><small>${option.startMa == null ? "" : `${option.startMa} Ma`} ${option.endMa == null ? "" : `〜 ${option.endMa} Ma`}</small></button>`).join("")}</div></div>`;
