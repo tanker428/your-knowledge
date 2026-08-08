@@ -41,3 +41,36 @@ export function unrotateImagePoint(point, rotation) {
     default: return { x, y };
   }
 }
+
+/**
+ * Convert a point from the displayed, rotated image into stored coordinates.
+ * The returned point is always clamped to the original image bounds.
+ * @param {{x:number,y:number}} point
+ * @param {unknown} rotation
+ * @returns {{x:number,y:number}}
+ */
+export function displayedPointToStoredPoint(point, rotation) {
+  return unrotateImagePoint(point, rotation);
+}
+
+/**
+ * Convert a stored normalized region into its displayed rotated rectangle.
+ * This is useful for non-CSS renderers and keeps labels and hit areas aligned
+ * with the same geometry as the image.
+ * @param {{x:number,y:number,w:number,h:number}|null|undefined} region
+ * @param {unknown} rotation
+ * @returns {{x:number,y:number,w:number,h:number}|null}
+ */
+export function storedRegionToDisplayedRegion(region, rotation) {
+  if (!region) return null;
+  const x = Math.min(1, Math.max(0, Number(region.x) || 0));
+  const y = Math.min(1, Math.max(0, Number(region.y) || 0));
+  const w = Math.min(1 - x, Math.max(0, Number(region.w) || 0));
+  const h = Math.min(1 - y, Math.max(0, Number(region.h) || 0));
+  switch (normalizePhotoRotation(rotation)) {
+    case 90: return { x: 1 - y - h, y: x, w: h, h: w };
+    case 180: return { x: 1 - x - w, y: 1 - y - h, w, h };
+    case 270: return { x: y, y: 1 - x - w, w: h, h: w };
+    default: return { x, y, w, h };
+  }
+}
