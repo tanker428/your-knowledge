@@ -93,7 +93,7 @@ import { getReferenceChildren, getReferenceNodeById } from "../domain/reference-
 import { LOCAL_USER_ID, mergeQuizResultsIntoLearningEvents, rebuildUserKnowledgeStates, recordQuizLearning, removeVisitLearningRecords } from "../domain/learning-state.js";
 import { getLearnedReferenceFacts } from "../domain/learned-reference-facts.js";
 import { buildCollectionProgress } from "../features/collections/collection-progress.js";
-import { normalizePhotoRotation, rotatePhoto, unrotateImagePoint } from "../domain/photo-rotation.js";
+import { displayedPointToStoredPoint, normalizePhotoRotation, rotatePhoto, unrotateImagePoint } from "../domain/photo-rotation.js";
 
 const MAX_UPLOAD_BATCH = 120;
 const STATUS_LABELS = {
@@ -708,7 +708,7 @@ export async function initApp(deps) {
         const { x, y, w, h } = observation.region;
         return `
         <button class="observation-box ${observation.id === state.activeObservationId ? "active" : ""}" style="left:${x}%;top:${y}%;width:${w}%;height:${h}%" data-overlay-observation="${escapeHtml(observation.id)}" aria-label="${escapeHtml(observation.label)}" ${interactive ? "" : 'tabindex="-1"'}>
-          <span>${index + 1}</span>
+          <span class="observation-number-anchor-${normalizePhotoRotation(photo.rotation)}">${index + 1}</span>
         </button>`;
       })
       .join("");
@@ -823,7 +823,7 @@ export async function initApp(deps) {
   function imagePointPercent(/** @type {PointerEvent} */ event) {
     const baseRect = organizeBaseRect();
     if (!baseRect) return null;
-    const point = unrotateImagePoint({
+    const point = displayedPointToStoredPoint({
       x: (event.clientX - baseRect.left) / baseRect.width,
       y: (event.clientY - baseRect.top) / baseRect.height,
     }, currentOrganizePhoto()?.rotation);
@@ -841,6 +841,10 @@ export async function initApp(deps) {
   function rotationStyle(rotation) {
     const value = normalizePhotoRotation(rotation);
     return value ? `transform:rotate(${value}deg) scale(.82)` : "";
+  }
+
+  function rotatedPhotoFrame(/** @type {any} */ photo, content) {
+    return `<span class="photo-rotation-frame" style="${rotationStyle(photo?.rotation)}">${content}</span>`;
   }
 
   function rotatePhotoById(photoId) {
@@ -1503,7 +1507,7 @@ export async function initApp(deps) {
     const regionStyle = presentation.region
       ? `left:${presentation.region.x}%;top:${presentation.region.y}%;width:${presentation.region.w}%;height:${presentation.region.h}%;`
       : "";
-    return `<button type="button" class="endpoint-card" data-endpoint-id="${escapeHtml(entry.observation.id)}"><span class="endpoint-card-inner"><span class="endpoint-image"><img src="${escapeHtml(entry.photo.thumbSrc || entry.photo.src)}" alt="" style="${rotationStyle(entry.photo.rotation)}" />${presentation.region ? `<i class="endpoint-region" style="${regionStyle}"></i>` : '<em class="endpoint-whole-label">写真全体</em>'}</span><span><strong>${escapeHtml(entry.observation.label)}</strong><small>${escapeHtml(OBSERVATION_TYPE_LABELS[entry.observation.observationType] || "観察対象")}・#${escapeHtml(entry.photo.order)} ${escapeHtml(entry.photo.title)}</small></span></span></button>`;
+    return `<button type="button" class="endpoint-card" data-endpoint-id="${escapeHtml(entry.observation.id)}"><span class="endpoint-card-inner"><span class="endpoint-image">${rotatedPhotoFrame(entry.photo, `<img src="${escapeHtml(entry.photo.thumbSrc || entry.photo.src)}" alt="" />${presentation.region ? `<i class="endpoint-region" style="${regionStyle}"></i>` : '<em class="endpoint-whole-label">写真全体</em>'}`)}</span><span><strong>${escapeHtml(entry.observation.label)}</strong><small>${escapeHtml(OBSERVATION_TYPE_LABELS[entry.observation.observationType] || "観察対象")}・#${escapeHtml(entry.photo.order)} ${escapeHtml(entry.photo.title)}</small></span></span></button>`;
   }
 
   function optionMarkup(entry) {
@@ -1511,7 +1515,7 @@ export async function initApp(deps) {
     const regionStyle = presentation.region
       ? `left:${presentation.region.x}%;top:${presentation.region.y}%;width:${presentation.region.w}%;height:${presentation.region.h}%;`
       : "";
-    return `<button type="button" class="endpoint-option" data-endpoint-option="${escapeHtml(entry.observation.id)}"><span class="endpoint-image"><img src="${escapeHtml(entry.photo.thumbSrc || entry.photo.src)}" alt="" style="${rotationStyle(entry.photo.rotation)}" />${presentation.region ? `<i class="endpoint-region" style="${regionStyle}"></i>` : '<em class="endpoint-whole-label">写真全体</em>'}</span><span><strong>${escapeHtml(entry.observation.label)}</strong><small>${escapeHtml(entry.photo.title)}・#${escapeHtml(entry.photo.order)}・${escapeHtml(OBSERVATION_TYPE_LABELS[entry.observation.observationType] || "観察対象")}</small></span></button>`;
+    return `<button type="button" class="endpoint-option" data-endpoint-option="${escapeHtml(entry.observation.id)}"><span class="endpoint-image">${rotatedPhotoFrame(entry.photo, `<img src="${escapeHtml(entry.photo.thumbSrc || entry.photo.src)}" alt="" />${presentation.region ? `<i class="endpoint-region" style="${regionStyle}"></i>` : '<em class="endpoint-whole-label">写真全体</em>'}`)}</span><span><strong>${escapeHtml(entry.observation.label)}</strong><small>${escapeHtml(entry.photo.title)}・#${escapeHtml(entry.photo.order)}・${escapeHtml(OBSERVATION_TYPE_LABELS[entry.observation.observationType] || "観察対象")}</small></span></button>`;
   }
 
   function renderRelationOptions(/** @type {"source"|"target"} */ kind) {
@@ -2112,7 +2116,10 @@ export async function initApp(deps) {
         const entity = item.entity;
         const value = Array.isArray(fact.value) ? fact.value.join("、") : fact.value;
         const factLabel = fact.predicate === "classifiedAs" ? "分類" : ["livedDuring", "occursDuring", "occurs_during"].includes(fact.predicate) ? "時代" : "確認済みの知識";
-        return `<article class="learned-reference-card"><div class="learned-reference-media">${photo ? `<img src="${escapeHtml(photo.thumbSrc || photo.src || MISSING_PHOTO_SRC)}" alt="${escapeHtml(photo.title || "写真")}" />${observation?.region ? `<i style="left:${observation.region.x}%;top:${observation.region.y}%;width:${observation.region.w}%;height:${observation.region.h}%"></i>` : ""}` : `<span>⌘</span>`}</div><div class="learned-reference-body"><span class="source-badge">✓ 確認済みの知識</span><h3>${factLabel}</h3><strong>${escapeHtml(String(value || ""))}</strong>${entity ? `<p>関連する対象：${escapeHtml(entity.name || entity.id)}</p>` : ""}${observation ? `<p>元の観察：${escapeHtml(observation.label)}${photo ? ` ／ ${escapeHtml(photo.title)}` : ""}</p>` : ""}<dl><div><dt>最終回答</dt><dd>${escapeHtml(item.state?.lastAnsweredAt || "-")}</dd></div><div><dt>試行</dt><dd>${item.state?.attemptCount ?? 0}回</dd></div><div><dt>正解</dt><dd>${item.state?.correctCount ?? 0}回</dd></div></dl>${item.questionId ? `<small class="learned-reference-question">問題：${escapeHtml(item.questionId)}</small>` : ""}<button class="text-button" data-delete-reference-fact="${escapeHtml(fact.id)}">確認済みの知識を削除</button></div></article>`;
+        const media = photo
+          ? rotatedPhotoFrame(photo, `<img src="${escapeHtml(photo.thumbSrc || photo.src || MISSING_PHOTO_SRC)}" alt="${escapeHtml(photo.title || "写真")}" />${observation?.region ? `<i style="left:${observation.region.x}%;top:${observation.region.y}%;width:${observation.region.w}%;height:${observation.region.h}%"></i>` : ""}`)
+          : "<span>⌘</span>";
+        return `<article class="learned-reference-card"><div class="learned-reference-media">${media}</div><div class="learned-reference-body"><span class="source-badge">✓ 確認済みの知識</span><h3>${factLabel}</h3><strong>${escapeHtml(String(value || ""))}</strong>${entity ? `<p>関連する対象：${escapeHtml(entity.name || entity.id)}</p>` : ""}${observation ? `<p>元の観察：${escapeHtml(observation.label)}${photo ? ` ／ ${escapeHtml(photo.title)}` : ""}</p>` : ""}<dl><div><dt>最終回答</dt><dd>${escapeHtml(item.state?.lastAnsweredAt || "-")}</dd></div><div><dt>試行</dt><dd>${item.state?.attemptCount ?? 0}回</dd></div><div><dt>正解</dt><dd>${item.state?.correctCount ?? 0}回</dd></div></dl>${item.questionId ? `<small class="learned-reference-question">問題：${escapeHtml(item.questionId)}</small>` : ""}<button class="text-button" data-delete-reference-fact="${escapeHtml(fact.id)}">確認済みの知識を削除</button></div></article>`;
       }).join("")}</div>`
       : '<div class="empty-state large"><strong>学習済みの知識はありません</strong><p>知識を登録しただけでは表示されません。クイズへ回答し、正解すると表示されます。</p></div>';
     $("#knowledgeGraphDetail").innerHTML = '<div class="empty-state"><strong>学習済み知識を選択してください</strong><p>表示されているカードから、関係する写真とObservationを確認できます。</p></div>';
@@ -2155,12 +2162,15 @@ export async function initApp(deps) {
       if (!node) return "";
       const selected = position.id === centerId || position.id === state.knowledgeDetailNodeId;
       const photo = node.type === "Photo" || node.type === "Observation" ? photoById(node.photoId) : null;
-      const image = photo ? `<image class="kg-svg-image" href="${escapeHtml(photo.thumbSrc || photo.src || MISSING_PHOTO_SRC)}" x="${position.x - 17}" y="${position.y - 17}" width="34" height="34" preserveAspectRatio="xMidYMid slice" />` : "";
+      const rotation = normalizePhotoRotation(photo?.rotation);
+      const photoTransform = rotation ? ` transform="rotate(${rotation} ${position.x} ${position.y})"` : "";
+      const image = photo ? `<g${photoTransform}><image class="kg-svg-image" href="${escapeHtml(photo.thumbSrc || photo.src || MISSING_PHOTO_SRC)}" x="${position.x - 17}" y="${position.y - 17}" width="34" height="34" preserveAspectRatio="xMidYMid slice" />` : "";
       const region = node.region && photo ? `<rect class="kg-svg-region" x="${position.x - 17 + (Number(node.region.x) || 0) * 0.34}" y="${position.y - 17 + (Number(node.region.y) || 0) * 0.34}" width="${Math.max(1, (Number(node.region.w) || 0) * 0.34)}" height="${Math.max(1, (Number(node.region.h) || 0) * 0.34)}" />` : "";
+      const imageClose = photo ? "</g>" : "";
       const shape = renderRadialNodeShape(node, position, selected);
       const referenceKey = node.type === "ReferenceNode" ? `reference:${node.referenceId}` : null;
       const referenceAction = referenceKey && shouldShowReferenceExpansion(node, displayGraph) ? `<text class="kg-svg-expand" data-kg-expand-reference="${escapeHtml(referenceKey)}" x="${position.x}" y="${position.y + 59}" text-anchor="middle">${state.knowledgeExpanded.has(referenceKey) ? "折り畳む" : "展開"}</text>` : "";
-      return `<g class="kg-svg-node kg-svg-${node.type.toLowerCase()} ${selected ? "selected" : ""}" data-kg-node="${escapeHtml(node.id)}">${shape}${image}${region}<text x="${position.x}" y="${position.y + 43}" text-anchor="middle">${escapeHtml(shortGraphLabel(node.label || node.title || node.predicate || node.referenceId || node.type))}</text>${referenceAction}<title>${escapeHtml(node.label || node.title || node.predicate || node.referenceId || node.type)}</title></g>`;
+      return `<g class="kg-svg-node kg-svg-${node.type.toLowerCase()} ${selected ? "selected" : ""}" data-kg-node="${escapeHtml(node.id)}">${shape}${image}${region}${imageClose}<text x="${position.x}" y="${position.y + 43}" text-anchor="middle">${escapeHtml(shortGraphLabel(node.label || node.title || node.predicate || node.referenceId || node.type))}</text>${referenceAction}<title>${escapeHtml(node.label || node.title || node.predicate || node.referenceId || node.type)}</title></g>`;
     }).join("");
     const zoom = state.knowledgeZoom;
     const backButton = state.knowledgeViewMode === "focus" ? '<button class="text-button" data-kg-overview>← 訪問全体へ戻る</button>' : "";
@@ -2189,7 +2199,7 @@ export async function initApp(deps) {
 
   function renderKnowledgeNode(node, graph) {
     const photo = node.type === "Photo" || node.type === "Observation" ? photoById(node.photoId) : null;
-    const image = photo ? `<span class="kg-node-image"><img src="${escapeHtml(photo.thumbSrc || photo.src || MISSING_PHOTO_SRC)}" alt="" />${node.region ? `<i style="left:${node.region.x}%;top:${node.region.y}%;width:${node.region.w}%;height:${node.region.h}%"></i>` : ""}</span>` : "";
+    const image = photo ? `<span class="kg-node-image">${rotatedPhotoFrame(photo, `<img src="${escapeHtml(photo.thumbSrc || photo.src || MISSING_PHOTO_SRC)}" alt="" />${node.region ? `<i style="left:${node.region.x}%;top:${node.region.y}%;width:${node.region.w}%;height:${node.region.h}%"></i>` : ""}`)}</span>` : "";
     const card = `<button class="kg-node-card kg-shape-${node.type.toLowerCase()}" data-kg-node="${escapeHtml(node.id)}">${image}<span class="kg-node-icon">${knowledgeNodeIcon(node.type)}</span><strong>${escapeHtml(node.label || node.title || node.predicate || node.referenceId || node.type)}</strong><small>${escapeHtml(knowledgeNodeLabel(node.type))}</small></button>`;
     return node.type === "ReferenceNode" && shouldShowReferenceExpansion(node, graph) ? `<div class="kg-reference-node-wrap">${card}<button class="text-button kg-reference-expand" data-kg-expand-reference="reference:${escapeHtml(node.referenceId)}">${state.knowledgeExpanded.has(`reference:${node.referenceId}`) ? "折り畳む" : "展開"}</button></div>` : card;
   }
@@ -2208,7 +2218,8 @@ export async function initApp(deps) {
     const node = detail.node;
     const photo = node.photoId ? photoById(node.photoId) : null;
     const referenceEditor = node.type === "Observation" || node.type === "Entity" ? renderReferenceFactEditor(node) : "";
-    return `<div class="kg-detail-header"><span>${knowledgeNodeIcon(node.type)} ${escapeHtml(knowledgeNodeLabel(node.type))}</span><h2>${escapeHtml(node.label || node.title || node.predicate || node.referenceId || node.type)}</h2>${photo ? `<button class="ghost-button dark" data-open-photo="${escapeHtml(photo.id)}">元写真を見る</button>` : ""}</div>${photo ? `<div class="kg-detail-photo"><img src="${escapeHtml(photo.src || photo.thumbSrc || MISSING_PHOTO_SRC)}" alt="${escapeHtml(photo.title)}" /><strong>${escapeHtml(photo.title)}</strong></div>` : ""}${referenceEditor}<div class="kg-detail-meta"><p>接続 ${detail.incoming.length + detail.outgoing.length}件</p>${detail.outgoing.map((edge) => `<button data-kg-node="${escapeHtml(edge.targetId)}">→ ${escapeHtml(knowledgeEdgeLabel(edge.type, edge.relationType))}：${escapeHtml(nodeLabel(graph, edge.targetId))}</button>`).join("")}${detail.incoming.map((edge) => `<button data-kg-node="${escapeHtml(edge.sourceId)}">← ${escapeHtml(knowledgeEdgeLabel(edge.type, edge.relationType))}：${escapeHtml(nodeLabel(graph, edge.sourceId))}</button>`).join("")}</div>`;
+    const photoMarkup = photo ? rotatedPhotoFrame(photo, `<img src="${escapeHtml(photo.src || photo.thumbSrc || MISSING_PHOTO_SRC)}" alt="${escapeHtml(photo.title)}" />`) : "";
+    return `<div class="kg-detail-header"><span>${knowledgeNodeIcon(node.type)} ${escapeHtml(knowledgeNodeLabel(node.type))}</span><h2>${escapeHtml(node.label || node.title || node.predicate || node.referenceId || node.type)}</h2>${photo ? `<button class="ghost-button dark" data-open-photo="${escapeHtml(photo.id)}">元写真を見る</button>` : ""}</div>${photo ? `<div class="kg-detail-photo">${photoMarkup}<strong>${escapeHtml(photo.title)}</strong></div>` : ""}${referenceEditor}<div class="kg-detail-meta"><p>接続 ${detail.incoming.length + detail.outgoing.length}件</p>${detail.outgoing.map((edge) => `<button data-kg-node="${escapeHtml(edge.targetId)}">→ ${escapeHtml(knowledgeEdgeLabel(edge.type, edge.relationType))}：${escapeHtml(nodeLabel(graph, edge.targetId))}</button>`).join("")}${detail.incoming.map((edge) => `<button data-kg-node="${escapeHtml(edge.sourceId)}">← ${escapeHtml(knowledgeEdgeLabel(edge.type, edge.relationType))}：${escapeHtml(nodeLabel(graph, edge.sourceId))}</button>`).join("")}</div>`;
   }
 
   function renderReferenceFactEditor(node) {
@@ -2323,7 +2334,7 @@ export async function initApp(deps) {
     const photo = photoById(quiz.photoId);
     $("#quizStage").innerHTML = `
       <article class="quiz-card">
-        <div class="quiz-image"><img src="${escapeHtml(photo.src)}" alt="${escapeHtml(photo.title)}" /></div>
+        <div class="quiz-image"><img src="${escapeHtml(photo.src)}" alt="${escapeHtml(photo.title)}" style="${rotationStyle(photo.rotation)}" /></div>
         <div class="quiz-content"><span class="quiz-counter">${state.deck === "observed" ? "OBSERVED KNOWLEDGE" : "LEARNED KNOWLEDGE"} ${String(state.quizIndex + 1).padStart(2, "0")} / ${String(total).padStart(2, "0")}</span><h2>${escapeHtml(quiz.question)}</h2>
           <div class="quiz-choice-list">${quiz.choices.map((/** @type {string} */ choice, /** @type {number} */ index) => `<button class="choice-button" data-quiz-choice="${index}"><strong>${String.fromCharCode(65 + index)}.</strong> ${escapeHtml(choice)}</button>`).join("")}</div>
           <div id="quizFeedback"></div>
@@ -2443,7 +2454,7 @@ export async function initApp(deps) {
       return `<div class="quiz-hierarchy-board" aria-label="分類樹">${options.map((option) => `<button class="quiz-placement quiz-tree-node ${selectedReferenceId === option.id ? (answered ? "correct" : "selected") : ""}" style="--tree-depth:${depth(option)}" data-quiz-drop="${escapeHtml(option.id)}" ${answered ? "disabled" : ""}>${escapeHtml(option.label)}${option.labelEn ? `<small>${escapeHtml(option.labelEn)}</small>` : ""}</button>`).join("")}</div>`;
     }
     if (quiz.questionType !== "timeline-map") {
-      return `<div class="quiz-choice-board" aria-label="候補一覧">${options.map((option) => `<button class="quiz-placement quiz-choice-option ${selectedReferenceId === option.id ? (answered ? "correct" : "selected") : ""}" data-quiz-drop="${escapeHtml(option.id)}" ${answered ? "disabled" : ""}>${option.photoId ? `<img src="${escapeHtml(photoById(option.photoId)?.src || MISSING_PHOTO_SRC)}" alt="" />` : ""}<span>${escapeHtml(option.label)}</span></button>`).join("")}</div>`;
+      return `<div class="quiz-choice-board" aria-label="候補一覧">${options.map((option) => { const optionPhoto = option.photoId ? photoById(option.photoId) : null; return `<button class="quiz-placement quiz-choice-option ${selectedReferenceId === option.id ? (answered ? "correct" : "selected") : ""}" data-quiz-drop="${escapeHtml(option.id)}" ${answered ? "disabled" : ""}>${optionPhoto ? `<img src="${escapeHtml(optionPhoto.src || MISSING_PHOTO_SRC)}" alt="" style="${rotationStyle(optionPhoto.rotation)}" />` : ""}<span>${escapeHtml(option.label)}</span></button>`; }).join("")}</div>`;
     }
     const sorted = options.sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER) || a.id.localeCompare(b.id));
     const dated = sorted.filter((option) => Number.isFinite(option.startMa) && Number.isFinite(option.endMa));
@@ -2504,7 +2515,7 @@ export async function initApp(deps) {
           .slice(0, 3)
           .map(
             (/** @type {any} */ photo) =>
-              `<img src="${escapeHtml(photo.thumbSrc || photo.src)}" alt="" />`,
+              `<img src="${escapeHtml(photo.thumbSrc || photo.src)}" alt="" style="${rotationStyle(photo.rotation)}" />`,
           )
           .join(
             "",
@@ -2514,8 +2525,11 @@ export async function initApp(deps) {
   }
 
   function renderCollections() {
+    // toProject intentionally strips transient Blob/asset URLs for persistence.
+    // Collection covers are a view concern, so keep the in-memory image URLs here.
+    const collectionProject = { ...toProject(), photos: state.photos };
     const collections = buildCollectionProgress(
-      toProject(),
+      collectionProject,
       state.activeVisitId,
       state.userId,
       registry,
@@ -2530,7 +2544,7 @@ export async function initApp(deps) {
           .slice(0, 3)
           .map(
             (/** @type {any} */ photo) =>
-              `<img src="${escapeHtml(photo.thumbSrc || photo.src)}" alt="" />`,
+              `<img src="${escapeHtml(photo.thumbSrc || photo.src)}" alt="" style="${rotationStyle(photo.rotation)}" />`,
           )
           .join(
             "",
