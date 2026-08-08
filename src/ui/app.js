@@ -94,6 +94,7 @@ import { LOCAL_USER_ID, mergeQuizResultsIntoLearningEvents, rebuildUserKnowledge
 import { getLearnedReferenceFacts } from "../domain/learned-reference-facts.js";
 import { buildCollectionProgress } from "../features/collections/collection-progress.js";
 import { displayedPointToStoredPoint, normalizePhotoRotation, rotatePhoto, unrotateImagePoint } from "../domain/photo-rotation.js";
+import { knowledgeEdgeLabel, knowledgeNodeLabel } from "./knowledge-labels.js";
 
 const MAX_UPLOAD_BATCH = 120;
 const STATUS_LABELS = {
@@ -2249,8 +2250,6 @@ export async function initApp(deps) {
   }
 
   function nodeLabel(graph, nodeId) { const node = getKnowledgeGraphNodeDetail(graph, nodeId)?.node; return node?.label || node?.title || nodeId; }
-  function knowledgeNodeLabel(type) { return { User: "利用者", Visit: "訪問", Photo: "写真", Observation: "観察対象", Entity: "対象・展示物", ReferenceFact: "確認済みの知識", ReferenceNode: "分類・時代", GenericCategory: "対象の種類", DomainCategory: "テーマ別の分類", LearningRole: "学ぶうえでの役割", ClassificationAssertion: "分類情報" }[type] || type; }
-  function knowledgeEdgeLabel(type, relationType) { return { PART_OF: "含まれる時代", SUBCLASS_OF: "分類上の下位", REFERS_TO: "参照する", REFERS_TO_REFERENCE: "根拠となる", HAS_CLASSIFICATION: "分類情報", CLASSIFIES_AS: "分類される", HAS_ROLE: "役割を持つ", RELATES_TO: relationType || "関連する" }[type] || relationType || "関連する"; }
   function knowledgeNodeIcon(type) { return { User: "●", Visit: "⬡", Photo: "▣", Observation: "◎", Entity: "◇", ReferenceFact: "▤", ReferenceNode: "⌘", GenericCategory: "◌", DomainCategory: "◆", LearningRole: "✦" }[type] || "•"; }
   function bindKnowledgeGraphEvents() {
     $$('[data-knowledge-observation]').forEach((button) => button.addEventListener("click", () => { state.knowledgeObservationId = button.dataset.knowledgeObservation; state.knowledgeViewMode = "focus"; renderKnowledge(); }));
