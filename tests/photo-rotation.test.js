@@ -1,9 +1,26 @@
+import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
-import { normalizePhotoRotation, rotatePhoto, unrotateImagePoint } from "../src/domain/photo-rotation.js";
+import {
+  displayedPointToStoredPoint,
+  normalizePhotoRotation,
+  rotatePhoto,
+  storedRegionToDisplayedRegion,
+  unrotateImagePoint,
+} from "../src/domain/photo-rotation.js";
 import { buildExportDocument } from "../src/features/project/project-json.js";
 import { migrateProjectDocument } from "../src/features/project/migrate.js";
 
 describe("photo rotation", () => {
+  it("anchors Observation numbers to the displayed upper-left corner after rotation", async () => {
+    const source = await readFile("src/ui/app.js", "utf8");
+    expect(source).toContain("observation-number-anchor-${normalizePhotoRotation(photo.rotation)}");
+    const styles = await readFile("styles.css", "utf8");
+    expect(styles).toContain("observation-number-anchor-90");
+    expect(styles).toContain("transform:rotate(-90deg)");
+    expect(styles).toContain("transform:rotate(-180deg)");
+    expect(styles).toContain("transform:rotate(-270deg)");
+  });
+
   it("normalizes missing and unsupported values to the compatible default", () => {
     expect(normalizePhotoRotation(undefined)).toBe(0);
     expect(normalizePhotoRotation(45)).toBe(0);
@@ -21,6 +38,30 @@ describe("photo rotation", () => {
     expect(unrotateImagePoint({ x: 0.25, y: 0.75 }, 90)).toEqual({ x: 0.75, y: 0.75 });
     expect(unrotateImagePoint({ x: 0.25, y: 0.75 }, 180)).toEqual({ x: 0.75, y: 0.25 });
     expect(unrotateImagePoint({ x: 0.25, y: 0.75 }, 270)).toEqual({ x: 0.25, y: 0.25 });
+  });
+
+  it("maps points and regions consistently for every quarter-turn", () => {
+    const stored = { x: 0.2, y: 0.3, w: 0.4, h: 0.25 };
+    for (const rotation of [0, 90, 180, 270]) {
+      const displayed = storedRegionToDisplayedRegion(stored, rotation);
+      const center = displayedPointToStoredPoint(
+        { x: displayed.x + displayed.w / 2, y: displayed.y + displayed.h / 2 },
+        rotation,
+      );
+      expect(center.x).toBeCloseTo(stored.x + stored.w / 2);
+      expect(center.y).toBeCloseTo(stored.y + stored.h / 2);
+    }
+  });
+
+  it("keeps rotated region edges inside the displayed image", () => {
+    const region = { x: 0.05, y: 0.1, w: 0.8, h: 0.7 };
+    for (const rotation of [0, 90, 180, 270]) {
+      const displayed = storedRegionToDisplayedRegion(region, rotation);
+      expect(displayed.x).toBeGreaterThanOrEqual(0);
+      expect(displayed.y).toBeGreaterThanOrEqual(0);
+      expect(displayed.x + displayed.w).toBeLessThanOrEqual(1);
+      expect(displayed.y + displayed.h).toBeLessThanOrEqual(1);
+    }
   });
 
   it("keeps rotation and Observation region through JSON migration", () => {
@@ -43,5 +84,13 @@ describe("photo rotation", () => {
     const restored = /** @type {any} */ (migrated.project);
     expect(restored.photos[0].rotation).toBe(90);
     expect(restored.photos[0].observations[0].region).toEqual({ x: 10, y: 20, w: 30, h: 40 });
+  });
+
+  it("uses rotation-aware rendering across photo, graph, relation, quiz, and collection views", async () => {
+    const source = await readFile("src/ui/app.js", "utf8");
+    expect(source.match(/rotationStyle\(photo\.rotation\)/g)?.length).toBeGreaterThanOrEqual(8);
+    expect(source).toContain('rotationStyle(photo?.rotation)');
+    expect(source).toContain('transform="rotate(');
+    expect(source).toContain('style="${rotationStyle(optionPhoto.rotation)}"');
   });
 });
