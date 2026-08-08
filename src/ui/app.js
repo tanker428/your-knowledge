@@ -97,6 +97,7 @@ import { buildCollectionProgress } from "../features/collections/collection-prog
 import { displayedPointToStoredPoint, normalizePhotoRotation, rotatePhoto, unrotateImagePoint } from "../domain/photo-rotation.js";
 import { renderKnowledgeDisplayAttributes } from "./knowledge-display.js";
 import { knowledgeEdgeLabel, knowledgeNodeLabel, knowledgeNodeText } from "./knowledge-labels.js";
+import { timelinePeriodWidth } from "./timeline-quiz.js";
 
 const MAX_UPLOAD_BATCH = 120;
 const STATUS_LABELS = {
@@ -2479,9 +2480,7 @@ export async function initApp(deps) {
       return `<div class="quiz-choice-board" aria-label="候補一覧">${options.map((option) => { const optionPhoto = option.photoId ? photoById(option.photoId) : null; return `<button class="quiz-placement quiz-choice-option ${selectedReferenceId === option.id ? (answered ? "correct" : "selected") : ""}" data-quiz-drop="${escapeHtml(option.id)}" ${answered ? "disabled" : ""}>${optionPhoto ? `<img src="${escapeHtml(optionPhoto.src || MISSING_PHOTO_SRC)}" alt="" style="${rotationStyle(optionPhoto.rotation)}" />` : ""}<span>${escapeHtml(option.label)}</span></button>`; }).join("")}</div>`;
     }
     const sorted = options.sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER) || a.id.localeCompare(b.id));
-    const dated = sorted.filter((option) => Number.isFinite(option.startMa) && Number.isFinite(option.endMa));
-    const span = dated.length ? Math.max(...dated.map((option) => Math.abs(option.startMa - option.endMa)), 1) : 1;
-    return `<div class="quiz-timeline-board" aria-label="地質時代の時間軸"><div class="quiz-time-axis"><span>古い</span><i></i><span>新しい</span></div><div class="quiz-time-slots">${sorted.map((option) => { const duration = Number.isFinite(option.startMa) && Number.isFinite(option.endMa) ? Math.abs(option.startMa - option.endMa) : 0; const width = duration ? Math.max(12, Math.round((duration / span) * 100)) : 8; return `<button class="quiz-placement quiz-time-slot ${selectedReferenceId === option.id ? (answered ? "correct" : "selected") : ""}" style="--time-span:${width}%" data-quiz-drop="${escapeHtml(option.id)}" ${answered ? "disabled" : ""}><span class="quiz-time-duration" aria-hidden="true"></span><strong>${escapeHtml(option.label)}</strong><small>${option.startMa == null ? "" : `${option.startMa} Ma`} ${option.endMa == null ? "" : `〜 ${option.endMa} Ma`}</small></button>`; }).join("")}</div></div>`;
+    return `<div class="quiz-timeline-board" aria-label="地質時代の時間軸"><div class="quiz-time-axis"><span>古い</span><i></i><span>新しい</span></div><div class="quiz-time-slots">${sorted.map((option) => { const width = timelinePeriodWidth(option, sorted); return `<button class="quiz-placement quiz-time-slot ${selectedReferenceId === option.id ? (answered ? "correct" : "selected") : ""}" style="--time-span:${width}%" data-quiz-drop="${escapeHtml(option.id)}" ${answered ? "disabled" : ""}><span class="quiz-time-duration" aria-hidden="true"></span><strong>${escapeHtml(option.label)}</strong><small>${option.startMa == null ? "" : `${option.startMa} Ma`} ${option.endMa == null ? "" : `〜 ${option.endMa} Ma`}</small></button>`; }).join("")}</div></div>`;
   }
 
   function answerGeneratedQuiz(/** @type {any} */ quiz, /** @type {string} */ referenceId) {
