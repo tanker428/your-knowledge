@@ -212,6 +212,7 @@ export async function initApp(deps) {
     selectedFileRotations: [],
     /** @type {string|null} */
     modalPhotoId: null,
+    relationPreviewObservationId: null,
     organizePhotoId: "p03",
     organizeStep: 1,
     /** @type {string|null} */
@@ -1281,7 +1282,26 @@ export async function initApp(deps) {
       <article><span class="observation-number">${index + 1}</span><div><strong>${escapeHtml(observation.label)}</strong><small>${escapeHtml(OBSERVATION_TYPE_LABELS[observation.observationType] || "")}</small><div class="mini-tag-list">${observation.genericCategories.map((/** @type {string} */ id) => `<span>${escapeHtml(genericLabel(id))}</span>`).join("")}</div></div></article>`,
       )
       .join("");
+    const chooseButton = $("#choosePreviewRelationButton");
+    chooseButton?.classList.toggle("hidden", !state.relationPreviewObservationId);
+    if (chooseButton) chooseButton.textContent = state.relationPicker === "source" ? "この対象を関係元に選ぶ" : "この対象を関係先に選ぶ";
     openModal("photoModal");
+  }
+
+  function openRelationPreview(/** @type {string} */ observationId) {
+    const entry = relationEntryById(observationId);
+    if (!entry) return;
+    state.relationPreviewObservationId = observationId;
+    openPhotoModal(entry.photo.id);
+  }
+
+  function chooseRelationPreview() {
+    const id = state.relationPreviewObservationId;
+    if (!id || !state.relationPicker) return;
+    chooseRelationEndpoint(state.relationPicker, id);
+    state.relationPreviewObservationId = null;
+    closeModal("photoModal");
+    openModal("relationEditorModal");
   }
 
   function openModal(/** @type {string} */ id) {
@@ -1294,6 +1314,7 @@ export async function initApp(deps) {
   function closeModal(/** @type {string} */ id) {
     const modal = document.getElementById(id);
     if (!modal) return;
+    if (id === "photoModal") state.relationPreviewObservationId = null;
     modal.classList.remove("open");
     modal.setAttribute("aria-hidden", "true");
   }
@@ -3203,6 +3224,7 @@ export async function initApp(deps) {
       if (photoId) setOrganizePhoto(photoId);
       switchView("organize");
     });
+    $("#choosePreviewRelationButton")?.addEventListener("click", chooseRelationPreview);
     $("#rotateModalPhotoButton")?.addEventListener("click", () => {
       if (state.modalPhotoId) rotatePhotoById(state.modalPhotoId);
     });
@@ -3223,11 +3245,11 @@ export async function initApp(deps) {
     });
     $("#relationSourceOptions")?.addEventListener("click", (event) => {
       const id = event.target.closest("[data-endpoint-option]")?.dataset.endpointOption;
-      if (id) chooseRelationEndpoint("source", id);
+      if (id) openRelationPreview(id);
     });
     $("#relationTargetOptions")?.addEventListener("click", (event) => {
       const id = event.target.closest("[data-endpoint-option]")?.dataset.endpointOption;
-      if (id) chooseRelationEndpoint("target", id);
+      if (id) openRelationPreview(id);
     });
     $("#relationSourceOptions")?.addEventListener("input", (event) => {
       if (event.target.dataset.endpointSearch !== "source") return;
