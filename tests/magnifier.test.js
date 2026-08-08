@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { readFile } from "node:fs/promises";
 import { clampMagnifierZoom, magnifierImagePosition, magnifierPoint } from "../src/ui/magnifier.js";
 
 describe("shared circular magnifier", () => {
@@ -23,5 +24,22 @@ describe("shared circular magnifier", () => {
     expect(point.y).toBe(rect.bottom);
     expect(point.u).toBe(0);
     expect(point.v).toBe(1);
+  });
+
+  it("uses the shared controller for quiz and Relation photos without persisting lens state", async () => {
+    const source = await readFile("src/ui/app.js", "utf8");
+    expect(source).toContain('mountMagnifier(quizPhotoCard, quizPhotoCard?.querySelector("img"));');
+    expect(source).toContain('mountMagnifier(card.querySelector(".endpoint-image"), card.querySelector("img"), { showControls: false })');
+    expect(source).not.toContain("state.magnifier");
+    expect(source).not.toContain("state.lens");
+  });
+
+  it("keeps the lens non-interactive except for its explicit mobile zoom controls", async () => {
+    const source = await readFile("src/ui/magnifier.js", "utf8");
+    expect(source).toContain('event.button !== 2');
+    expect(source).toContain("pointercancel");
+    expect(source).toContain("window.addEventListener(\"blur\", hide)");
+    expect(await readFile("styles.css", "utf8")).toContain(".shared-magnifier");
+    expect(await readFile("styles.css", "utf8")).toContain("pointer-events:none");
   });
 });
