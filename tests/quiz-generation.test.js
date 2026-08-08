@@ -43,6 +43,13 @@ function project() {
 }
 
 describe("quiz generation from the visit knowledge graph", () => {
+  it("uses the source image and region crop markup for photo cards", async () => {
+    const source = await readFile("src/ui/app.js", "utf8");
+    expect(source).toContain("function renderQuizImage");
+    expect(source).toContain("quiz-region-crop");
+    expect(source).toContain("option.region");
+  });
+
   it("generates deterministic hierarchy and timeline-map questions", () => {
     const first = generateVisitQuizzes(project(), "v1", registries, referenceGraph);
     const second = generateVisitQuizzes(project(), "v1", registries, referenceGraph);
