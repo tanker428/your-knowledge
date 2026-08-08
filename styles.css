@@ -132,3 +132,4 @@ footer{width:min(calc(100% - 36px),var(--max));margin:0 auto 88px;background:var
  @media(max-width:520px){.quiz-choice-board{grid-template-columns:1fr}}
 .observation-box span.observation-number-anchor-90{left:-11px;top:auto;bottom:-11px;transform:rotate(-90deg)}.observation-box span.observation-number-anchor-180{left:auto;top:auto;right:-11px;bottom:-11px;transform:rotate(-180deg)}.observation-box span.observation-number-anchor-270{left:auto;right:-11px;top:-11px;transform:rotate(-270deg)}
 .kg-node-attributes{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:4px}.kg-node-attributes .label-chip{padding:4px 7px;font-size:8px}
+.quiz-time-slot{position:relative}.quiz-time-slot strong,.quiz-time-slot small{position:relative;z-index:1;display:block}.quiz-time-slot small{white-space:normal}.quiz-time-duration{display:block;height:7px;width:var(--time-span);max-width:100%;margin-bottom:8px;border-radius:99px;background:var(--accent-2);opacity:.72}
