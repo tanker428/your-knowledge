@@ -83,7 +83,7 @@
             <div><p class="section-kicker">THREE CORE VALUES</p><h2>Your Knowledgeの3つの中心機能</h2></div>
           </div>
           <div class="pillar-grid">
-            <article class="pillar-card"><span>01</span><div class="pillar-icon">◎</div><h3>写真を丁寧に整理</h3><p>複数対象を抽出し、汎用分類から分野別の浅い分類へ段階的に確認します。</p></article>
+            <article class="pillar-card"><span>01</span><div class="pillar-icon">◎</div><h3>写真を丁寧に整理</h3><p>複数対象を抽出し、対象の種類からテーマに沿った分類へ段階的に確認します。</p></article>
             <article class="pillar-card"><span>02</span><div class="pillar-icon">⌘</div><h3>知識の整理と拡大</h3><p>自分が触れた知識と、あとから学んだ知識を区別しながら視覚的に広げます。</p></article>
             <article class="pillar-card"><span>03</span><div class="pillar-icon">✦</div><h3>問題とコレクション</h3><p>確認済みの写真・分類・関係から問題を作り、学習の進みを収集状態として残します。</p></article>
           </div>
@@ -109,8 +109,8 @@
             <p>チャットは会話文を長く書かせる場所ではなく、AI候補を一括承認し、曖昧な部分だけ修正するための操作面として使います。</p>
             <ul class="feature-list">
               <li><span>01</span> 写真内の複数対象を確認</li>
-              <li><span>02</span> 汎用分類を確認</li>
-              <li><span>03</span> 分野別の浅い分類を確認</li>
+              <li><span>02</span> 対象の種類を確認</li>
+              <li><span>03</span> テーマに沿った分類を確認</li>
               <li><span>04</span> 対象同士の関係を確認</li>
             </ul>
             <button class="ghost-button dark" data-jump="organize">整理画面を開く</button>
@@ -267,7 +267,7 @@
         </div>
         <div class="collection-grid" id="collectionGrid"></div>
         <section class="section-block compact-section">
-          <div class="section-heading"><div><p class="section-kicker">EXPAND TO OTHER PLACES</p><h2>汎用分類の上に分野パックを重ねる</h2></div></div>
+          <div class="section-heading"><div><p class="section-kicker">EXPAND TO OTHER PLACES</p><h2>対象の種類に分野パックを重ねる</h2></div></div>
           <div class="domain-pack-grid" id="domainPackGrid"></div>
         </section>
       </section>
@@ -296,7 +296,7 @@
       <div class="modal-content">
         <div class="modal-meta-row"><span class="type-badge" id="modalStatus"></span><span class="confidence" id="modalCount"></span></div>
         <h2 id="modalTitle"></h2>
-        <p>この写真から抽出された観察対象です。具体名が未確定でも、汎用分類と分野別分類だけで保存できます。</p>
+        <p>この写真から抽出された観察対象です。具体名が未確定でも、対象の種類とテーマに沿った分類だけで保存できます。</p>
         <div class="modal-section"><h3>観察対象</h3><div id="modalObservations" class="modal-observation-list"></div></div>
         <div class="modal-actions"><span class="photo-rotation-label" id="modalRotationLabel">向き 0度</span><button class="ghost-button dark" id="rotateModalPhotoButton" type="button">↻ 90度回転</button><button class="primary-button" id="organizeFromModalButton">この写真を整理</button></div>
       </div>
@@ -339,8 +339,8 @@
       <button class="modal-close" data-close-modal="addObservationModal" aria-label="閉じる">×</button>
       <p class="section-kicker">MANUAL OBSERVATION</p><h2 id="addObservationTitle">観察対象を追加</h2>
       <p>写真全体に関わる対象や、写真内の特定領域を別々のObservationとして保存できます。</p>
-      <label class="form-label">短い名前<input id="newObservationLabel" type="text" placeholder="例：右側の説明パネル" /></label>
-      <label class="form-label">対象の種類<select id="newObservationType"><option value="physical">実体</option><option value="information">情報表現</option><option value="space">場所・空間</option><option value="concept">概念</option><option value="feature">部分・特徴</option></select></label>
+      <label class="form-label">名前<input id="newObservationLabel" type="text" placeholder="例：右側の説明パネル" /></label>
+      <label class="form-label">対象の種類<select id="newObservationType"><option value="physical">実体</option><option value="information">説明・図表</option><option value="space">場所・空間</option><option value="concept">概念</option><option value="feature">部分・特徴</option></select></label>
       <fieldset class="form-label" id="newObservationRegion">
         <legend>対象の範囲</legend>
         <label><input type="radio" name="observation-region" value="whole" checked /> 写真全体</label>
