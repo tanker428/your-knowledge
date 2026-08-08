@@ -104,10 +104,20 @@ const STATUS_LABELS = {
 };
 const OBSERVATION_TYPE_LABELS = {
   physical: "実体",
-  information: "情報表現",
+  information: "説明・図表",
   space: "場所・空間",
   concept: "概念",
   feature: "部分・特徴",
+};
+const LEARNING_ROLE_DESCRIPTIONS = {
+  direct: "今回の中心となる展示物や対象です。",
+  explains: "他の対象を説明するパネルや資料です。",
+  comparison: "違いや共通点を比べるための対象です。",
+  context: "時代、環境、歴史などを補足する対象です。",
+  detail: "全体の一部や、注目した細かな箇所です。",
+  route: "展示場所、移動経路、周辺環境です。",
+  memory: "自分の体験や印象に関係する対象です。",
+  evidence: "判断の根拠となる標本、図表、説明です。",
 };
 const FACT_SOURCE_LABELS = {
   panel: "説明パネルから",
@@ -1182,7 +1192,7 @@ export async function initApp(deps) {
     const wasEditing = Boolean(state.editingObservationId);
     const label = $("#newObservationLabel").value.trim();
     if (!label) {
-      showToast("短い名前を入力してください");
+      showToast("名前を入力してください");
       return;
     }
     const photo = currentOrganizePhoto();
@@ -1393,8 +1403,10 @@ export async function initApp(deps) {
     /** @type {string} */ label,
     /** @type {boolean} */ selected,
     /** @type {string} */ type,
+    /** @type {string} */ description = "",
   ) {
-    return `<button class="label-chip ${selected ? "selected" : ""}" data-chip-type="${escapeHtml(type)}" data-chip-id="${escapeHtml(id)}">${selected ? "✓ " : ""}${escapeHtml(label)}</button>`;
+    const info = description ? `<span class="chip-info" data-chip-info="${escapeHtml(description)}" role="button" tabindex="0" aria-label="${escapeHtml(label)}の説明">ⓘ</span>` : "";
+    return `<button class="label-chip ${selected ? "selected" : ""}" data-chip-type="${escapeHtml(type)}" data-chip-id="${escapeHtml(id)}">${selected ? "✓ " : ""}${escapeHtml(label)}${info}</button>`;
   }
 
   function renderStepTwo(
@@ -1404,11 +1416,11 @@ export async function initApp(deps) {
     if (!observation)
       return '<div class="empty-state"><strong>対象がありません</strong><p>ステップ1で対象を追加してください。</p></div>';
     return `
-      <div class="assistant-message"><span class="assistant-avatar">Y</span><div><strong>まず、場所を問わず使える汎用分類を確認します。</strong><p>「何が写っているか」と「学習上どんな役割か」は複数選択できます。</p></div></div>
+      <div class="assistant-message"><span class="assistant-avatar">Y</span><div><strong>この対象は、どのようなものですか？</strong><p>写真に写っている対象の種類と、学ぶうえでの役割を選びます。複数選択でき、あとで変更できます。</p></div></div>
       ${renderObservationTabs(photo)}
-      <div class="classification-block"><h3>${escapeHtml(observation.label)}</h3><small>対象の形式</small><div class="chip-grid">${registry.genericCategories.map((item) => chipButton(item.id, `${item.icon} ${item.label}`, observation.genericCategories.includes(item.id), "generic")).join("")}</div></div>
-      <div class="classification-block"><small>学習上の役割</small><div class="chip-grid roles">${registry.learningRoles.map((item) => chipButton(item.id, item.label, observation.learningRoles.includes(item.id), "role")).join("")}</div></div>
-      <div class="quick-action-row"><button class="primary-button inline" data-bulk-action="confirm-generic">全対象の汎用分類を一括確認</button><span>曖昧な対象だけ個別に直せます</span></div>`;
+      <div class="classification-block"><h3>${escapeHtml(observation.label)}</h3><small>対象の種類</small><div class="chip-grid">${registry.genericCategories.map((item) => chipButton(item.id, `${item.icon} ${item.label}`, observation.genericCategories.includes(item.id), "generic", item.description || "写真に写っている対象の種類です。")).join("")}</div></div>
+      <div class="classification-block"><small>学ぶうえでの役割</small><div class="chip-grid roles">${registry.learningRoles.map((item) => chipButton(item.id, item.label, observation.learningRoles.includes(item.id), "role", LEARNING_ROLE_DESCRIPTIONS[item.id] || "この対象を学ぶときの役割です。")).join("")}</div></div>
+      <div class="quick-action-row"><button class="primary-button inline" data-bulk-action="confirm-generic">全対象の種類を一括確認</button><span>曖昧な対象だけ個別に直せます</span></div>`;
   }
 
   function renderStepThree(
@@ -1425,10 +1437,10 @@ export async function initApp(deps) {
         packCategories(packId).map((item) => ({ ...item, packId })),
     );
     return `
-      <div class="assistant-message"><span class="assistant-avatar">Y</span><div><strong>次に、訪問分野に合わせた浅い分類を確認します。</strong><p>年代や細かな特徴はまだ質問しません。分野パックを足せば、別の場所にも同じ手順が使えます。</p></div></div>
+      <div class="assistant-message"><span class="assistant-avatar">Y</span><div><strong>この対象を、今回のテーマに沿って分類します</strong><p>自然史・古生物など、選択した分野に合う分類を追加します。次の画面でより詳しい知識を登録できます。</p></div></div>
       ${renderObservationTabs(photo)}
       <div class="classification-block"><h3>${escapeHtml(observation.label)}</h3><small>分野パック</small><div class="chip-grid domains">${registry.packs.map((item) => chipButton(item.id, `${item.icon} ${item.label}`, observation.domainPacks.includes(item.id), "domain")).join("")}</div></div>
-      <div class="classification-block"><small>分野別の浅い分類</small><div class="chip-grid">${categoryButtons.map((item) => `<button class="label-chip ${observation.domainCategories.includes(item.id) ? "selected" : ""}" data-chip-type="domain-category" data-chip-domain="${escapeHtml(item.packId)}" data-chip-id="${escapeHtml(item.id)}">${observation.domainCategories.includes(item.id) ? "✓ " : ""}${escapeHtml(item.label)}</button>`).join("") || '<p class="muted-copy">分野パックを選択してください。</p>'}</div></div>
+      <div class="classification-block"><small>テーマに沿った分類</small><div class="chip-grid">${categoryButtons.map((item) => `<button class="label-chip ${observation.domainCategories.includes(item.id) ? "selected" : ""}" data-chip-type="domain-category" data-chip-domain="${escapeHtml(item.packId)}" data-chip-id="${escapeHtml(item.id)}">${observation.domainCategories.includes(item.id) ? "✓ " : ""}${escapeHtml(item.label)}<span class="chip-info" data-chip-info="${escapeHtml(item.description || "今回の展示や学習テーマに沿った分類です。")}" role="button" tabindex="0" aria-label="${escapeHtml(item.label)}の説明">ⓘ</span></button>`).join("") || '<p class="muted-copy">分野パックを選択してください。</p>'}</div></div>
       <div class="quick-action-row"><button class="primary-button inline" data-bulk-action="confirm-domain">全対象の分野分類を一括確認</button><span>具体名は明確な場合だけ任意で追加します</span></div>`;
   }
 
@@ -1736,7 +1748,7 @@ export async function initApp(deps) {
             (/** @type {any} */ observation, /** @type {number} */ index) => {
               const packId = observation.domainPacks[0];
               return `<button class="preview-observation ${observation.id === state.activeObservationId ? "active" : ""}" data-preview-observation="${escapeHtml(observation.id)}">
-        <span class="observation-number">${index + 1}</span><span><strong>${escapeHtml(observation.label)}</strong><small>${observation.genericCategories.map(genericLabel).join("・") || "汎用分類なし"}</small><em>${packId ? `${packLabel(packId)} / ${observation.domainCategories.map((/** @type {string} */ id) => packCategoryLabel(packId, id)).join("・")}` : "分野未設定"}</em></span><i>${observation.status === "confirmed" ? "✓" : "候補"}</i>
+        <span class="observation-number">${index + 1}</span><span><strong>${escapeHtml(observation.label)}</strong><small>${observation.genericCategories.map(genericLabel).join("・") || "対象の種類未設定"}</small><em>${packId ? `${packLabel(packId)} / ${observation.domainCategories.map((/** @type {string} */ id) => packCategoryLabel(packId, id)).join("・")}` : "分野未設定"}</em></span><i>${observation.status === "confirmed" ? "✓" : "候補"}</i>
       </button>`;
             },
           )
@@ -1825,6 +1837,14 @@ export async function initApp(deps) {
         renderOrganize();
       }),
     );
+
+    $$("[data-chip-info]").forEach((info) => {
+      const explain = () => showToast(info.dataset.chipInfo || "この項目の説明は準備中です。");
+      info.addEventListener("click", (event) => { event.stopPropagation(); explain(); });
+      info.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); explain(); }
+      });
+    });
 
     $$("[data-bulk-action]").forEach((button) =>
       button.addEventListener("click", () => {
@@ -2026,8 +2046,8 @@ export async function initApp(deps) {
         <article class="map-center-card"><span>${escapeHtml(OBSERVATION_TYPE_LABELS[observation.observationType] || "観察対象")}</span><h3>${escapeHtml(observation.label)}</h3>${entity ? `<p class="optional-entity">任意の具体名：${escapeHtml(entity.name)}</p>` : '<p class="optional-entity">具体名がなくても保存可能</p>'}</article>
         <div class="map-connector">→</div>
         <div class="map-label-groups">
-          <article><small>汎用分類</small><div class="mini-tag-list">${observation.genericCategories.map((/** @type {string} */ id) => `<span>${escapeHtml(genericLabel(id))}</span>`).join("")}</div></article>
-          <article><small>分野別の浅い分類</small><div class="mini-tag-list accent">${observation.domainCategories.map((/** @type {string} */ id) => `<span>${escapeHtml(packCategoryLabel(packId, id))}</span>`).join("") || "<span>未設定</span>"}</div></article>
+          <article><small>対象の種類</small><div class="mini-tag-list">${observation.genericCategories.map((/** @type {string} */ id) => `<span>${escapeHtml(genericLabel(id))}</span>`).join("")}</div></article>
+          <article><small>テーマに沿った分類</small><div class="mini-tag-list accent">${observation.domainCategories.map((/** @type {string} */ id) => `<span>${escapeHtml(packCategoryLabel(packId, id))}</span>`).join("") || "<span>未設定</span>"}</div></article>
         </div>
       </div>
       <div class="knowledge-detail-grid">
@@ -2230,6 +2250,7 @@ export async function initApp(deps) {
   }
 
   function nodeLabel(graph, nodeId) { const node = getKnowledgeGraphNodeDetail(graph, nodeId)?.node; return node?.label || node?.title || nodeId; }
+  function knowledgeNodeLabel(type) { return { User: "利用者", Visit: "訪問", Photo: "写真", Observation: "観察対象", Entity: "関連する対象", ReferenceFact: "確認済みの知識", ReferenceNode: "参照分類・時代", GenericCategory: "対象の種類", DomainCategory: "テーマ別の分類", LearningRole: "学ぶうえでの役割" }[type] || type; }
   function knowledgeNodeIcon(type) { return { User: "●", Visit: "⬡", Photo: "▣", Observation: "◎", Entity: "◇", ReferenceFact: "▤", ReferenceNode: "⌘", GenericCategory: "◌", DomainCategory: "◆", LearningRole: "✦" }[type] || "•"; }
   function bindKnowledgeGraphEvents() {
     $$('[data-knowledge-observation]').forEach((button) => button.addEventListener("click", () => { state.knowledgeObservationId = button.dataset.knowledgeObservation; state.knowledgeViewMode = "focus"; renderKnowledge(); }));
