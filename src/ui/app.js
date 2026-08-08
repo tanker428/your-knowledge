@@ -94,6 +94,7 @@ import { LOCAL_USER_ID, mergeQuizResultsIntoLearningEvents, rebuildUserKnowledge
 import { getLearnedReferenceFacts } from "../domain/learned-reference-facts.js";
 import { buildCollectionProgress } from "../features/collections/collection-progress.js";
 import { normalizePhotoRotation, rotatePhoto, unrotateImagePoint } from "../domain/photo-rotation.js";
+import { suggestClassificationIds } from "../domain/classification-suggestions.js";
 
 const MAX_UPLOAD_BATCH = 120;
 const STATUS_LABELS = {
@@ -1388,8 +1389,10 @@ export async function initApp(deps) {
     /** @type {string} */ label,
     /** @type {boolean} */ selected,
     /** @type {string} */ type,
+    /** @type {string} */ description = "",
   ) {
-    return `<button class="label-chip ${selected ? "selected" : ""}" data-chip-type="${escapeHtml(type)}" data-chip-id="${escapeHtml(id)}">${selected ? "✓ " : ""}${escapeHtml(label)}</button>`;
+    const info = description ? `<span class="chip-info" data-chip-info="${escapeHtml(description)}" role="button" tabindex="0" aria-label="${escapeHtml(label)}の説明">ⓘ</span>` : "";
+    return `<button class="label-chip ${selected ? "selected" : ""}" data-chip-type="${escapeHtml(type)}" data-chip-id="${escapeHtml(id)}">${selected ? "✓ " : ""}${escapeHtml(label)}${info}</button>`;
   }
 
   function renderStepTwo(
@@ -1398,12 +1401,15 @@ export async function initApp(deps) {
   ) {
     if (!observation)
       return '<div class="empty-state"><strong>対象がありません</strong><p>ステップ1で対象を追加してください。</p></div>';
+    const suggestions = suggestClassificationIds({ observation, photo, visit: activeVisit(), registry });
+    const suggestedGeneric = suggestions.generic.map((item) => chipButton(item.id, item.label, false, "generic")).join("");
     return `
-      <div class="assistant-message"><span class="assistant-avatar">Y</span><div><strong>まず、場所を問わず使える汎用分類を確認します。</strong><p>「何が写っているか」と「学習上どんな役割か」は複数選択できます。</p></div></div>
+      <div class="assistant-message"><span class="assistant-avatar">Y</span><div><strong>この対象は、どのようなものですか？</strong><p>写真に写っている対象の種類と、学ぶうえでの役割を選びます。複数選択でき、あとで変更できます。</p></div></div>
       ${renderObservationTabs(photo)}
-      <div class="classification-block"><h3>${escapeHtml(observation.label)}</h3><small>対象の形式</small><div class="chip-grid">${registry.genericCategories.map((item) => chipButton(item.id, `${item.icon} ${item.label}`, observation.genericCategories.includes(item.id), "generic")).join("")}</div></div>
-      <div class="classification-block"><small>学習上の役割</small><div class="chip-grid roles">${registry.learningRoles.map((item) => chipButton(item.id, item.label, observation.learningRoles.includes(item.id), "role")).join("")}</div></div>
-      <div class="quick-action-row"><button class="primary-button inline" data-bulk-action="confirm-generic">全対象の汎用分類を一括確認</button><span>曖昧な対象だけ個別に直せます</span></div>`;
+      ${suggestedGeneric ? `<div class="classification-suggestions"><strong>おすすめ</strong><small>自動提案です。確認して選んだ項目だけ保存されます。</small><div class="chip-grid">${suggestedGeneric}</div></div>` : ""}
+      <div class="classification-block"><h3>${escapeHtml(observation.label)}</h3><small>対象の種類</small><div class="chip-grid">${registry.genericCategories.map((item) => chipButton(item.id, `${item.icon} ${item.label}`, observation.genericCategories.includes(item.id), "generic", item.description || "写真に写っている対象の種類です。")).join("")}</div></div>
+      <div class="classification-block"><small>学ぶうえでの役割</small><div class="chip-grid roles">${registry.learningRoles.map((item) => chipButton(item.id, item.label, observation.learningRoles.includes(item.id), "role", item.description || "この対象を学ぶときの役割です。")).join("")}</div></div>
+      <div class="quick-action-row"><button class="primary-button inline" data-bulk-action="confirm-generic">全対象の種類を一括確認</button><span>曖昧な対象だけ個別に直せます</span></div>`;
   }
 
   function renderStepThree(
@@ -1419,11 +1425,14 @@ export async function initApp(deps) {
       (/** @type {string} */ packId) =>
         packCategories(packId).map((item) => ({ ...item, packId })),
     );
+    const suggestions = suggestClassificationIds({ observation, photo, visit: activeVisit(), registry });
+    const suggestedDomain = suggestions.domain.map((item) => `<button class="label-chip" data-chip-type="domain-category" data-chip-domain="${escapeHtml(observation.domainPacks[0] || "other")}" data-chip-id="${escapeHtml(item.id)}">${escapeHtml(item.label)}<span class="chip-info" data-chip-info="${escapeHtml(item.reason)}" role="button" tabindex="0" aria-label="${escapeHtml(item.label)}の説明">ⓘ</span></button>`).join("");
     return `
-      <div class="assistant-message"><span class="assistant-avatar">Y</span><div><strong>次に、訪問分野に合わせた浅い分類を確認します。</strong><p>年代や細かな特徴はまだ質問しません。分野パックを足せば、別の場所にも同じ手順が使えます。</p></div></div>
+      <div class="assistant-message"><span class="assistant-avatar">Y</span><div><strong>この対象を、今回のテーマに沿って分類します</strong><p>自然史・古生物など、選択した分野に合う分類を追加します。次の画面でより詳しい知識を登録できます。</p></div></div>
       ${renderObservationTabs(photo)}
+      ${suggestedDomain ? `<div class="classification-suggestions"><strong>おすすめ</strong><small>自動提案です。確認して選んだ項目だけ保存されます。</small><div class="chip-grid">${suggestedDomain}</div></div>` : ""}
       <div class="classification-block"><h3>${escapeHtml(observation.label)}</h3><small>分野パック</small><div class="chip-grid domains">${registry.packs.map((item) => chipButton(item.id, `${item.icon} ${item.label}`, observation.domainPacks.includes(item.id), "domain")).join("")}</div></div>
-      <div class="classification-block"><small>分野別の浅い分類</small><div class="chip-grid">${categoryButtons.map((item) => `<button class="label-chip ${observation.domainCategories.includes(item.id) ? "selected" : ""}" data-chip-type="domain-category" data-chip-domain="${escapeHtml(item.packId)}" data-chip-id="${escapeHtml(item.id)}">${observation.domainCategories.includes(item.id) ? "✓ " : ""}${escapeHtml(item.label)}</button>`).join("") || '<p class="muted-copy">分野パックを選択してください。</p>'}</div></div>
+      <div class="classification-block"><small>テーマに沿った分類</small><div class="chip-grid">${categoryButtons.map((item) => `<button class="label-chip ${observation.domainCategories.includes(item.id) ? "selected" : ""}" data-chip-type="domain-category" data-chip-domain="${escapeHtml(item.packId)}" data-chip-id="${escapeHtml(item.id)}">${observation.domainCategories.includes(item.id) ? "✓ " : ""}${escapeHtml(item.label)}<span class="chip-info" data-chip-info="${escapeHtml(item.description || "今回の展示や学習テーマに沿った分類です。")}" role="button" tabindex="0" aria-label="${escapeHtml(item.label)}の説明">ⓘ</span></button>`).join("") || '<p class="muted-copy">分野パックを選択してください。</p>'}</div></div>
       <div class="quick-action-row"><button class="primary-button inline" data-bulk-action="confirm-domain">全対象の分野分類を一括確認</button><span>具体名は明確な場合だけ任意で追加します</span></div>`;
   }
 
@@ -1820,6 +1829,14 @@ export async function initApp(deps) {
         renderOrganize();
       }),
     );
+
+    $$('[data-chip-info]').forEach((info) => {
+      const explain = () => showToast(info.dataset.chipInfo || "この項目の説明は準備中です。");
+      info.addEventListener("click", (event) => { event.stopPropagation(); explain(); });
+      info.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); explain(); }
+      });
+    });
 
     $$("[data-bulk-action]").forEach((button) =>
       button.addEventListener("click", () => {
