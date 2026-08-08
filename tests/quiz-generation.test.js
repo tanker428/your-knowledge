@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
-import { buildPlacementBoardData, describeQuizAvailability, generateVisitQuizzes, scoreQuizAnswer } from "../src/features/knowledge-graph/quiz-generation.js";
+import { buildObservationChoiceOptions, buildPlacementBoardData, describeQuizAvailability, generateVisitQuizzes, scoreQuizAnswer } from "../src/features/knowledge-graph/quiz-generation.js";
 
 const registries = { genericCategories: [], learningRoles: [], categoriesByPack: {} };
 const referenceGraph = {
@@ -43,6 +43,21 @@ function project() {
 }
 
 describe("quiz generation from the visit knowledge graph", () => {
+  it("uses deterministic four-choice photo options", () => {
+    const observations = [
+      { id: "Observation:o3", observationId: "o3", label: "三", photoId: "p3" },
+      { id: "Observation:o1", observationId: "o1", label: "一", photoId: "p1" },
+      { id: "Observation:o2", observationId: "o2", label: "二", photoId: "p2" },
+      { id: "Observation:o4", observationId: "o4", label: "四", photoId: "p4" },
+      { id: "Observation:o5", observationId: "o5", label: "五", photoId: "p5" },
+    ];
+    const first = buildObservationChoiceOptions(observations, "o3");
+    expect(first).toEqual(buildObservationChoiceOptions(observations, "o3"));
+    expect(first).toHaveLength(4);
+    expect(first[0].id).toBe("o3");
+    expect(new Set(first.map((option) => option.id)).size).toBe(4);
+  });
+
   it("generates deterministic hierarchy and timeline-map questions", () => {
     const first = generateVisitQuizzes(project(), "v1", registries, referenceGraph);
     const second = generateVisitQuizzes(project(), "v1", registries, referenceGraph);
