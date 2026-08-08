@@ -298,7 +298,7 @@
         <h2 id="modalTitle"></h2>
         <p>この写真から抽出された観察対象です。具体名が未確定でも、汎用分類と分野別分類だけで保存できます。</p>
         <div class="modal-section"><h3>観察対象</h3><div id="modalObservations" class="modal-observation-list"></div></div>
-        <div class="modal-actions"><span class="photo-rotation-label" id="modalRotationLabel">向き 0度</span><button class="ghost-button dark" id="rotateModalPhotoButton" type="button">↻ 90度回転</button><button class="primary-button" id="organizeFromModalButton">この写真を整理</button></div>
+        <div class="modal-actions"><span class="photo-rotation-label" id="modalRotationLabel">向き 0度</span><button class="ghost-button dark hidden" id="choosePreviewRelationButton" type="button">この対象を関係先に選ぶ</button><button class="ghost-button dark" id="rotateModalPhotoButton" type="button">↻ 90度回転</button><button class="primary-button" id="organizeFromModalButton">この写真を整理</button></div>
       </div>
     </article>
   </div>
@@ -359,6 +359,7 @@
       <p class="muted-copy">Observation同士の関係を、現在の訪問内で保存します。</p>
       <div class="form-label endpoint-picker" id="relationSourcePicker"><span>関係元Observation</span><div id="relationSourceCard"></div><button type="button" class="text-button" id="chooseRelationSourceButton">選び直す</button><div id="relationSourceOptions" class="endpoint-options hidden"></div></div>
       <label class="form-label">関係種別<select id="relationTypeSelect" class="relation-type-select"></select><small id="relationTypeDirectionHint" class="relation-type-direction-hint"></small></label>
+      <fieldset class="form-label relation-type-choices"><legend>まとめて登録する種類</legend><div id="relationTypeChoices"></div><small>選択した種類を、既存形式のRelationとして1件ずつ保存します。</small></fieldset>
       <button type="button" class="swap-relation-button hidden" id="swapRelationEndpointsButton">⇅ 向きを逆にする</button>
       <fieldset class="form-label relation-scope-field">
         <legend>関係先の範囲</legend>

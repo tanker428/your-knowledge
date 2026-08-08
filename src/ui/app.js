@@ -212,6 +212,7 @@ export async function initApp(deps) {
     selectedFileRotations: [],
     /** @type {string|null} */
     modalPhotoId: null,
+    relationPreviewObservationId: null,
     organizePhotoId: "p03",
     organizeStep: 1,
     /** @type {string|null} */
@@ -1285,7 +1286,26 @@ export async function initApp(deps) {
       <article><span class="observation-number">${index + 1}</span><div><strong>${escapeHtml(observation.label)}</strong><small>${escapeHtml(OBSERVATION_TYPE_LABELS[observation.observationType] || "")}</small><div class="mini-tag-list">${observation.genericCategories.map((/** @type {string} */ id) => `<span>${escapeHtml(genericLabel(id))}</span>`).join("")}</div></div></article>`,
       )
       .join("");
+    const chooseButton = $("#choosePreviewRelationButton");
+    chooseButton?.classList.toggle("hidden", !state.relationPreviewObservationId);
+    if (chooseButton) chooseButton.textContent = state.relationPicker === "source" ? "この対象を関係元に選ぶ" : "この対象を関係先に選ぶ";
     openModal("photoModal");
+  }
+
+  function openRelationPreview(/** @type {string} */ observationId) {
+    const entry = relationEntryById(observationId);
+    if (!entry) return;
+    state.relationPreviewObservationId = observationId;
+    openPhotoModal(entry.photo.id);
+  }
+
+  function chooseRelationPreview() {
+    const id = state.relationPreviewObservationId;
+    if (!id || !state.relationPicker) return;
+    chooseRelationEndpoint(state.relationPicker, id);
+    state.relationPreviewObservationId = null;
+    closeModal("photoModal");
+    openModal("relationEditorModal");
   }
 
   function openModal(/** @type {string} */ id) {
@@ -1298,6 +1318,7 @@ export async function initApp(deps) {
   function closeModal(/** @type {string} */ id) {
     const modal = document.getElementById(id);
     if (!modal) return;
+    if (id === "photoModal") state.relationPreviewObservationId = null;
     modal.classList.remove("open");
     modal.setAttribute("aria-hidden", "true");
   }
@@ -1543,6 +1564,7 @@ export async function initApp(deps) {
       .map((type) => `<option value="${escapeHtml(type.id)}">${escapeHtml(relationTypeDisplay(type).optionLabel)}</option>`)
       .join("");
     $("#relationTypeSelect").value = draft.type;
+    $("#relationTypeChoices").innerHTML = registry.relationTypes.map((type) => `<label class="relation-type-choice"><input type="checkbox" data-relation-type-choice="${escapeHtml(type.id)}" ${(draft.types || [draft.type]).includes(type.id) ? "checked" : ""} />${escapeHtml(relationTypeDisplay(type).optionLabel)}</label>`).join("");
     const selectedType = relationType(draft.type);
     const selectedTypeDisplay = relationTypeDisplay(selectedType);
     $("#relationTypeDirectionHint").textContent = selectedType
@@ -1597,6 +1619,7 @@ export async function initApp(deps) {
       sourceId,
       targetId: existing?.targetId || "",
       type: existing?.type || registry.relationTypes[0]?.id || "",
+      types: existing ? [existing.type] : [registry.relationTypes[0]?.id || ""],
     };
     if (existing)
       state.relationScope = scopeForRelationEndpoints(
@@ -1624,25 +1647,19 @@ export async function initApp(deps) {
 
   function saveRelation() {
     const wasEditing = Boolean(state.editingRelationId);
-    const candidate = { ...state.relationDraft, type: $("#relationTypeSelect").value };
-    const reason = validateRelationInput(
-      state.relations,
-      candidate,
-      registry.relationTypes,
-      state.editingRelationId,
-    );
-    if (reason) {
-      showToast(reason);
-      return;
-    }
+    const selectedTypes = [...document.querySelectorAll("[data-relation-type-choice]:checked")].map((input) => /** @type {any} */ (input)).map((input) => input.dataset.relationTypeChoice).filter(Boolean);
+    const types = selectedTypes.length ? selectedTypes : [$("#relationTypeSelect").value];
+    const candidates = types.map((type) => ({ ...state.relationDraft, type }));
+    const reason = candidates.map((candidate) => validateRelationInput(state.relations, candidate, registry.relationTypes, state.editingRelationId)).find(Boolean);
+    if (reason) { showToast(reason); return; }
     if (state.editingRelationId) {
       const index = state.relations.findIndex(
         (relation) => relation.id === state.editingRelationId,
       );
       if (index >= 0)
-        state.relations[index] = updateRelation(state.relations[index], candidate);
+        state.relations[index] = updateRelation(state.relations[index], candidates[0]);
     } else {
-      state.relations.push({ ...createRelation({ ...candidate, id: uid("relation") }) });
+      candidates.forEach((candidate) => state.relations.push({ ...createRelation({ ...candidate, id: uid("relation") }) }));
     }
     closeModal("relationEditorModal");
     state.editingRelationId = null;
@@ -3217,6 +3234,7 @@ export async function initApp(deps) {
       if (photoId) setOrganizePhoto(photoId);
       switchView("organize");
     });
+    $("#choosePreviewRelationButton")?.addEventListener("click", chooseRelationPreview);
     $("#rotateModalPhotoButton")?.addEventListener("click", () => {
       if (state.modalPhotoId) rotatePhotoById(state.modalPhotoId);
     });
@@ -3237,11 +3255,11 @@ export async function initApp(deps) {
     });
     $("#relationSourceOptions")?.addEventListener("click", (event) => {
       const id = event.target.closest("[data-endpoint-option]")?.dataset.endpointOption;
-      if (id) chooseRelationEndpoint("source", id);
+      if (id) openRelationPreview(id);
     });
     $("#relationTargetOptions")?.addEventListener("click", (event) => {
       const id = event.target.closest("[data-endpoint-option]")?.dataset.endpointOption;
-      if (id) chooseRelationEndpoint("target", id);
+      if (id) openRelationPreview(id);
     });
     $("#relationSourceOptions")?.addEventListener("input", (event) => {
       if (event.target.dataset.endpointSearch !== "source") return;
@@ -3258,6 +3276,13 @@ export async function initApp(deps) {
     $("#swapRelationEndpointsButton")?.addEventListener("click", swapRelationEditorEndpoints);
     $("#relationTypeSelect")?.addEventListener("change", (event) => {
       if (state.relationDraft) state.relationDraft.type = event.target.value;
+      renderRelationEditor();
+    });
+    $("#relationTypeChoices")?.addEventListener("change", () => {
+      if (!state.relationDraft) return;
+      const selected = [...document.querySelectorAll("[data-relation-type-choice]:checked")].map((input) => /** @type {any} */ (input)).map((input) => input.dataset.relationTypeChoice).filter(Boolean);
+      state.relationDraft.types = selected;
+      if (selected[0]) state.relationDraft.type = selected[0];
       renderRelationEditor();
     });
     $$("[data-relation-scope]").forEach((button) =>
