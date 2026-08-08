@@ -4,6 +4,10 @@ import { getReferenceNodeById, getReferenceParents, getReferenceChildren } from 
 const MAX_QUESTIONS = 10;
 const TYPE_BY_AXIS = { taxonomy: "hierarchy", "geological-time": "timeline-map" };
 const PREDICATE_BY_AXIS = { taxonomy: new Set(["classifiedas", "classified_as", "classified-as"]), "geological-time": new Set(["livedduring", "occursduring", "occurreduring", "occurs-during"]) };
+export const RELATION_QUIZ_TEMPLATES = Object.freeze({
+  explains: (source) => `${source.label}の説明で説明されている対象はどれですか？`,
+  "part-of": (source) => `${source.label}が含まれる全体はどれですか？`,
+});
 
 export function generateVisitQuizzes(project, visitId, registries = {}, referenceGraph) {
   const graph = buildVisitKnowledgeGraph(project, visitId, registries);
@@ -83,14 +87,14 @@ export function generateQuizzesFromKnowledgeGraph(graph, referenceGraph) {
         explanation: "写真とObservationの対応を確認する問題です。",
       });
     }
-    for (const relation of graph.edges.filter((edge) => edge.type === "RELATES_TO" && edge.status === "confirmed")) {
+    for (const relation of graph.edges.filter((edge) => edge.type === "RELATES_TO" && edge.status === "confirmed" && RELATION_QUIZ_TEMPLATES[edge.relationType])) {
       const source = observations.get(relation.sourceId);
       const target = observations.get(relation.targetId);
       if (!source || !target) continue;
       questions.push({
         id: `quiz:matching:${relation.relationId}`,
         questionType: "matching",
-        prompt: `${source.label}と「${relation.relationType || "関連"}」でつながる対象はどれですか？`,
+        prompt: RELATION_QUIZ_TEMPLATES[relation.relationType](source),
         observationId: source.observationId,
         photoId: source.photoId,
         region: source.region || null,
