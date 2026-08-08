@@ -33,6 +33,16 @@ function project() {
 }
 
 describe("knowledge graph view selectors", () => {
+  it("keeps internal node and edge names out of user-facing graph copy", async () => {
+    const source = await readFile("src/ui/app.js", "utf8");
+    expect(source).toContain('GenericCategory: "対象の種類"');
+    expect(source).toContain('DomainCategory: "テーマ別の分類"');
+    expect(source).toContain('LearningRole: "学ぶうえでの役割"');
+    expect(source).toContain('ClassificationAssertion: "分類情報"');
+    expect(source).toContain('PART_OF: "含まれる時代"');
+    expect(source).not.toContain('GenericCategory: "汎用分類"');
+  });
+
   it("builds an active-visit overview with Photo to Observation and Relation", () => {
     const overview = buildKnowledgeGraphView(project(), "v1", registries, referenceGraph).overview;
     expect(overview.nodes.some((node) => node.id === "Photo:p3")).toBe(false);
