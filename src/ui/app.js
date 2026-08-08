@@ -94,6 +94,7 @@ import { LOCAL_USER_ID, mergeQuizResultsIntoLearningEvents, rebuildUserKnowledge
 import { getLearnedReferenceFacts } from "../domain/learned-reference-facts.js";
 import { buildCollectionProgress } from "../features/collections/collection-progress.js";
 import { displayedPointToStoredPoint, normalizePhotoRotation, rotatePhoto, unrotateImagePoint } from "../domain/photo-rotation.js";
+import { knowledgeEdgeLabel, knowledgeNodeLabel } from "./knowledge-labels.js";
 
 const MAX_UPLOAD_BATCH = 120;
 const STATUS_LABELS = {
@@ -2140,7 +2141,7 @@ export async function initApp(deps) {
       return `<section class="kg-node-group kg-${type.toLowerCase()}"><div class="kg-group-title"><span>${knowledgeNodeIcon(type)}</span><strong>${escapeHtml(knowledgeNodeLabel(type))}</strong><small>${nodes.length}</small></div><div class="kg-node-grid">${nodes.map((node) => renderKnowledgeNode(node, graph)).join("")}</div></section>`;
     }).join("");
     const relations = graph.edges.filter((edge) => edge.type === "RELATES_TO");
-    const relationSection = relations.length ? `<section class="kg-relation-strip"><div class="kg-group-title"><span>↔</span><strong>関係</strong><small>${relations.length}</small></div>${relations.map((edge) => `<button class="kg-relation-row" data-kg-node="${escapeHtml(edge.targetId)}"><span>${edge.directed === false ? "↔" : "→"}</span><strong>${escapeHtml(nodeLabel(graph, edge.sourceId))}</strong><em>${escapeHtml(edge.relationType || "RELATES_TO")}</em><strong>${escapeHtml(nodeLabel(graph, edge.targetId))}</strong></button>`).join("")}</section>` : "";
+    const relationSection = relations.length ? `<section class="kg-relation-strip"><div class="kg-group-title"><span>↔</span><strong>関係</strong><small>${relations.length}</small></div>${relations.map((edge) => `<button class="kg-relation-row" data-kg-node="${escapeHtml(edge.targetId)}"><span>${edge.directed === false ? "↔" : "→"}</span><strong>${escapeHtml(nodeLabel(graph, edge.sourceId))}</strong><em>${escapeHtml(knowledgeEdgeLabel(edge.type, edge.relationType))}</em><strong>${escapeHtml(nodeLabel(graph, edge.targetId))}</strong></button>`).join("")}</section>` : "";
     const backButton = state.knowledgeViewMode === "focus" ? '<button class="text-button" data-kg-overview>← 訪問全体へ戻る</button>' : "";
     return `<div class="kg-canvas-header"><span>DISPLAY GRAPH</span><strong>${state.knowledgeViewMode === "focus" ? "Observation詳細・1ホップ" : "訪問全体"}</strong><span class="kg-header-actions">${backButton}</span></div>${sections}${relationSection}`;
   }
@@ -2219,7 +2220,7 @@ export async function initApp(deps) {
     const photo = node.photoId ? photoById(node.photoId) : null;
     const referenceEditor = node.type === "Observation" || node.type === "Entity" ? renderReferenceFactEditor(node) : "";
     const photoMarkup = photo ? rotatedPhotoFrame(photo, `<img src="${escapeHtml(photo.src || photo.thumbSrc || MISSING_PHOTO_SRC)}" alt="${escapeHtml(photo.title)}" />`) : "";
-    return `<div class="kg-detail-header"><span>${knowledgeNodeIcon(node.type)} ${escapeHtml(knowledgeNodeLabel(node.type))}</span><h2>${escapeHtml(node.label || node.title || node.predicate || node.referenceId || node.type)}</h2>${photo ? `<button class="ghost-button dark" data-open-photo="${escapeHtml(photo.id)}">元写真を見る</button>` : ""}</div>${photo ? `<div class="kg-detail-photo">${photoMarkup}<strong>${escapeHtml(photo.title)}</strong></div>` : ""}${referenceEditor}<div class="kg-detail-meta"><p>接続 ${detail.incoming.length + detail.outgoing.length}件</p>${detail.outgoing.map((edge) => `<button data-kg-node="${escapeHtml(edge.targetId)}">→ ${escapeHtml(nodeLabel(graph, edge.targetId))}</button>`).join("")}${detail.incoming.map((edge) => `<button data-kg-node="${escapeHtml(edge.sourceId)}">← ${escapeHtml(nodeLabel(graph, edge.sourceId))}</button>`).join("")}</div>`;
+    return `<div class="kg-detail-header"><span>${knowledgeNodeIcon(node.type)} ${escapeHtml(knowledgeNodeLabel(node.type))}</span><h2>${escapeHtml(node.label || node.title || node.predicate || node.referenceId || node.type)}</h2>${photo ? `<button class="ghost-button dark" data-open-photo="${escapeHtml(photo.id)}">元写真を見る</button>` : ""}</div>${photo ? `<div class="kg-detail-photo">${photoMarkup}<strong>${escapeHtml(photo.title)}</strong></div>` : ""}${referenceEditor}<div class="kg-detail-meta"><p>接続 ${detail.incoming.length + detail.outgoing.length}件</p>${detail.outgoing.map((edge) => `<button data-kg-node="${escapeHtml(edge.targetId)}">→ ${escapeHtml(knowledgeEdgeLabel(edge.type, edge.relationType))}：${escapeHtml(nodeLabel(graph, edge.targetId))}</button>`).join("")}${detail.incoming.map((edge) => `<button data-kg-node="${escapeHtml(edge.sourceId)}">← ${escapeHtml(knowledgeEdgeLabel(edge.type, edge.relationType))}：${escapeHtml(nodeLabel(graph, edge.sourceId))}</button>`).join("")}</div>`;
   }
 
   function renderReferenceFactEditor(node) {
@@ -2229,7 +2230,6 @@ export async function initApp(deps) {
   }
 
   function nodeLabel(graph, nodeId) { const node = getKnowledgeGraphNodeDetail(graph, nodeId)?.node; return node?.label || node?.title || nodeId; }
-  function knowledgeNodeLabel(type) { return { User: "利用者", Visit: "訪問", Photo: "写真", Observation: "観察対象", Entity: "関連する対象", ReferenceFact: "確認済みの知識", ReferenceNode: "参照分類・時代", GenericCategory: "汎用分類", DomainCategory: "分野分類", LearningRole: "学習役割" }[type] || type; }
   function knowledgeNodeIcon(type) { return { User: "●", Visit: "⬡", Photo: "▣", Observation: "◎", Entity: "◇", ReferenceFact: "▤", ReferenceNode: "⌘", GenericCategory: "◌", DomainCategory: "◆", LearningRole: "✦" }[type] || "•"; }
   function bindKnowledgeGraphEvents() {
     $$('[data-knowledge-observation]').forEach((button) => button.addEventListener("click", () => { state.knowledgeObservationId = button.dataset.knowledgeObservation; state.knowledgeViewMode = "focus"; renderKnowledge(); }));
