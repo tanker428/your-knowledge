@@ -47,6 +47,7 @@ describe("quiz generation from the visit knowledge graph", () => {
     expect(RELATION_QUIZ_TEMPLATES.explains({ label: "説明パネル" })).toBe("説明パネルの説明で説明されている対象はどれですか？");
     expect(RELATION_QUIZ_TEMPLATES["part-of"]({ label: "分類・時代・産地の記載" })).toBe("分類・時代・産地の記載が含まれる全体はどれですか？");
     expect(RELATION_QUIZ_TEMPLATES["same-exhibit"]).toBeUndefined();
+  });
   it("uses deterministic four-choice photo options", () => {
     const observations = [
       { id: "Observation:o3", observationId: "o3", label: "三", photoId: "p3" },
