@@ -97,14 +97,24 @@ describe("quiz generation from the visit knowledge graph", () => {
     const demoProject = project();
     demoProject.visits[0].source = "demo";
     demoProject.photos[0].observations[0].id = "o08b";
-    demoProject.photos[0].observations[0].label = "分類・時代・産地の記載";
+    demoProject.photos[0].observations[0].label = "名称と解説が書かれた展示パネル";
     demoProject.photos[0].observations[0].photoId = "p08";
-    demoProject.photos[1].observations[0].id = "o08a";
-    demoProject.photos[1].observations[0].label = "名称と解説が書かれた展示パネル";
-    demoProject.photos[1].observations[0].photoId = "p08";
-    demoProject.relations = [{ id: "r19", sourceId: "o08b", targetId: "o08a", type: "part-of", directed: true, status: "confirmed" }];
+    demoProject.photos[1].observations[0].id = "o07b";
+    demoProject.photos[1].observations[0].label = "展示空間と周囲の標本";
+    demoProject.photos[1].observations[0].photoId = "p07";
+    demoProject.relations = [{ id: "r19", sourceId: "o08b", targetId: "o07b", type: "part-of", directed: true, status: "confirmed" }];
     const graph = generateVisitQuizzes(demoProject, "v1", registries, referenceGraph);
-    expect(graph.some((quiz) => quiz.prompt === "分類・時代・産地の記載が含まれる全体はどれですか？")).toBe(true);
+    expect(graph.some((quiz) => quiz.prompt === "名称と解説が書かれた展示パネルが含まれる全体はどれですか？")).toBe(true);
+    expect(graph.find((quiz) => quiz.prompt.includes("含まれる全体"))?.observationId).toBe("o08b");
+  });
+  it("does not generate relation questions for observations in the same photo", () => {
+    const samePhotoProject = project();
+    samePhotoProject.visits[0].source = "demo";
+    samePhotoProject.photos[0].observations.push({ id: "o1b", photoId: "p1", label: "同じ写真の別対象", status: "confirmed", included: true, entityId: null, region: null });
+    samePhotoProject.relations = [{ id: "same-photo", sourceId: "o1", targetId: "o1b", type: "explains", directed: true, status: "confirmed" }];
+    const questions = generateVisitQuizzes(samePhotoProject, "v1", registries, referenceGraph);
+    expect(questions.some((quiz) => quiz.questionType === "matching")).toBe(false);
+    expect(questions.filter((quiz) => quiz.questionType === "hierarchy" || quiz.questionType === "timeline-map")).toHaveLength(2);
   });
   it("builds a taxonomy path with siblings and a complete same-rank time band", () => {
     const taxonomy = buildPlacementBoardData(referenceGraph, referenceGraph.nodes.find((node) => node.id === "taxon:child"), "taxonomy");
