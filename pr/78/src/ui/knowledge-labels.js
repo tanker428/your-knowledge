@@ -10,6 +10,13 @@ const NODE_LABELS = {
   DomainCategory: "テーマ別の分類",
   LearningRole: "学ぶうえでの役割",
   ClassificationAssertion: "分類情報",
+  QuestionSeed: "問題の材料",
+};
+
+const PREDICATE_LABELS = {
+  classifiedas: "分類",
+  livedduring: "生息した時代",
+  occursduring: "起きた時代",
 };
 
 const EDGE_LABELS = {
@@ -25,6 +32,17 @@ const EDGE_LABELS = {
 
 export function knowledgeNodeLabel(type) {
   return NODE_LABELS[type] || type;
+}
+
+export function knowledgePredicateLabel(predicate) {
+  const raw = String(predicate || "");
+  const key = raw.replace(/[\s_-]/g, "").toLowerCase();
+  return PREDICATE_LABELS[key] || raw || "確認済みの知識";
+}
+
+export function knowledgeNodeText(node) {
+  if (!node) return "";
+  return node.label || node.title || (node.predicate ? knowledgePredicateLabel(node.predicate) : "") || node.referenceId || node.type || "";
 }
 
 export function knowledgeEdgeLabel(type, relationType) {
