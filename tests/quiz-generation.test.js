@@ -45,6 +45,7 @@ function project() {
 describe("quiz generation from the visit knowledge graph", () => {
   it("uses natural Japanese allowlisted templates for learning-value relations", () => {
     expect(RELATION_QUIZ_TEMPLATES.explains({ label: "説明パネル" })).toBe("説明パネルの説明で説明されている対象はどれですか？");
+    expect(RELATION_QUIZ_TEMPLATES["part-of"]({ label: "分類・時代・産地の記載" })).toBe("分類・時代・産地の記載が含まれる全体はどれですか？");
     expect(RELATION_QUIZ_TEMPLATES["same-exhibit"]).toBeUndefined();
   });
   it("generates deterministic hierarchy and timeline-map questions", () => {
@@ -91,6 +92,19 @@ describe("quiz generation from the visit knowledge graph", () => {
     expect([first, second].filter((result) => result.quizId === quiz.id)).toHaveLength(2);
     expect(second.attemptId).not.toBe(first.attemptId);
     expect(second.deckAttemptId).not.toBe(first.deckAttemptId);
+  });
+  it("generates a part-of question from the confirmed demo relation", () => {
+    const demoProject = project();
+    demoProject.visits[0].source = "demo";
+    demoProject.photos[0].observations[0].id = "o08b";
+    demoProject.photos[0].observations[0].label = "分類・時代・産地の記載";
+    demoProject.photos[0].observations[0].photoId = "p08";
+    demoProject.photos[1].observations[0].id = "o08a";
+    demoProject.photos[1].observations[0].label = "名称と解説が書かれた展示パネル";
+    demoProject.photos[1].observations[0].photoId = "p08";
+    demoProject.relations = [{ id: "r19", sourceId: "o08b", targetId: "o08a", type: "part-of", directed: true, status: "confirmed" }];
+    const graph = generateVisitQuizzes(demoProject, "v1", registries, referenceGraph);
+    expect(graph.some((quiz) => quiz.prompt === "分類・時代・産地の記載が含まれる全体はどれですか？")).toBe(true);
   });
   it("builds a taxonomy path with siblings and a complete same-rank time band", () => {
     const taxonomy = buildPlacementBoardData(referenceGraph, referenceGraph.nodes.find((node) => node.id === "taxon:child"), "taxonomy");
