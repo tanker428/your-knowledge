@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { renderQuizPhotoMedia } from "../src/ui/quiz-photo.js";
+import { MISSING_PHOTO_SRC } from "../src/ui/photo-assets.js";
 
 const photo = {
   id: "p1",
@@ -24,11 +25,15 @@ describe("quiz photo renderer", () => {
     const html = renderQuizPhotoMedia({ ...photo, rotation: 0 }, null, { label: "全体" });
     expect(html).toContain("/photos/original.jpg");
     expect(html).not.toContain("quiz-photo-region");
-    expect(html).toContain("aspect-ratio:1600/900");
+    expect(html).not.toContain("transform:");
   });
 
   it("uses the rotated aspect ratio for quarter turns", () => {
     const html = renderQuizPhotoMedia(photo, null);
-    expect(html).toContain("aspect-ratio:900/1600");
+    expect(html).toContain("transform:rotate(90deg) scale(.82)");
+  });
+
+  it("uses the shared missing-photo fallback when no image source exists", () => {
+    expect(renderQuizPhotoMedia({ rotation: 0 }, null)).toContain(MISSING_PHOTO_SRC);
   });
 });
