@@ -2201,12 +2201,11 @@ export const SAMPLE_RELATIONS = [
   },
   {
     "id": "r19",
-    "sourceId": "o08b",
-    "targetId": "o08a",
+    "sourceId": "o08a",
+    "targetId": "o07b",
     "type": "part-of",
     "directed": true,
     "status": "confirmed",
-    "origin": "demo",
     "confidence": 0.96
   }
 ];
