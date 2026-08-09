@@ -9,6 +9,15 @@ export const RELATION_QUIZ_TEMPLATES = Object.freeze({
   "part-of": (source) => `${source.label}が含まれる全体はどれですか？`,
 });
 
+export function buildObservationChoiceOptions(observations, targetObservationId) {
+  const sorted = [...observations].sort((a, b) => a.id.localeCompare(b.id));
+  const target = sorted.find((node) => node.observationId === targetObservationId);
+  if (!target) return [];
+  return [target, ...sorted.filter((node) => node.observationId !== targetObservationId).slice(0, 3)].map((node) => ({
+    id: node.observationId, label: node.label, photoId: node.photoId, region: node.region || null,
+  }));
+}
+
 export function generateVisitQuizzes(project, visitId, registries = {}, referenceGraph) {
   const graph = buildVisitKnowledgeGraph(project, visitId, registries);
   return generateQuizzesFromKnowledgeGraph(graph, referenceGraph);
@@ -64,26 +73,18 @@ export function generateQuizzesFromKnowledgeGraph(graph, referenceGraph) {
   }
   const visit = graph.nodes.find((node) => node.type === "Visit");
   if (visit?.source === "demo") {
-    const observationOptions = [...observations.values()]
-      .sort((a, b) => a.id.localeCompare(b.id))
-      .map((node) => ({
-        id: node.observationId,
-        label: node.label,
-        photoId: node.photoId,
-        region: node.region || null,
-      }));
     for (const observation of [...observations.values()].slice(0, 2)) {
       questions.push({
         id: `quiz:observation:${observation.observationId}`,
         questionType: "observation-choice",
-        prompt: "写真で示されている対象はどれですか？",
+        prompt: "この対象はなんですか？",
         observationId: observation.observationId,
         photoId: observation.photoId,
         region: observation.region || null,
         referenceFactId: null,
         targetReferenceId: observation.observationId,
         relationIds: [],
-        options: observationOptions,
+        options: buildObservationChoiceOptions(observations.values(), observation.observationId),
         explanation: "写真とObservationの対応を確認する問題です。",
       });
     }
