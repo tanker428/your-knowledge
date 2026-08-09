@@ -1,7 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 import { buildVisitKnowledgeGraph } from "../src/domain/knowledge-graph.js";
-import { buildKnowledgeGraphView, buildObservationFocusGraph, buildRadialLayout, buildVisitOverviewGraph, expandReferenceGraphNodes, filterGraphByAxis, getKnowledgeGraphNodeDetail, getRadialNodeShape, mergeReferencedReferenceGraph } from "../src/features/knowledge-graph/selectors.js";
+import { renderKnowledgeDisplayAttributes } from "../src/ui/knowledge-display.js";
+import { buildKnowledgeGraphView, buildObservationFocusGraph, buildRadialLayout, buildVisitOverviewGraph, expandReferenceGraphNodes, filterGraphByAxis, getKnowledgeGraphNodeDetail, getRadialNodeShape, mergeReferencedReferenceGraph, shouldShowKnowledgeAxisControls } from "../src/features/knowledge-graph/selectors.js";
 import { knowledgeNodeText } from "../src/ui/knowledge-labels.js";
 
 const registries = { genericCategories: [{ id: "display", label: "展示物" }], learningRoles: [], categoriesByPack: {} };
@@ -35,16 +36,21 @@ function project() {
 
 describe("knowledge graph view selectors", () => {
   it("builds an active-visit overview with Photo to Observation and Relation", () => {
-    const overview = buildKnowledgeGraphView(project(), "v1", registries, referenceGraph).overview;
+    const source = buildKnowledgeGraphView(project(), "v1", registries, referenceGraph).source;
+    const overview = buildVisitOverviewGraph(source);
     expect(overview.nodes.some((node) => node.id === "Photo:p3")).toBe(false);
     expect(overview.nodes.some((node) => node.type === "Visit" && node.visitId === "v1")).toBe(true);
     expect(overview.edges.some((edge) => edge.type === "HAS_OBSERVATION")).toBe(true);
     expect(overview.edges.some((edge) => edge.type === "RELATES_TO" && edge.relationId === "r1")).toBe(true);
     expect(overview.edges.some((edge) => edge.relationId === "r2")).toBe(false);
+    expect(overview.nodes.some((node) => node.type === "QuestionSeed")).toBe(false);
+    expect(overview.nodes.length).toBeLessThan(source.nodes.length);
+    expect(shouldShowKnowledgeAxisControls("overview")).toBe(false);
+    expect(shouldShowKnowledgeAxisControls("focus")).toBe(true);
   });
   it("builds a one-hop focus and includes only verified related ReferenceGraph nodes", () => {
     const graph = buildVisitKnowledgeGraph(project(), "v1", registries);
-    const focus = buildObservationFocusGraph(graph, "Observation:o1", referenceGraph);
+    const focus = buildObservationFocusGraph(graph, "Observation:o1", referenceGraph, registries);
     expect(focus.nodes.some((node) => node.id === "Observation:o2")).toBe(true);
     expect(focus.nodes.some((node) => node.id === "Reference:taxon:child")).toBe(true);
     expect(focus.nodes.some((node) => node.id === "Reference:geo:eon:phanerozoic")).toBe(false);
@@ -52,18 +58,21 @@ describe("knowledge graph view selectors", () => {
     expect(focus.nodes.some((node) => node.id === "Reference:taxon:grandchild")).toBe(true);
     expect(focus.nodes.some((node) => node.id === "Reference:taxon:greatgrandchild")).toBe(false);
     expect(focus.nodes.some((node) => node.type === "ReferenceFact" && ["draft", "deprecated"].includes(node.status))).toBe(false);
+    expect(focus.nodes.some((node) => node.type === "QuestionSeed")).toBe(false);
+    expect(focus.nodes.some((node) => node.type === "ClassificationAssertion")).toBe(false);
+    expect(focus.nodes.find((node) => node.id === "Observation:o1")?.displayAttributes?.classificationLabels).toEqual(["展示物"]);
     expect(focus.edges.some((edge) => edge.type === "REFERS_TO_REFERENCE" && edge.sourceId === "ReferenceFact: f1".replace(" ", ""))).toBe(true);
   });
   it("keeps Entity names through the focus graph display-text path", () => {
     const graph = buildVisitKnowledgeGraph(project(), "v1", registries);
-    const focus = buildObservationFocusGraph(graph, "Observation:o1", referenceGraph);
+    const focus = buildObservationFocusGraph(graph, "Observation:o1", referenceGraph, registries);
     const entity = getKnowledgeGraphNodeDetail(focus, "Entity:e1")?.node;
     expect(entity).toMatchObject({ type: "Entity", entityId: "e1", name: "対象Entity" });
     expect(knowledgeNodeText(entity)).toBe("対象Entity");
   });
   it("filters axes and exposes node detail", () => {
     const graph = buildVisitKnowledgeGraph(project(), "v1", registries);
-    const focus = mergeReferencedReferenceGraph(buildObservationFocusGraph(graph, "Observation:o1"), referenceGraph);
+    const focus = mergeReferencedReferenceGraph(buildObservationFocusGraph(graph, "Observation:o1", null, registries), referenceGraph);
     expect(filterGraphByAxis(focus, "taxonomy").nodes.filter((node) => node.type === "ReferenceNode").every((node) => node.axis === "taxonomy")).toBe(true);
     expect(filterGraphByAxis(focus, "geological-time").nodes.filter((node) => node.type === "ReferenceNode").every((node) => node.axis === "geological-time")).toBe(true);
     expect(filterGraphByAxis(focus, "taxonomy").nodes.some((node) => node.referenceFactId === "f-time")).toBe(false);
@@ -79,6 +88,31 @@ describe("knowledge graph view selectors", () => {
     const view = buildKnowledgeGraphView(project(), "v1", registries, referenceGraph);
     expect(view.source.metadata.includesUiState).toBe(false);
     expect(view.source.nodes.some((node) => "selected" in node || "expanded" in node)).toBe(false);
+  });
+  it("collapses LearningRole nodes into Observation display attributes only", () => {
+    const roleProject = project();
+    roleProject.photos[0].observations[0].learningRoles = ["context"];
+    const roleRegistries = { ...registries, learningRoles: [{ id: "context", label: "背景・文脈" }] };
+    const graph = buildVisitKnowledgeGraph(roleProject, "v1", roleRegistries);
+    const view = buildObservationFocusGraph(graph, "Observation:o1", null, roleRegistries);
+    const observation = view.nodes.find((node) => node.id === "Observation:o1");
+    expect(graph.nodes.some((node) => node.type === "LearningRole")).toBe(true);
+    expect(view.nodes.some((node) => node.type === "LearningRole")).toBe(false);
+    expect(view.edges.some((edge) => edge.type === "HAS_ROLE")).toBe(false);
+    expect(observation?.displayAttributes).toEqual({ learningRoles: ["context"], learningRoleLabels: ["背景・文脈"], classificationLabels: ["展示物"] });
+    expect(view.metadata.learningRolesCollapsed).toBe(true);
+  });
+  it("renders collapsed role labels as user-facing chips and omits empty labels", () => {
+    expect(renderKnowledgeDisplayAttributes({ displayAttributes: { classificationLabels: ["展示物"], learningRoleLabels: ["説明するもの", "背景・文脈"] } })).toContain("展示物");
+    expect(renderKnowledgeDisplayAttributes({ displayAttributes: { classificationLabels: ["展示物"] } })).toContain("展示物");
+    expect(renderKnowledgeDisplayAttributes({ displayAttributes: { learningRoleLabels: ["", "  "] } })).toBe("");
+  });
+  it("omits classification IDs that are not resolved by the registry", () => {
+    const unknownProject = project();
+    unknownProject.photos[0].observations[0].genericCategories = ["unknown-category"];
+    const graph = buildVisitKnowledgeGraph(unknownProject, "v1", registries);
+    const focus = buildObservationFocusGraph(graph, "Observation:o1", null, registries);
+    expect(focus.nodes.find((node) => node.id === "Observation:o1")?.displayAttributes?.classificationLabels).toBeUndefined();
   });
   it("has a bounded single-column layout rule for 412px-class screens", async () => {
     const css = await readFile(new URL("../styles.css", import.meta.url), "utf8");
