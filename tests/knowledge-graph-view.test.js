@@ -49,7 +49,7 @@ describe("knowledge graph view selectors", () => {
   });
   it("builds a one-hop focus and includes only verified related ReferenceGraph nodes", () => {
     const graph = buildVisitKnowledgeGraph(project(), "v1", registries);
-    const focus = buildObservationFocusGraph(graph, "Observation:o1", referenceGraph);
+    const focus = buildObservationFocusGraph(graph, "Observation:o1", referenceGraph, registries);
     expect(focus.nodes.some((node) => node.id === "Observation:o2")).toBe(true);
     expect(focus.nodes.some((node) => node.id === "Reference:taxon:child")).toBe(true);
     expect(focus.nodes.some((node) => node.id === "Reference:geo:eon:phanerozoic")).toBe(false);
@@ -57,11 +57,14 @@ describe("knowledge graph view selectors", () => {
     expect(focus.nodes.some((node) => node.id === "Reference:taxon:grandchild")).toBe(true);
     expect(focus.nodes.some((node) => node.id === "Reference:taxon:greatgrandchild")).toBe(false);
     expect(focus.nodes.some((node) => node.type === "ReferenceFact" && ["draft", "deprecated"].includes(node.status))).toBe(false);
+    expect(focus.nodes.some((node) => node.type === "QuestionSeed")).toBe(false);
+    expect(focus.nodes.some((node) => node.type === "ClassificationAssertion")).toBe(false);
+    expect(focus.nodes.find((node) => node.id === "Observation:o1")?.displayAttributes?.classificationLabels).toEqual(["展示物"]);
     expect(focus.edges.some((edge) => edge.type === "REFERS_TO_REFERENCE" && edge.sourceId === "ReferenceFact: f1".replace(" ", ""))).toBe(true);
   });
   it("filters axes and exposes node detail", () => {
     const graph = buildVisitKnowledgeGraph(project(), "v1", registries);
-    const focus = mergeReferencedReferenceGraph(buildObservationFocusGraph(graph, "Observation:o1"), referenceGraph);
+    const focus = mergeReferencedReferenceGraph(buildObservationFocusGraph(graph, "Observation:o1", null, registries), referenceGraph);
     expect(filterGraphByAxis(focus, "taxonomy").nodes.filter((node) => node.type === "ReferenceNode").every((node) => node.axis === "taxonomy")).toBe(true);
     expect(filterGraphByAxis(focus, "geological-time").nodes.filter((node) => node.type === "ReferenceNode").every((node) => node.axis === "geological-time")).toBe(true);
     expect(filterGraphByAxis(focus, "taxonomy").nodes.some((node) => node.referenceFactId === "f-time")).toBe(false);
@@ -83,17 +86,25 @@ describe("knowledge graph view selectors", () => {
     roleProject.photos[0].observations[0].learningRoles = ["context"];
     const roleRegistries = { ...registries, learningRoles: [{ id: "context", label: "背景・文脈" }] };
     const graph = buildVisitKnowledgeGraph(roleProject, "v1", roleRegistries);
-    const view = buildObservationFocusGraph(graph, "Observation:o1");
+    const view = buildObservationFocusGraph(graph, "Observation:o1", null, roleRegistries);
     const observation = view.nodes.find((node) => node.id === "Observation:o1");
     expect(graph.nodes.some((node) => node.type === "LearningRole")).toBe(true);
     expect(view.nodes.some((node) => node.type === "LearningRole")).toBe(false);
     expect(view.edges.some((edge) => edge.type === "HAS_ROLE")).toBe(false);
-    expect(observation?.displayAttributes).toEqual({ learningRoles: ["context"], learningRoleLabels: ["背景・文脈"] });
+    expect(observation?.displayAttributes).toEqual({ learningRoles: ["context"], learningRoleLabels: ["背景・文脈"], classificationLabels: ["展示物"] });
     expect(view.metadata.learningRolesCollapsed).toBe(true);
   });
   it("renders collapsed role labels as user-facing chips and omits empty labels", () => {
-    expect(renderKnowledgeDisplayAttributes({ displayAttributes: { learningRoleLabels: ["説明するもの", "背景・文脈"] } })).toContain("説明するもの");
+    expect(renderKnowledgeDisplayAttributes({ displayAttributes: { classificationLabels: ["展示物"], learningRoleLabels: ["説明するもの", "背景・文脈"] } })).toContain("展示物");
+    expect(renderKnowledgeDisplayAttributes({ displayAttributes: { classificationLabels: ["展示物"] } })).toContain("展示物");
     expect(renderKnowledgeDisplayAttributes({ displayAttributes: { learningRoleLabels: ["", "  "] } })).toBe("");
+  });
+  it("omits classification IDs that are not resolved by the registry", () => {
+    const unknownProject = project();
+    unknownProject.photos[0].observations[0].genericCategories = ["unknown-category"];
+    const graph = buildVisitKnowledgeGraph(unknownProject, "v1", registries);
+    const focus = buildObservationFocusGraph(graph, "Observation:o1", null, registries);
+    expect(focus.nodes.find((node) => node.id === "Observation:o1")?.displayAttributes?.classificationLabels).toBeUndefined();
   });
   it("has a bounded single-column layout rule for 412px-class screens", async () => {
     const css = await readFile(new URL("../styles.css", import.meta.url), "utf8");

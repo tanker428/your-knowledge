@@ -18,15 +18,15 @@ export function shouldShowKnowledgeAxisControls(viewMode) {
 
 export function buildKnowledgeGraphView(project, visitId, registries = {}, referenceGraph = null) {
   const graph = buildVisitKnowledgeGraph(project, visitId, registries);
-  return { source: graph, overview: buildVisitOverviewGraph(graph), focus: null, referenceGraph, empty: getGraphNodesByType(graph, "Observation").length === 0 };
+  return { source: graph, overview: buildVisitOverviewGraph(graph, registries), focus: null, referenceGraph, empty: getGraphNodesByType(graph, "Observation").length === 0 };
 }
 
-export function buildVisitOverviewGraph(graph) {
+export function buildVisitOverviewGraph(graph, registries = {}) {
   const ids = new Set(graph.nodes.filter((node) => DISPLAY_TYPES.has(node.type)).map((node) => node.id));
-  return projectGraph(graph, ids, "overview");
+  return projectGraph(graph, ids, "overview", registries);
 }
 
-export function buildObservationFocusGraph(graph, observationNodeId, referenceGraph = null) {
+export function buildObservationFocusGraph(graph, observationNodeId, referenceGraph = null, registries = {}) {
   const oneHop = getOneHopGraph(graph, observationNodeId);
   const ids = new Set(oneHop.nodes.map((node) => node.id));
   const entityIds = new Set(oneHop.nodes.filter((node) => node.type === "Entity").map((node) => node.id));
@@ -36,10 +36,10 @@ export function buildObservationFocusGraph(graph, observationNodeId, referenceGr
       for (const factEdge of graph.edges.filter((candidate) => candidate.type === "HAS_REFERENCE_FACT" && candidate.targetId === edge.targetId)) ids.add(factEdge.sourceId);
     }
   }
-  const focus = { ...graph, nodes: graph.nodes.filter((node) => ids.has(node.id)), edges: graph.edges.filter((edge) => ids.has(edge.sourceId) && ids.has(edge.targetId)) };
+  const focus = { ...graph, nodes: graph.nodes.filter((node) => ids.has(node.id) && node.type !== "QuestionSeed"), edges: graph.edges.filter((edge) => ids.has(edge.sourceId) && ids.has(edge.targetId)) };
   const verifiedFactIds = new Set(focus.nodes.filter((node) => node.type !== "ReferenceFact" || node.status === "verified").map((node) => node.id));
   const verifiedFocus = { ...focus, nodes: focus.nodes.filter((node) => verifiedFactIds.has(node.id)), edges: focus.edges.filter((edge) => verifiedFactIds.has(edge.sourceId) && verifiedFactIds.has(edge.targetId)) };
-  const view = projectGraph(verifiedFocus, new Set(verifiedFocus.nodes.map((node) => node.id)), "focus");
+  const view = projectGraph(verifiedFocus, new Set(verifiedFocus.nodes.map((node) => node.id)), "focus", registries);
   return referenceGraph ? mergeReferencedReferenceGraph(view, referenceGraph) : view;
 }
 
@@ -181,27 +181,43 @@ export function getRadialNodeShape(node) {
   return "circle";
 }
 
-function projectGraph(graph, ids, scope) {
+function projectGraph(graph, ids, scope, registries = {}) {
   const roleNodes = new Map(graph.nodes.filter((node) => node.type === "LearningRole").map((node) => [node.id, node]));
+  const assertionNodes = new Map(graph.nodes.filter((node) => node.type === "ClassificationAssertion").map((node) => [node.id, node]));
+  const categoryLabels = new Map();
+  for (const term of [
+    ...(registries.genericCategories || []),
+    ...Object.values(registries.categoriesByPack || {}).flat(),
+  ]) {
+    if (typeof term?.label === "string" && term.label.trim()) categoryLabels.set(term.id, term.label);
+  }
   const nodes = graph.nodes
-    .filter((node) => ids.has(node.id) && !roleNodes.has(node.id))
+    .filter((node) => ids.has(node.id) && !roleNodes.has(node.id) && !assertionNodes.has(node.id) && node.type !== "QuestionSeed")
     .map((node) => {
       if (node.type !== "Observation") return node;
       const roles = graph.edges
         .filter((edge) => edge.type === "HAS_ROLE" && edge.sourceId === node.id && roleNodes.has(edge.targetId))
         .map((edge) => roleNodes.get(edge.targetId))
         .filter(Boolean);
-      if (!roles.length) return node;
+      const classifications = graph.edges
+        .filter((edge) => edge.type === "HAS_CLASSIFICATION" && edge.sourceId === node.id && assertionNodes.has(edge.targetId))
+        .map((edge) => {
+          const assertion = assertionNodes.get(edge.targetId);
+          return categoryLabels.get(assertion?.categoryId);
+        })
+        .filter((label) => typeof label === "string" && label.trim());
+      if (!roles.length && !classifications.length) return node;
       return {
         ...node,
         displayAttributes: {
           ...(node.displayAttributes || {}),
-          learningRoles: roles.map((role) => role.roleId || role.id),
-          learningRoleLabels: roles.map((role) => role.label),
+          ...(roles.length ? { learningRoles: roles.map((role) => role.roleId || role.id), learningRoleLabels: roles.map((role) => role.label) } : {}),
+          ...(classifications.length ? { classificationLabels: [...new Set(classifications)] } : {}),
         },
       };
     });
-  const edges = graph.edges.filter((edge) => ids.has(edge.sourceId) && ids.has(edge.targetId) && !roleNodes.has(edge.sourceId) && !roleNodes.has(edge.targetId));
-  return { ...graph, nodes, edges, metadata: { ...graph.metadata, displayScope: scope, learningRolesCollapsed: true } };
+  const hiddenIds = new Set([...roleNodes.keys(), ...assertionNodes.keys(), ...graph.nodes.filter((node) => node.type === "QuestionSeed").map((node) => node.id)]);
+  const edges = graph.edges.filter((edge) => ids.has(edge.sourceId) && ids.has(edge.targetId) && !hiddenIds.has(edge.sourceId) && !hiddenIds.has(edge.targetId));
+  return { ...graph, nodes, edges, metadata: { ...graph.metadata, displayScope: scope, learningRolesCollapsed: true, classificationAssertionsCollapsed: true } };
 }
 function compareId(a, b) { return a.id.localeCompare(b.id); }
