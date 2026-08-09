@@ -42,7 +42,7 @@ export function knowledgePredicateLabel(predicate) {
 
 export function knowledgeNodeText(node) {
   if (!node) return "";
-  return node.label || node.title || (node.predicate ? knowledgePredicateLabel(node.predicate) : "") || node.referenceId || knowledgeNodeLabel(node.type);
+  return node.label || node.name || node.title || (node.predicate ? knowledgePredicateLabel(node.predicate) : "") || node.referenceId || knowledgeNodeLabel(node.type);
 }
 
 export function knowledgeEdgeLabel(type, relationType, relationTypes = []) {
