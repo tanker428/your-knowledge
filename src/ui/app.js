@@ -87,6 +87,7 @@ import {
   filterGraphByAxis,
   getKnowledgeGraphNodeDetail,
   getRadialNodeShape,
+  shouldShowKnowledgeAxisControls,
 } from "../features/knowledge-graph/selectors.js";
 import { describeQuizAvailability, scoreQuizAnswer } from "../features/knowledge-graph/quiz-generation.js";
 import { getReferenceChildren, getReferenceNodeById } from "../domain/reference-registry.js";
@@ -2116,6 +2117,7 @@ export async function initApp(deps) {
     const graph = expanded ? filterGraphByAxis(expanded, state.knowledgeAxis) : null;
     $$("#knowledgeViewModeControl [data-knowledge-view-mode]").forEach((button) => button.classList.toggle("active", button.dataset.knowledgeViewMode === state.knowledgeViewMode));
     $$("#knowledgeLayoutControl [data-knowledge-layout]").forEach((button) => button.classList.toggle("active", button.dataset.knowledgeLayout === state.knowledgeLayoutMode));
+    $("#knowledgeAxisControl")?.classList.toggle("hidden", !shouldShowKnowledgeAxisControls(state.knowledgeViewMode));
     $$("#knowledgeAxisControl [data-knowledge-axis]").forEach((button) => button.classList.toggle("active", button.dataset.knowledgeAxis === state.knowledgeAxis));
     const query = state.knowledgeSearch.trim().toLowerCase();
     $("#knowledgeObservationList").innerHTML = observations.length ? observations.filter((node) => !query || `${node.label} ${photoById(node.photoId)?.title || ""}`.toLowerCase().includes(query)).map((node) => renderKnowledgeObservationItem(node)).join("") : '<div class="empty-state"><strong>この訪問には表示できるObservationがありません</strong><p>写真を追加してObservationを整理すると、ここに知識グラフが表示されます。</p></div>';

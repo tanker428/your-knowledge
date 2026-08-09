@@ -10,7 +10,11 @@ import {
   getReferenceNodeById,
 } from "../../domain/reference-registry.js";
 
-const DISPLAY_TYPES = new Set(["User", "Visit", "Photo", "Observation", "QuestionSeed"]);
+const DISPLAY_TYPES = new Set(["User", "Visit", "Photo", "Observation"]);
+
+export function shouldShowKnowledgeAxisControls(viewMode) {
+  return viewMode === "focus";
+}
 
 export function buildKnowledgeGraphView(project, visitId, registries = {}, referenceGraph = null) {
   const graph = buildVisitKnowledgeGraph(project, visitId, registries);

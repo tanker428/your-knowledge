@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 import { buildVisitKnowledgeGraph } from "../src/domain/knowledge-graph.js";
 import { renderKnowledgeDisplayAttributes } from "../src/ui/knowledge-display.js";
-import { buildKnowledgeGraphView, buildObservationFocusGraph, buildRadialLayout, buildVisitOverviewGraph, expandReferenceGraphNodes, filterGraphByAxis, getKnowledgeGraphNodeDetail, getRadialNodeShape, mergeReferencedReferenceGraph } from "../src/features/knowledge-graph/selectors.js";
+import { buildKnowledgeGraphView, buildObservationFocusGraph, buildRadialLayout, buildVisitOverviewGraph, expandReferenceGraphNodes, filterGraphByAxis, getKnowledgeGraphNodeDetail, getRadialNodeShape, mergeReferencedReferenceGraph, shouldShowKnowledgeAxisControls } from "../src/features/knowledge-graph/selectors.js";
 
 const registries = { genericCategories: [{ id: "display", label: "展示物" }], learningRoles: [], categoriesByPack: {} };
 const referenceGraph = {
@@ -35,12 +35,17 @@ function project() {
 
 describe("knowledge graph view selectors", () => {
   it("builds an active-visit overview with Photo to Observation and Relation", () => {
-    const overview = buildKnowledgeGraphView(project(), "v1", registries, referenceGraph).overview;
+    const source = buildKnowledgeGraphView(project(), "v1", registries, referenceGraph).source;
+    const overview = buildVisitOverviewGraph(source);
     expect(overview.nodes.some((node) => node.id === "Photo:p3")).toBe(false);
     expect(overview.nodes.some((node) => node.type === "Visit" && node.visitId === "v1")).toBe(true);
     expect(overview.edges.some((edge) => edge.type === "HAS_OBSERVATION")).toBe(true);
     expect(overview.edges.some((edge) => edge.type === "RELATES_TO" && edge.relationId === "r1")).toBe(true);
     expect(overview.edges.some((edge) => edge.relationId === "r2")).toBe(false);
+    expect(overview.nodes.some((node) => node.type === "QuestionSeed")).toBe(false);
+    expect(overview.nodes.length).toBeLessThan(source.nodes.length);
+    expect(shouldShowKnowledgeAxisControls("overview")).toBe(false);
+    expect(shouldShowKnowledgeAxisControls("focus")).toBe(true);
   });
   it("builds a one-hop focus and includes only verified related ReferenceGraph nodes", () => {
     const graph = buildVisitKnowledgeGraph(project(), "v1", registries);
