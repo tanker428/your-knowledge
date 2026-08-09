@@ -21,6 +21,11 @@ export function isDevelopmentEnvironment() {
   );
 }
 
+export function isPagesPullRequestPreview() {
+  if (typeof location === "undefined") return false;
+  return /\/pr\/\d+(?:\/|$)/.test(location.pathname);
+}
+
 async function disableDevelopmentWorker() {
   const registration = await navigator.serviceWorker.getRegistration(SW_URL.toString());
   if (registration) await registration.unregister();
@@ -44,6 +49,9 @@ export async function registerServiceWorker(handlers = {}) {
   const handle = { supported: false, applyUpdate: async () => {} };
   if (typeof navigator === "undefined" || !("serviceWorker" in navigator))
     return handle;
+  // PR previews live below the production worker scope. Do not register or
+  // mutate caches there; the preview must always use its own network assets.
+  if (isPagesPullRequestPreview()) return handle;
   if (isDevelopmentEnvironment()) {
     await disableDevelopmentWorker().catch(() => {});
     return handle;
