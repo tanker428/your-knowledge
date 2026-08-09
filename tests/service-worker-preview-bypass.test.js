@@ -36,6 +36,7 @@ function loadServiceWorker() {
   vm.runInNewContext(fs.readFileSync(path.join(root, "sw.js"), "utf8"), context);
 
   return {
+    networkFetch,
     dispatch(request) {
       let responsePromise;
       fetchHandler({
@@ -84,5 +85,16 @@ describe("service worker PR preview bypass", () => {
     expect(result.responsePromise).toBeUndefined();
     expect(result.cacheMatch).not.toHaveBeenCalled();
     expect(result.networkFetch).not.toHaveBeenCalled();
+  });
+
+  it("does not fall back to a production cache when preview networking fails", async () => {
+    const worker = loadServiceWorker();
+    const error = new Error("offline");
+    worker.networkFetch.mockRejectedValueOnce(error);
+    const result = worker.dispatch(new Request("https://tanker428.github.io/your-knowledge/pr/81/"));
+
+    await expect(result.responsePromise).rejects.toBe(error);
+    expect(result.cacheMatch).not.toHaveBeenCalled();
+    expect(result.cacheOpen).not.toHaveBeenCalled();
   });
 });
