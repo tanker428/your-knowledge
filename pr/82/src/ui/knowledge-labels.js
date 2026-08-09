@@ -42,10 +42,13 @@ export function knowledgePredicateLabel(predicate) {
 
 export function knowledgeNodeText(node) {
   if (!node) return "";
-  return node.label || node.title || (node.predicate ? knowledgePredicateLabel(node.predicate) : "") || node.referenceId || node.type || "";
+  return node.label || node.title || (node.predicate ? knowledgePredicateLabel(node.predicate) : "") || node.referenceId || knowledgeNodeLabel(node.type);
 }
 
-export function knowledgeEdgeLabel(type, relationType) {
+export function knowledgeEdgeLabel(type, relationType, relationTypes = []) {
   const label = EDGE_LABELS[type];
+  if (type === "RELATES_TO") {
+    return relationTypes.find((item) => item?.id === relationType)?.label || "関連する";
+  }
   return (typeof label === "function" ? label(relationType) : label) || relationType || "関連する";
 }
