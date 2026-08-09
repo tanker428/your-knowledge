@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { isDevelopmentEnvironment, registerServiceWorker } from "../src/features/pwa/service-worker-client.js";
+import { isDevelopmentEnvironment, isPagesPullRequestPreview, registerServiceWorker } from "../src/features/pwa/service-worker-client.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -29,6 +29,26 @@ describe("service worker update policy", () => {
     expect(isDevelopmentEnvironment()).toBe(true);
     vi.stubGlobal("location", { hostname: "tanker428.github.io", port: "" });
     expect(isDevelopmentEnvironment()).toBe(false);
+  });
+
+  it("recognises GitHub Pages PR preview paths", () => {
+    vi.stubGlobal("location", { hostname: "tanker428.github.io", port: "", pathname: "/your-knowledge/pr/80/" });
+    expect(isPagesPullRequestPreview()).toBe(true);
+    vi.stubGlobal("location", { hostname: "tanker428.github.io", port: "", pathname: "/your-knowledge/" });
+    expect(isPagesPullRequestPreview()).toBe(false);
+  });
+
+  it("does not register or mutate the production worker on a PR preview", async () => {
+    const serviceWorker = serviceWorkerMock();
+    vi.stubGlobal("location", { hostname: "tanker428.github.io", port: "", pathname: "/your-knowledge/pr/80/" });
+    vi.stubGlobal("navigator", { serviceWorker });
+    const keys = vi.fn(async () => []);
+    vi.stubGlobal("caches", { keys, delete: vi.fn() });
+    const handle = await registerServiceWorker();
+    expect(handle.supported).toBe(false);
+    expect(serviceWorker.register).not.toHaveBeenCalled();
+    expect(serviceWorker.getRegistration).not.toHaveBeenCalled();
+    expect(keys).not.toHaveBeenCalled();
   });
 
   it("does not register or touch IndexedDB in development", async () => {

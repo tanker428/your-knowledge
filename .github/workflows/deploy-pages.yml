@@ -1,24 +1,22 @@
-name: Deploy to GitHub Pages
+name: Deploy GitHub Pages
 
-# Deploys only from main. Nothing here needs a secret: the site is fully static
-# and ships no credentials, so the workflow has no `secrets` access at all.
 on:
   push:
     branches: ["main"]
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
   workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: pages
-  cancel-in-progress: true
+  contents: write
+  pull-requests: write
 
 jobs:
-  verify:
-    name: Lint, typecheck, test, build
+  production:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    concurrency:
+      group: pages-production
+      cancel-in-progress: true
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -31,36 +29,132 @@ jobs:
       - run: npm run typecheck
       - run: npm run test
       - run: npm run build
-      - uses: actions/upload-artifact@v4
-        with:
-          name: site
-          path: dist/
-          retention-days: 1
+      - name: Publish production root to gh-pages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          publish="$RUNNER_TEMP/gh-pages"
+          if git ls-remote --exit-code "https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY.git" refs/heads/gh-pages >/dev/null 2>&1; then
+            git clone --depth 1 --branch gh-pages "https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY.git" "$publish"
+          else
+            mkdir -p "$publish"
+            git -C "$publish" init
+            git -C "$publish" remote add origin "https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY.git"
+          fi
+          rsync -a --delete --exclude='pr/' dist/ "$publish/"
+          touch "$publish/.nojekyll"
+          git -C "$publish" config user.name "github-actions[bot]"
+          git -C "$publish" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C "$publish" add -A
+          if git -C "$publish" diff --cached --quiet; then
+            echo "Production output is unchanged."
+          else
+            git -C "$publish" commit -m "deploy: production $GITHUB_SHA"
+            git -C "$publish" push origin HEAD:gh-pages
+          fi
 
-  deploy:
-    name: Deploy
-    needs: verify
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+  preview:
+    if: github.event_name == 'pull_request' && github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository
+    concurrency:
+      group: pages-preview-pr-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run test
       - run: npm run build
-      # enablement: true turns Pages on for the repository if it is not yet
-      # enabled, so no manual Settings → Pages step is needed.
-      - uses: actions/configure-pages@v5
+      - name: Publish PR preview to gh-pages
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          publish="$RUNNER_TEMP/gh-pages"
+          if git ls-remote --exit-code "https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY.git" refs/heads/gh-pages >/dev/null 2>&1; then
+            git clone --depth 1 --branch gh-pages "https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY.git" "$publish"
+          else
+            mkdir -p "$publish"
+            git -C "$publish" init
+            git -C "$publish" remote add origin "https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY.git"
+          fi
+          mkdir -p "$publish/pr/$PR_NUMBER"
+          rsync -a --delete dist/ "$publish/pr/$PR_NUMBER/"
+          touch "$publish/.nojekyll"
+          git -C "$publish" config user.name "github-actions[bot]"
+          git -C "$publish" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C "$publish" add -A
+          if git -C "$publish" diff --cached --quiet; then
+            echo "Preview output is unchanged."
+          else
+            git -C "$publish" commit -m "deploy: preview PR #$PR_NUMBER $GITHUB_SHA"
+            git -C "$publish" push origin HEAD:gh-pages
+          fi
+      - name: Comment preview URL
+        uses: actions/github-script@v7
+        env:
+          PREVIEW_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/pr/${{ github.event.pull_request.number }}/
         with:
-          enablement: true
-      # Only dist/ is published — never the repo root, so node_modules, docs,
-      # tests and .local-media can never end up on the public site.
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: dist
-      - id: deployment
-        uses: actions/deploy-pages@v4
+          script: |
+            const marker = "<!-- your-knowledge-pages-preview -->";
+            const body = `${marker}\nPreview: ${process.env.PREVIEW_URL}`;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const existing = comments.find((comment) => comment.user?.login === "github-actions[bot]" && comment.body?.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
+
+  cleanup-preview:
+    if: github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.head.repo.full_name == github.repository
+    concurrency:
+      group: pages-preview-pr-${{ github.event.pull_request.number }}
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    steps:
+      - name: Remove closed PR preview from gh-pages
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          publish="$RUNNER_TEMP/gh-pages"
+          if ! git ls-remote --exit-code "https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY.git" refs/heads/gh-pages >/dev/null 2>&1; then
+            echo "gh-pages does not exist; nothing to clean."
+            exit 0
+          fi
+          git clone --depth 1 --branch gh-pages "https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY.git" "$publish"
+          rm -rf "$publish/pr/$PR_NUMBER"
+          git -C "$publish" config user.name "github-actions[bot]"
+          git -C "$publish" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C "$publish" add -A
+          if git -C "$publish" diff --cached --quiet; then
+            echo "Preview directory is already absent."
+          else
+            git -C "$publish" commit -m "deploy: remove preview PR #$PR_NUMBER"
+            git -C "$publish" push origin HEAD:gh-pages
+          fi
