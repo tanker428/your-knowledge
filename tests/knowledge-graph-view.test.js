@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { buildVisitKnowledgeGraph } from "../src/domain/knowledge-graph.js";
 import { renderKnowledgeDisplayAttributes } from "../src/ui/knowledge-display.js";
 import { buildKnowledgeGraphView, buildObservationFocusGraph, buildRadialLayout, buildVisitOverviewGraph, expandReferenceGraphNodes, filterGraphByAxis, getKnowledgeGraphNodeDetail, getRadialNodeShape, mergeReferencedReferenceGraph, shouldShowKnowledgeAxisControls } from "../src/features/knowledge-graph/selectors.js";
+import { knowledgeNodeText } from "../src/ui/knowledge-labels.js";
 
 const registries = { genericCategories: [{ id: "display", label: "展示物" }], learningRoles: [], categoriesByPack: {} };
 const referenceGraph = {
@@ -61,6 +62,13 @@ describe("knowledge graph view selectors", () => {
     expect(focus.nodes.some((node) => node.type === "ClassificationAssertion")).toBe(false);
     expect(focus.nodes.find((node) => node.id === "Observation:o1")?.displayAttributes?.classificationLabels).toEqual(["展示物"]);
     expect(focus.edges.some((edge) => edge.type === "REFERS_TO_REFERENCE" && edge.sourceId === "ReferenceFact: f1".replace(" ", ""))).toBe(true);
+  });
+  it("keeps Entity names through the focus graph display-text path", () => {
+    const graph = buildVisitKnowledgeGraph(project(), "v1", registries);
+    const focus = buildObservationFocusGraph(graph, "Observation:o1", referenceGraph, registries);
+    const entity = getKnowledgeGraphNodeDetail(focus, "Entity:e1")?.node;
+    expect(entity).toMatchObject({ type: "Entity", entityId: "e1", name: "対象Entity" });
+    expect(knowledgeNodeText(entity)).toBe("対象Entity");
   });
   it("filters axes and exposes node detail", () => {
     const graph = buildVisitKnowledgeGraph(project(), "v1", registries);
