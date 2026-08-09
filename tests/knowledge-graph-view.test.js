@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 import { buildVisitKnowledgeGraph } from "../src/domain/knowledge-graph.js";
+import { renderKnowledgeDisplayAttributes } from "../src/ui/knowledge-display.js";
 import { buildKnowledgeGraphView, buildObservationFocusGraph, buildRadialLayout, buildVisitOverviewGraph, expandReferenceGraphNodes, filterGraphByAxis, getKnowledgeGraphNodeDetail, getRadialNodeShape, mergeReferencedReferenceGraph } from "../src/features/knowledge-graph/selectors.js";
 
 const registries = { genericCategories: [{ id: "display", label: "展示物" }], learningRoles: [], categoriesByPack: {} };
@@ -84,6 +85,10 @@ describe("knowledge graph view selectors", () => {
     expect(view.edges.some((edge) => edge.type === "HAS_ROLE")).toBe(false);
     expect(observation?.displayAttributes).toEqual({ learningRoles: ["context"], learningRoleLabels: ["背景・文脈"] });
     expect(view.metadata.learningRolesCollapsed).toBe(true);
+  });
+  it("renders collapsed role labels as user-facing chips and omits empty labels", () => {
+    expect(renderKnowledgeDisplayAttributes({ displayAttributes: { learningRoleLabels: ["説明するもの", "背景・文脈"] } })).toContain("説明するもの");
+    expect(renderKnowledgeDisplayAttributes({ displayAttributes: { learningRoleLabels: ["", "  "] } })).toBe("");
   });
   it("has a bounded single-column layout rule for 412px-class screens", async () => {
     const css = await readFile(new URL("../styles.css", import.meta.url), "utf8");

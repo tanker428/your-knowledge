@@ -131,3 +131,4 @@ footer{width:min(calc(100% - 36px),var(--max));margin:0 auto 88px;background:var
  .photo-rotation-frame{display:block;position:relative;width:100%;height:100%;transform-origin:center center}.photo-rotation-frame i{position:absolute;border:2px solid var(--accent-2);background:rgba(232,111,54,.22);pointer-events:none}
  @media(max-width:520px){.quiz-choice-board{grid-template-columns:1fr}}
 .observation-box span.observation-number-anchor-90{left:-11px;top:auto;bottom:-11px;transform:rotate(-90deg)}.observation-box span.observation-number-anchor-180{left:auto;top:auto;right:-11px;bottom:-11px;transform:rotate(-180deg)}.observation-box span.observation-number-anchor-270{left:auto;right:-11px;top:-11px;transform:rotate(-270deg)}
+.kg-node-attributes{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:4px}.kg-node-attributes .label-chip{padding:4px 7px;font-size:8px}
