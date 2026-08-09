@@ -178,6 +178,26 @@ export function getRadialNodeShape(node) {
 }
 
 function projectGraph(graph, ids, scope) {
-  return { ...graph, nodes: graph.nodes.filter((node) => ids.has(node.id)), edges: graph.edges.filter((edge) => ids.has(edge.sourceId) && ids.has(edge.targetId)), metadata: { ...graph.metadata, displayScope: scope } };
+  const roleNodes = new Map(graph.nodes.filter((node) => node.type === "LearningRole").map((node) => [node.id, node]));
+  const nodes = graph.nodes
+    .filter((node) => ids.has(node.id) && !roleNodes.has(node.id))
+    .map((node) => {
+      if (node.type !== "Observation") return node;
+      const roles = graph.edges
+        .filter((edge) => edge.type === "HAS_ROLE" && edge.sourceId === node.id && roleNodes.has(edge.targetId))
+        .map((edge) => roleNodes.get(edge.targetId))
+        .filter(Boolean);
+      if (!roles.length) return node;
+      return {
+        ...node,
+        displayAttributes: {
+          ...(node.displayAttributes || {}),
+          learningRoles: roles.map((role) => role.roleId || role.id),
+          learningRoleLabels: roles.map((role) => role.label),
+        },
+      };
+    });
+  const edges = graph.edges.filter((edge) => ids.has(edge.sourceId) && ids.has(edge.targetId) && !roleNodes.has(edge.sourceId) && !roleNodes.has(edge.targetId));
+  return { ...graph, nodes, edges, metadata: { ...graph.metadata, displayScope: scope, learningRolesCollapsed: true } };
 }
 function compareId(a, b) { return a.id.localeCompare(b.id); }

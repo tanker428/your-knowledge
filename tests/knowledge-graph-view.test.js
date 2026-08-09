@@ -72,6 +72,19 @@ describe("knowledge graph view selectors", () => {
     expect(view.source.metadata.includesUiState).toBe(false);
     expect(view.source.nodes.some((node) => "selected" in node || "expanded" in node)).toBe(false);
   });
+  it("collapses LearningRole nodes into Observation display attributes only", () => {
+    const roleProject = project();
+    roleProject.photos[0].observations[0].learningRoles = ["context"];
+    const roleRegistries = { ...registries, learningRoles: [{ id: "context", label: "背景・文脈" }] };
+    const graph = buildVisitKnowledgeGraph(roleProject, "v1", roleRegistries);
+    const view = buildObservationFocusGraph(graph, "Observation:o1");
+    const observation = view.nodes.find((node) => node.id === "Observation:o1");
+    expect(graph.nodes.some((node) => node.type === "LearningRole")).toBe(true);
+    expect(view.nodes.some((node) => node.type === "LearningRole")).toBe(false);
+    expect(view.edges.some((edge) => edge.type === "HAS_ROLE")).toBe(false);
+    expect(observation?.displayAttributes).toEqual({ learningRoles: ["context"], learningRoleLabels: ["背景・文脈"] });
+    expect(view.metadata.learningRolesCollapsed).toBe(true);
+  });
   it("has a bounded single-column layout rule for 412px-class screens", async () => {
     const css = await readFile(new URL("../styles.css", import.meta.url), "utf8");
     expect(css).toContain("@media(max-width:820px)");
