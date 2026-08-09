@@ -98,6 +98,8 @@ import { displayedPointToStoredPoint, normalizePhotoRotation, rotatePhoto, unrot
 import { renderKnowledgeDisplayAttributes } from "./knowledge-display.js";
 import { knowledgeEdgeLabel, knowledgeNodeLabel, knowledgeNodeText } from "./knowledge-labels.js";
 import { renderQuizPhotoMedia, syncQuizPhotoMedia } from "./quiz-photo.js";
+import { MISSING_PHOTO_SRC } from "./photo-assets.js";
+import { escapeHtml } from "./html.js";
 
 const MAX_UPLOAD_BATCH = 120;
 const STATUS_LABELS = {
