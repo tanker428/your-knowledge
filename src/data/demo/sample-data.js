@@ -2198,6 +2198,16 @@ export const SAMPLE_RELATIONS = [
     "type": "explains",
     "status": "suggested",
     "confidence": 0.88
+  },
+  {
+    "id": "r19",
+    "sourceId": "o08b",
+    "targetId": "o08a",
+    "type": "part-of",
+    "directed": true,
+    "status": "confirmed",
+    "origin": "demo",
+    "confidence": 0.96
   }
 ];
 
