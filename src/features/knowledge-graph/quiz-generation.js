@@ -91,6 +91,7 @@ export function generateQuizzesFromKnowledgeGraph(graph, referenceGraph) {
       const source = observations.get(relation.sourceId);
       const target = observations.get(relation.targetId);
       if (!source || !target) continue;
+      if (source.photoId === target.photoId) continue;
       questions.push({
         id: `quiz:matching:${relation.relationId}`,
         questionType: "matching",
