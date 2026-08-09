@@ -28,3 +28,4 @@ describe("knowledge graph display labels", () => {
     expect(knowledgeNodeText({ type: "ReferenceFact", predicate: "classifiedAs" })).toBe("分類");
     expect(knowledgeNodeText({ type: "ReferenceFact", predicate: "unknownPredicate" })).toBe("unknownPredicate");
   });
+});
