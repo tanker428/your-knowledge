@@ -129,10 +129,6 @@ const FACT_SOURCE_LABELS = {
   user: "自分のメモ",
 };
 
-/** 1x1 transparent gif — placeholder for a photo whose binary is not on this device. */
-const MISSING_PHOTO_SRC =
-  "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
-
 /**
  * @param {string} selector
  * @param {ParentNode} [root]
@@ -148,18 +144,6 @@ const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 
 const clone = (/** @type {any} */ value) => JSON.parse(JSON.stringify(value));
-const escapeHtml = (/** @type {unknown} */ value) =>
-  String(value ?? "").replace(
-    /[&<>'"]/g,
-    (c) =>
-      /** @type {any} */ ({
-        "&": "&amp;",
-        "<": "&lt;",
-        ">": "&gt;",
-        "'": "&#39;",
-        '"': "&quot;",
-      })[c],
-  );
 const uid = (/** @type {string} */ prefix) =>
   `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
