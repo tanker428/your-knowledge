@@ -75,7 +75,7 @@ describe("demo knowledge and quiz generation", () => {
       demoVisitSeed: {},
     }).project;
     expect(migrated.photos[0].experienceMemo).toBe("利用者が追記したメモ");
-    expect(migrated.relations).toHaveLength(1);
+    expect(migrated.relations).toHaveLength(SAMPLE_RELATIONS.length);
     expect(migrated.referenceFacts).toHaveLength(DEMO_REFERENCE_FACTS.length);
   });
 

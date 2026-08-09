@@ -5,6 +5,7 @@ import {
   PROJECT_SCHEMA_VERSION,
 } from "../src/features/project/migrate.js";
 import { DEMO_VISIT_ID, MIGRATED_VISIT_ID } from "../src/domain/visit.js";
+import { DEMO_KNOWLEDGE_VERSION } from "../src/data/demo/demo-knowledge.js";
 
 /** @returns {any} */
 const demoPhotos = () => [
@@ -184,6 +185,52 @@ describe("migrateProjectDocument — v1 からの移行", () => {
     expect(
       migrateProjectDocument(stored, context()).project.quizResults,
     ).toHaveLength(1);
+  });
+});
+
+describe("migrateProjectDocument — 保存済みデモ訪問の初期知識補充", () => {
+  it("既存v2プロジェクトへ不足しているデモRelationを追加する", () => {
+    const result = migrateProjectDocument(
+      {
+        schemaVersion: PROJECT_SCHEMA_VERSION,
+        visits: [{ id: DEMO_VISIT_ID, source: "demo" }],
+        relations: [{ id: "user-relation", sourceId: "o01a", targetId: "o02a", type: "compares" }],
+        referenceFacts: [],
+        demoKnowledgeVersion: DEMO_KNOWLEDGE_VERSION,
+      },
+      {
+        ...context(),
+        demoRelations: [
+          ...context().demoRelations,
+          { id: "demo-part-of", sourceId: "o01a", targetId: "o02a", type: "part-of" },
+        ],
+        demoKnowledgeVersion: `${DEMO_KNOWLEDGE_VERSION}.1`,
+      },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.changed).toBe(true);
+    expect(result.project.relations.map((relation) => relation.id)).toEqual([
+      "user-relation",
+      "r1",
+      "demo-part-of",
+    ]);
+    expect(result.project.demoKnowledgeVersion).toBe(`${DEMO_KNOWLEDGE_VERSION}.1`);
+  });
+
+  it("既存の同一Relation IDとユーザーRelationを上書きしない", () => {
+    const result = migrateProjectDocument(
+      {
+        schemaVersion: PROJECT_SCHEMA_VERSION,
+        visits: [{ id: DEMO_VISIT_ID, source: "demo" }],
+        relations: [{ id: "r1", sourceId: "custom-source", targetId: "custom-target", type: "custom" }],
+      },
+      { ...context(), demoKnowledgeVersion: DEMO_KNOWLEDGE_VERSION },
+    );
+
+    expect(result.project.relations).toEqual([
+      { id: "r1", sourceId: "custom-source", targetId: "custom-target", type: "custom" },
+    ]);
   });
 });
 
