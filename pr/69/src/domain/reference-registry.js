@@ -111,6 +111,52 @@ export function getReferenceNodeById(graph, id) {
   return graph.nodes.find((node) => node.id === id) || null;
 }
 
+/**
+ * Build an unambiguous label for display without changing the reference data.
+ * Labels that are already unique inside their axis are intentionally left as-is.
+ * @param {ReferenceGraph} graph
+ * @param {ReferenceNode|null|undefined} node
+ */
+export function referenceNodeDisplayLabel(graph, node) {
+  if (!node) return "";
+  const duplicates = graph.nodes.filter((candidate) => candidate.axis === node.axis && candidate.label === node.label);
+  if (duplicates.length < 2) return node.label;
+
+  const paths = new Map(duplicates.map((candidate) => [candidate.id, getPartOfAncestorPath(graph, candidate)]));
+  const path = paths.get(node.id) || [];
+  for (let depth = 1; depth <= path.length; depth += 1) {
+    const candidateLabel = qualifyReferenceLabel(node.label, path, depth);
+    const matching = duplicates.filter((candidate) => {
+      const candidatePath = paths.get(candidate.id) || [];
+      return candidatePath.length >= depth
+        && qualifyReferenceLabel(candidate.label, candidatePath, depth) === candidateLabel;
+    });
+    if (matching.length === 1) return candidateLabel;
+  }
+  return node.label;
+}
+
+/**
+ * Geological-time `order` is only an ordinal inside a parent period, not a
+ * global timeline key. Sort by numerical age and use stable data fields only
+ * for ties and missing ages.
+ * @param {ReferenceNode} a
+ * @param {ReferenceNode} b
+ */
+export function compareGeologicalTimeNodes(a, b) {
+  const aStart = Number.isFinite(a.startMa) ? a.startMa : null;
+  const bStart = Number.isFinite(b.startMa) ? b.startMa : null;
+  if (aStart !== null && bStart === null) return -1;
+  if (aStart === null && bStart !== null) return 1;
+  if (aStart !== null && bStart !== null && aStart !== bStart) return bStart - aStart;
+  const aEnd = Number.isFinite(a.endMa) ? a.endMa : null;
+  const bEnd = Number.isFinite(b.endMa) ? b.endMa : null;
+  if (aEnd !== null && bEnd === null) return -1;
+  if (aEnd === null && bEnd !== null) return 1;
+  if (aEnd !== null && bEnd !== null && aEnd !== bEnd) return bEnd - aEnd;
+  return a.id.localeCompare(b.id);
+}
+
 /** @param {ReferenceGraph} graph @param {string} id */
 export function getReferenceChildren(graph, id) {
   const edges = graph.edges.filter((edge) => edge.targetId === id && isHierarchyEdge(edge));
@@ -204,4 +250,28 @@ function sortNodes(graph, ids) {
 /** @param {ReferenceEdge} edge */
 function isHierarchyEdge(edge) {
   return edge.type === "SUBCLASS_OF" || edge.type === "PART_OF";
+}
+
+/** @param {ReferenceGraph} graph @param {ReferenceNode} node */
+function getPartOfAncestorPath(graph, node) {
+  const path = [];
+  const seen = new Set([node.id]);
+  let current = node;
+  while (current) {
+    const parent = graph.edges
+      .filter((edge) => edge.type === "PART_OF" && edge.sourceId === current.id)
+      .map((edge) => getReferenceNodeById(graph, edge.targetId))
+      .filter(Boolean)
+      .sort((a, b) => a.id.localeCompare(b.id))[0];
+    if (!parent || seen.has(parent.id)) break;
+    seen.add(parent.id);
+    path.push(parent);
+    current = parent;
+  }
+  return path;
+}
+
+/** @param {string} label @param {ReferenceNode[]} path @param {number} depth */
+function qualifyReferenceLabel(label, path, depth) {
+  return `${path.slice(0, depth).reverse().map((node) => node.label).join("")}${label}`;
 }
