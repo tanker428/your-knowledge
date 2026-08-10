@@ -1,6 +1,5 @@
-import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
-import { buildCollectionProgress } from "../src/features/collections/collection-progress.js";
+import { buildCollectionProgress, buildCollectionProgressForView } from "../src/features/collections/collection-progress.js";
 
 function project() {
   return {
@@ -43,10 +42,13 @@ const registry = {
 };
 
 describe("collection progress", () => {
-  it("keeps transient photo URLs for collection rendering without persisting them", async () => {
-    const source = await readFile("src/ui/app.js", "utf8");
-    expect(source).toContain("const collectionProject = { ...toProject(), photos: state.photos }");
-    expect(source).toContain("buildCollectionProgress(\n      collectionProject");
+  it("keeps transient photo URLs for collection rendering without adding them to persisted data", () => {
+    const persisted = project();
+    const viewPhotos = structuredClone(persisted.photos);
+    viewPhotos[0].src = "blob:collection-cover";
+    const [collection] = buildCollectionProgressForView(persisted, viewPhotos, "visit-1", "user-1", registry);
+    expect(collection.photos[0].src).toBe("blob:collection-cover");
+    expect(persisted.photos[0].src).toBeUndefined();
   });
 
   it("derives five stages from the active visit only", () => {

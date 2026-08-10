@@ -1,6 +1,16 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
-import { buildObservationChoiceOptions, buildPlacementBoardData, describeQuizAvailability, generateVisitQuizzes, RELATION_QUIZ_TEMPLATES, scoreQuizAnswer } from "../src/features/knowledge-graph/quiz-generation.js";
+import {
+  buildObservationChoiceOptions,
+  buildPlacementBoardData,
+  buildPlacementQuizPrompt,
+  describeQuizAvailability,
+  generateVisitQuizzes,
+  MAX_PER_TYPE,
+  RELATION_QUIZ_TEMPLATES,
+  scoreQuizAnswer,
+  selectQuizQuestions,
+} from "../src/features/knowledge-graph/quiz-generation.js";
 
 const registries = { genericCategories: [], learningRoles: [], categoriesByPack: {} };
 const referenceGraph = {
@@ -78,6 +88,34 @@ describe("quiz generation from the visit knowledge graph", () => {
     const timeline = first.find((quiz) => quiz.questionType === "timeline-map");
     expect(timeline.options.map((option) => option.id)).toEqual(["geo:older", "geo:period", "geo:other"]);
   });
+  it("uses predicate-specific placement prompts with a safe fallback", () => {
+    expect(buildPlacementQuizPrompt("全身骨格", "livedDuring")).toBe("全身骨格が生きた時代を配置してください。");
+    expect(buildPlacementQuizPrompt("森林復元模型", "occursDuring")).toBe("森林復元模型が示す時代を配置してください。");
+    expect(buildPlacementQuizPrompt("未知の対象", "futurePredicate")).toBe("未知の対象に対応する位置を配置してください。");
+
+    const changed = project();
+    changed.referenceFacts.find((fact) => fact.id === "f-time").predicate = "occursDuring";
+    changed.photos[0].observations[0].label = "中生代の森林復元模型";
+    const timeline = generateVisitQuizzes(changed, "v1", registries, referenceGraph).find((quiz) => quiz.questionType === "timeline-map");
+    expect(timeline.prompt).toBe("中生代の森林復元模型が示す時代を配置してください。");
+  });
+  it("reserves every available question type and fills unused quotas deterministically", () => {
+    const questions = Object.entries({ hierarchy: 5, "timeline-map": 5, matching: 5, "observation-choice": 5 })
+      .flatMap(([questionType, count]) => Array.from({ length: count }, (_, index) => ({ id: `${questionType}:${index}`, questionType })))
+      .reverse();
+    const first = selectQuizQuestions(questions);
+    expect(MAX_PER_TYPE).toEqual({ hierarchy: 3, "timeline-map": 3, matching: 2, "observation-choice": 2 });
+    expect(first).toHaveLength(10);
+    expect(new Set(first.map((quiz) => quiz.questionType))).toEqual(new Set(["hierarchy", "timeline-map", "matching", "observation-choice"]));
+    expect(first.filter((quiz) => quiz.questionType === "hierarchy")).toHaveLength(3);
+    expect(first.filter((quiz) => quiz.questionType === "timeline-map")).toHaveLength(3);
+    expect(first.filter((quiz) => quiz.questionType === "matching")).toHaveLength(2);
+    expect(first.filter((quiz) => quiz.questionType === "observation-choice")).toHaveLength(2);
+    expect(JSON.stringify(first)).toBe(JSON.stringify(selectQuizQuestions([...questions].reverse())));
+
+    const oneType = Array.from({ length: 12 }, (_, index) => ({ id: `timeline:${String(index).padStart(2, "0")}`, questionType: "timeline-map" }));
+    expect(selectQuizQuestions(oneType)).toHaveLength(10);
+  });
   it("scores placements and keeps the generic answer shape", () => {
     const quiz = generateVisitQuizzes(project(), "v1", registries, referenceGraph).find((item) => item.questionType === "hierarchy");
     expect(scoreQuizAnswer(quiz, { placements: [{ cardId: "o1", referenceId: "taxon:child" }] })).toMatchObject({ score: 1, correct: true, answer: { placements: [{ cardId: "o1", referenceId: "taxon:child" }] } });
@@ -136,6 +174,39 @@ describe("quiz generation from the visit knowledge graph", () => {
     expect(taxonomy.options.map((node) => node.id)).toEqual(["taxon:root", "taxon:child", "taxon:sibling"]);
     const time = buildPlacementBoardData(referenceGraph, referenceGraph.nodes.find((node) => node.id === "geo:period"), "geological-time");
     expect(time.options.map((node) => node.id)).toEqual(["geo:older", "geo:period", "geo:other"]);
+  });
+  it("sorts equal and missing geological ages with deterministic tie-breakers", () => {
+    const graph = structuredClone(referenceGraph);
+    graph.nodes.push(
+      { id: "geo:tie-b", label: "同値B", axis: "geological-time", rank: "period", status: "verified", quizEligible: true, visible: true, internalOnly: false, order: null, startMa: 201.4, endMa: 190 },
+      { id: "geo:tie-a", label: "同値A", axis: "geological-time", rank: "period", status: "verified", quizEligible: true, visible: true, internalOnly: false, order: null, startMa: 201.4, endMa: 190 },
+      { id: "geo:missing", label: "欠損", axis: "geological-time", rank: "period", status: "verified", quizEligible: true, visible: true, internalOnly: false, order: null, startMa: null, endMa: null },
+    );
+    const time = buildPlacementBoardData(graph, graph.nodes.find((node) => node.id === "geo:period"), "geological-time");
+    expect(time.options.map((node) => node.id)).toEqual([
+      "geo:older", "geo:tie-a", "geo:tie-b", "geo:period", "geo:other", "geo:missing",
+    ]);
+  });
+  it("keeps qualified labels display-only while scoring by stable reference ID", () => {
+    const graph = structuredClone(referenceGraph);
+    graph.nodes.push(
+      { id: "geo:epoch:jurassic:early", label: "前期", axis: "geological-time", rank: "epoch", status: "verified", quizEligible: true, visible: true, internalOnly: false, order: null, startMa: 201.4, endMa: 174.7 },
+      { id: "geo:epoch:cretaceous:early", label: "前期", axis: "geological-time", rank: "epoch", status: "verified", quizEligible: true, visible: true, internalOnly: false, order: null, startMa: 143.1, endMa: 100.5 },
+    );
+    graph.edges.push(
+      { id: "j-early", type: "PART_OF", sourceId: "geo:epoch:jurassic:early", targetId: "geo:period" },
+      { id: "c-early", type: "PART_OF", sourceId: "geo:epoch:cretaceous:early", targetId: "geo:other" },
+    );
+    const changed = project();
+    changed.referenceFacts.find((fact) => fact.id === "f-time").value = "geo:epoch:jurassic:early";
+    const timeline = generateVisitQuizzes(changed, "v1", registries, graph).find((quiz) => quiz.questionType === "timeline-map");
+    expect(timeline.prompt).toBe("骨格が生きた時代を配置してください。");
+    expect(timeline.options.map((option) => [option.id, option.label])).toEqual([
+      ["geo:epoch:jurassic:early", "ジュラ紀前期"],
+      ["geo:epoch:cretaceous:early", "白亜紀前期"],
+    ]);
+    expect(scoreQuizAnswer(timeline, { placements: [{ cardId: "o1", referenceId: "geo:epoch:jurassic:early" }] }).correct).toBe(true);
+    expect(timeline.targetReferenceId).toBe("geo:epoch:jurassic:early");
   });
   it("wires the ReferenceFact form to verified project data before quiz generation", async () => {
     const source = await readFile(new URL("../src/ui/app.js", import.meta.url), "utf8");
