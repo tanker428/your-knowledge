@@ -11,14 +11,19 @@ import { scoreTimelineBounds } from "./timeline-placement.js";
 
 const MIN_COMPARABLE_OBSERVATIONS = 4;
 const MAX_HARD_QUESTION_CARDS = 8;
-export const MAX_PER_TYPE = Object.freeze({ hierarchy: 5, "timeline-map": 5, matching: 3, "observation-choice": 2 });
+export const MAX_PER_TYPE = Object.freeze({ hierarchy: 5, "timeline-map": 5, matching: 3 });
 const MAX_QUESTIONS = Object.values(MAX_PER_TYPE).reduce((total, count) => total + count, 0);
 export const QUIZ_DIFFICULTIES = Object.freeze({
   easy: Object.freeze({ id: "easy", label: "簡単", minCards: 1, description: "1件ずつ配置" }),
   normal: Object.freeze({ id: "normal", label: "普通", minCards: 2, description: "2〜3件をまとめて配置" }),
   hard: Object.freeze({ id: "hard", label: "難しい", minCards: 4, description: "4件以上をまとめて配置" }),
 });
-const QUESTION_TYPE_ORDER = Object.freeze(["hierarchy", "timeline-map", "matching", "observation-choice"]);
+export const QUIZ_QUESTION_TYPES = Object.freeze([
+  Object.freeze({ id: "hierarchy", label: "分類" }),
+  Object.freeze({ id: "timeline-map", label: "時系列" }),
+  Object.freeze({ id: "matching", label: "Relation" }),
+]);
+const QUESTION_TYPE_ORDER = Object.freeze(QUIZ_QUESTION_TYPES.map((type) => type.id));
 const STRUCTURE_AXES = Object.freeze(["taxonomy", "geological-time"]);
 const AXIS_LABEL_BY_ID = Object.freeze({ taxonomy: "分類", "geological-time": "地質時代" });
 const TYPE_BY_AXIS = { taxonomy: "hierarchy", "geological-time": "timeline-map" };
@@ -33,22 +38,14 @@ const PLACEMENT_PROMPT_BY_PREDICATE = Object.freeze({
   "occurs-during": (label) => `${label}が示す時代を配置してください。`,
 });
 export const RELATION_QUIZ_TEMPLATES = Object.freeze({
-  explains: (source) => `${source.label}の説明で説明されている対象はどれですか？`,
-  "part-of": (source) => `${source.label}が含まれる全体はどれですか？`,
+  explains: (source) => `「${source.label}」の説明で説明されている対象はどれですか？`,
+  "part-of": (source) => `「${source.label}」が含まれる全体はどれですか？`,
 });
-
-export function buildObservationChoiceOptions(observations, targetObservationId) {
-  const sorted = [...observations].sort((a, b) => a.id.localeCompare(b.id));
-  const target = sorted.find((node) => node.observationId === targetObservationId);
-  if (!target) return [];
-  return [target, ...sorted.filter((node) => node.observationId !== targetObservationId).slice(0, 3)].map((node) => ({
-    id: node.observationId, label: node.label, photoId: node.photoId, region: node.region || null,
-  }));
-}
 
 export function buildPlacementQuizPrompt(label, predicate) {
   const template = PLACEMENT_PROMPT_BY_PREDICATE[String(predicate || "").toLowerCase()];
-  return template ? template(label) : `${label}に対応する位置を配置してください。`;
+  const observationLabel = `「${label}」`;
+  return template ? template(observationLabel) : `${observationLabel}に対応する位置を配置してください。`;
 }
 
 /** Preserve the existing signature while allowing a fifth, optional settings object. */
@@ -73,8 +70,8 @@ export function generateQuizzesFromKnowledgeGraphs(graphs, referenceGraph, optio
   const difficulty = normalizeDifficulty(options.difficulty);
   const placementCards = collectPlacementCards(graphs, referenceGraph);
   const questions = buildStructureQuestions(placementCards, referenceGraph, difficulty);
-  for (const graph of graphs) questions.push(...buildFillQuestions(graph));
-  return selectQuizQuestions(questions);
+  for (const graph of graphs) questions.push(...buildMatchingQuestions(graph));
+  return selectQuizQuestions(questions, { questionTypes: options.questionTypes });
 }
 
 function normalizeDifficulty(value) {
@@ -90,10 +87,14 @@ function collectPlacementCards(graphs, referenceGraph) {
       .map((node) => [node.id, node]));
     const factEdges = graph.edges.filter((edge) => edge.type === "HAS_REFERENCE_FACT");
     const entityObservationIds = new Map();
+    const observationEntityIds = new Map();
     for (const edge of graph.edges.filter((item) => item.type === "REFERS_TO" && observations.has(item.sourceId))) {
       const list = entityObservationIds.get(edge.targetId) || [];
       list.push(edge.sourceId);
       entityObservationIds.set(edge.targetId, list);
+      const entityIds = observationEntityIds.get(edge.sourceId) || [];
+      entityIds.push(edge.targetId);
+      observationEntityIds.set(edge.sourceId, entityIds);
     }
     for (const fact of graph.nodes.filter((node) => node.type === "ReferenceFact" && node.status === "verified")) {
       const subjectEdge = factEdges.find((edge) => edge.targetId === fact.id);
@@ -131,6 +132,7 @@ function collectPlacementCards(graphs, referenceGraph) {
             axis: target.axis,
             targetRank: target.rank ?? null,
             relationIds,
+            entityIds: [...new Set(observationEntityIds.get(observationNodeId) || [])].sort(),
             directReferenceFact: subjectEdge.sourceId.startsWith("Observation:"),
           });
         }
@@ -170,6 +172,33 @@ function compareCards(a, b) {
     || String(a.visitId).localeCompare(String(b.visitId))
     || String(a.observationId).localeCompare(String(b.observationId))
     || String(a.referenceFactId).localeCompare(String(b.referenceFactId));
+}
+
+function entityAnswerKey(card) {
+  const entityIds = [...(card.entityIds || [])].sort();
+  return entityIds.length
+    ? `${entityIds.join("\u0001")}\u0000${card.targetReferenceId}`
+    : `Observation:${card.visitId}\u0000${card.observationId}\u0000${card.targetReferenceId}`;
+}
+
+/** Prefer one stable Observation per entity/answer pair, then use extras only to keep the deck full. */
+export function prioritizeEntityAnswerCards(cards, minimumPoolSize = 0) {
+  const sorted = [...cards].sort(compareCards);
+  const representatives = [];
+  const extras = [];
+  const seen = new Set();
+  for (const card of sorted) {
+    const key = entityAnswerKey(card);
+    if (seen.has(key)) extras.push(card);
+    else {
+      seen.add(key);
+      representatives.push(card);
+    }
+  }
+  const required = Math.min(sorted.length, Math.max(0, minimumPoolSize));
+  return representatives.length >= required
+    ? representatives
+    : [...representatives, ...extras.slice(0, required - representatives.length)];
 }
 
 function comparableGroupKey(card, referenceGraph) {
@@ -217,7 +246,9 @@ function buildStructureQuestions(cards, referenceGraph, difficulty) {
   for (const comparable of groupComparableCards(cards, referenceGraph)) {
     const minimumCards = MIN_COMPARABLE_OBSERVATIONS;
     if (comparable.cards.length < minimumCards) continue;
-    for (const questionCards of partitionCards(comparable.cards, difficulty)) {
+    const type = TYPE_BY_AXIS[comparable.cards[0].axis];
+    const prioritizedCards = prioritizeEntityAnswerCards(comparable.cards, MAX_PER_TYPE[type]);
+    for (const questionCards of partitionCards(prioritizedCards, difficulty)) {
       if (questionCards.length > 1 && new Set(questionCards.map((card) => card.targetReferenceId)).size < 2) continue;
       const targets = questionCards.map((card) => getReferenceNodeById(referenceGraph, card.targetReferenceId)).filter(Boolean);
       const axis = questionCards[0].axis;
@@ -252,30 +283,13 @@ function buildStructureQuestions(cards, referenceGraph, difficulty) {
   return questions;
 }
 
-function buildFillQuestions(graph) {
+function buildMatchingQuestions(graph) {
   const questions = [];
   const observations = new Map(graph.nodes
     .filter((node) => node.type === "Observation" && node.status === "confirmed" && node.included !== false)
     .map((node) => [node.id, node]));
   const visit = graph.nodes.find((node) => node.type === "Visit");
   if (visit?.source !== "demo") return questions;
-  for (const observation of [...observations.values()].slice(0, 2)) {
-    questions.push({
-      id: `quiz:observation:${observation.observationId}`,
-      questionType: "observation-choice",
-      visitId: graph.visitId,
-      prompt: "この対象はなんですか？",
-      observationId: observation.observationId,
-      label: observation.label,
-      photoId: observation.photoId,
-      region: observation.region || null,
-      referenceFactId: null,
-      targetReferenceId: observation.observationId,
-      relationIds: [],
-      options: buildObservationChoiceOptions(observations.values(), observation.observationId),
-      explanation: "写真とObservationの対応を確認する問題です。",
-    });
-  }
   for (const relation of graph.edges.filter((edge) => edge.type === "RELATES_TO" && edge.status === "confirmed" && RELATION_QUIZ_TEMPLATES[edge.relationType])) {
     const source = observations.get(relation.sourceId);
     const target = observations.get(relation.targetId);
@@ -305,9 +319,15 @@ function buildFillQuestions(graph) {
   return questions;
 }
 
-export function selectQuizQuestions(questions) {
+function normalizeQuestionTypes(value) {
+  if (value == null) return [...QUESTION_TYPE_ORDER];
+  const requested = new Set(Array.from(value));
+  return QUESTION_TYPE_ORDER.filter((type) => requested.has(type));
+}
+
+export function selectQuizQuestions(questions, options = {}) {
   const sorted = [...questions].sort((a, b) => a.id.localeCompare(b.id));
-  const selected = QUESTION_TYPE_ORDER.flatMap((type) =>
+  const selected = normalizeQuestionTypes(options.questionTypes).flatMap((type) =>
     selectQuestionsForType(sorted.filter((question) => question.questionType === type), type, MAX_PER_TYPE[type]),
   );
   return selected.sort((a, b) => a.id.localeCompare(b.id)).slice(0, MAX_QUESTIONS);
@@ -468,6 +488,7 @@ export function getQuizDifficultyAvailability(project, visitId, registries = {},
   const graphs = buildScopeGraphs(project, visitId, registries, options.scope);
   const placementCards = collectPlacementCards(graphs, referenceGraph);
   const groups = groupComparableCards(placementCards, referenceGraph);
+  const matchingQuestions = graphs.flatMap((graph) => buildMatchingQuestions(graph));
   const comparableCount = groups.reduce((maximum, group) => Math.max(maximum, group.cards.length), 0);
   const comparableCountsByAxis = Object.fromEntries(STRUCTURE_AXES.map((axis) => [
     axis,
@@ -475,37 +496,50 @@ export function getQuizDifficultyAvailability(project, visitId, registries = {},
       .filter((group) => group.cards[0]?.axis === axis)
       .reduce((maximum, group) => Math.max(maximum, group.cards.length), 0),
   ]));
+  const byDifficulty = Object.values(QUIZ_DIFFICULTIES).map((difficulty) => {
+    const structureCandidates = buildStructureQuestions(placementCards, referenceGraph, difficulty.id);
+    const structureQuestions = selectQuizQuestions(structureCandidates);
+    const questions = selectQuizQuestions([...structureCandidates, ...matchingQuestions], { questionTypes: options.questionTypes });
+    const axes = Object.fromEntries(STRUCTURE_AXES.map((axis) => {
+      const minimumCount = MIN_COMPARABLE_OBSERVATIONS;
+      const axisQuestions = structureQuestions.filter((question) => question.axis === axis);
+      const axisComparableCount = comparableCountsByAxis[axis];
+      const available = axisQuestions.length > 0;
+      const reason = available
+        ? null
+        : axisComparableCount < minimumCount
+          ? `${AXIS_LABEL_BY_ID[axis]}クイズは比較可能な対象が不足しているため出題されません（必要${minimumCount}件以上、現在${axisComparableCount}件）。`
+          : `${AXIS_LABEL_BY_ID[axis]}クイズは正解が2箇所以上に分散した比較可能な対象がないため出題されません。`;
+      return [axis, {
+        axis,
+        label: AXIS_LABEL_BY_ID[axis],
+        comparableCount: axisComparableCount,
+        minimumCount,
+        questionCount: axisQuestions.length,
+        available,
+        reason,
+      }];
+    }));
+    const allQuestions = selectQuizQuestions([...structureCandidates, ...matchingQuestions]);
+    const questionTypes = QUIZ_QUESTION_TYPES.map((type) => {
+      const questionCount = allQuestions.filter((question) => question.questionType === type.id).length;
+      const axis = type.id === "hierarchy" ? axes.taxonomy : type.id === "timeline-map" ? axes["geological-time"] : null;
+      return {
+        ...type,
+        questionCount,
+        available: questionCount > 0,
+        reason: questionCount > 0
+          ? null
+          : axis?.reason || "確認済みのRelationと写真の組み合わせがないため出題されません。",
+      };
+    });
+    return { ...difficulty, available: questions.length > 0, axes, questionTypes };
+  });
   return {
     comparableCount,
     comparableCountsByAxis,
-    difficulties: Object.values(QUIZ_DIFFICULTIES).map((difficulty) => {
-      const structureQuestions = selectQuizQuestions(buildStructureQuestions(placementCards, referenceGraph, difficulty.id));
-      const axes = Object.fromEntries(STRUCTURE_AXES.map((axis) => {
-        const minimumCount = MIN_COMPARABLE_OBSERVATIONS;
-        const axisQuestions = structureQuestions.filter((question) => question.axis === axis);
-        const axisComparableCount = comparableCountsByAxis[axis];
-        const available = axisQuestions.length > 0;
-        const reason = available
-          ? null
-          : axisComparableCount < minimumCount
-            ? `${AXIS_LABEL_BY_ID[axis]}クイズは比較可能な対象が不足しているため出題されません（必要${minimumCount}件以上、現在${axisComparableCount}件）。`
-            : `${AXIS_LABEL_BY_ID[axis]}クイズは正解が2箇所以上に分散した比較可能な対象がないため出題されません。`;
-        return [axis, {
-          axis,
-          label: AXIS_LABEL_BY_ID[axis],
-          comparableCount: axisComparableCount,
-          minimumCount,
-          questionCount: axisQuestions.length,
-          available,
-          reason,
-        }];
-      }));
-      return {
-        ...difficulty,
-        available: Object.values(axes).some((axis) => axis.available),
-        axes,
-      };
-    }),
+    difficulties: byDifficulty,
+    questionTypes: byDifficulty.find((difficulty) => difficulty.id === normalizeDifficulty(options.difficulty))?.questionTypes || [],
   };
 }
 
@@ -516,13 +550,16 @@ export function describeQuizAvailability(project, visitId, registries = {}, refe
   const selectedDifficulty = difficulty.difficulties.find((item) => item.id === normalizeDifficulty(options.difficulty));
   const axisAvailability = selectedDifficulty?.axes || {};
   const axisReasons = STRUCTURE_AXES.map((axis) => axisAvailability[axis]?.reason).filter(Boolean);
-  if (questions.length) return { questions, reason: null, ...difficulty, axisAvailability, axisReasons };
+  const questionTypes = selectedDifficulty?.questionTypes || [];
+  if (questions.length) return { questions, reason: null, ...difficulty, questionTypes, axisAvailability, axisReasons };
   const confirmed = graphs.flatMap((graph) => graph.nodes).filter((node) => node.type === "Observation" && node.status === "confirmed");
-  if (!confirmed.length) return { questions, reason: "confirmed Observationがないため問題を作成できません。", ...difficulty, axisAvailability, axisReasons };
+  if (!confirmed.length) return { questions, reason: "confirmed Observationがないため問題を作成できません。", ...difficulty, questionTypes, axisAvailability, axisReasons };
   const facts = graphs.flatMap((graph) => graph.nodes).filter((node) => node.type === "ReferenceFact" && node.status === "verified");
-  if (!facts.length) return { questions, reason: "確認済みの知識がないため問題を作成できません。", ...difficulty, axisAvailability, axisReasons };
-  if (axisReasons.length) return { questions, reason: axisReasons.join(" "), ...difficulty, axisAvailability, axisReasons };
-  return { questions, reason: "対応する確認済みの知識または参照データがないため問題を作成できません。", ...difficulty, axisAvailability, axisReasons };
+  if (!facts.length) return { questions, reason: "確認済みの知識がないため問題を作成できません。", ...difficulty, questionTypes, axisAvailability, axisReasons };
+  const selectedTypes = normalizeQuestionTypes(options.questionTypes);
+  const selectedTypeReasons = questionTypes.filter((type) => selectedTypes.includes(type.id) && !type.available).map((type) => type.reason);
+  if (selectedTypeReasons.length) return { questions, reason: selectedTypeReasons.join(" "), ...difficulty, questionTypes, axisAvailability, axisReasons };
+  return { questions, reason: "対応する確認済みの知識または参照データがないため問題を作成できません。", ...difficulty, questionTypes, axisAvailability, axisReasons };
 }
 
 export { MAX_QUESTIONS, MIN_COMPARABLE_OBSERVATIONS };
