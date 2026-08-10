@@ -26,6 +26,7 @@ const referenceGraph = {
   ],
   edges: [
     { id: "taxon-child-of-root", type: "SUBCLASS_OF", sourceId: "taxon:child", targetId: "taxon:root" },
+    { id: "taxon-sibling-of-root", type: "SUBCLASS_OF", sourceId: "taxon:sibling", targetId: "taxon:root" },
   ],
   metadata: { displayRootIdsByAxis: { taxonomy: ["taxon:root"], "geological-time": ["geo:older", "geo:period", "geo:newer"] } },
 };
@@ -80,6 +81,8 @@ function createProject() {
     referenceFacts: [
       { id: "reference-taxonomy", subjectId: "entity-basilosaurus", predicate: "classifiedAs", value: "taxon:child", sourceType: "curated", status: "verified" },
       { id: "reference-time", subjectId: "entity-basilosaurus", predicate: "livedDuring", value: "geo:period", sourceType: "curated", status: "verified" },
+      { id: "reference-taxonomy-sibling", targetObservationId: "observation-bone-3", predicate: "classifiedAs", value: "taxon:sibling", sourceType: "curated", status: "verified" },
+      { id: "reference-time-other", targetObservationId: "observation-bone-3", predicate: "livedDuring", value: "geo:newer", sourceType: "curated", status: "verified" },
       { id: "reference-demo", subjectId: "entity-demo", predicate: "classifiedAs", value: "taxon:child", sourceType: "curated", status: "verified" },
       { id: "reference-draft", subjectId: "entity-basilosaurus", predicate: "classifiedAs", value: "taxon:sibling", sourceType: "curated", status: "draft" },
     ],

@@ -27,7 +27,7 @@ import {
   SAMPLE_STORIES,
   SAMPLE_VISIT,
 } from "../data/demo/sample-data.js";
-import { DEMO_KNOWLEDGE_VERSION, DEMO_REFERENCE_FACTS } from "../data/demo/demo-knowledge.js";
+import { DEMO_KNOWLEDGE_VERSION, DEMO_REFERENCE_FACTS, DEMO_RETIRED_REFERENCE_FACT_IDS } from "../data/demo/demo-knowledge.js";
 import {
   collectVisitCascade,
   copyFactsForProject,
@@ -92,10 +92,11 @@ import {
   buildQuizResultEntries,
   describeQuizAvailability,
   getQuizCards,
+  MIN_COMPARABLE_OBSERVATIONS,
   QUIZ_DIFFICULTIES,
   scoreQuizAnswer,
 } from "../features/knowledge-graph/quiz-generation.js";
-import { compareGeologicalTimeNodes, getReferenceChildren } from "../domain/reference-registry.js";
+import { getReferenceChildren } from "../domain/reference-registry.js";
 import { LOCAL_USER_ID, mergeQuizResultsIntoLearningEvents, rebuildUserKnowledgeStates, recordQuizLearning, removeVisitLearningRecords } from "../domain/learning-state.js";
 import { getLearnedReferenceFacts } from "../domain/learned-reference-facts.js";
 import { buildCollectionProgressForView } from "../features/collections/collection-progress.js";
@@ -106,6 +107,14 @@ import { renderKnowledgeDisplayAttributes } from "./knowledge-display.js";
 import { knowledgeEdgeLabel, knowledgeNodeLabel, knowledgeNodeText } from "./knowledge-labels.js";
 import { renderQuizPhotoMedia } from "./quiz-photo.js";
 import { renderObservationQuizCard } from "./observation-quiz-card.js";
+import {
+  placementForTimelineReference,
+  quizPlacementMarkers,
+  renderHierarchyQuizBoard,
+  renderQuizPlacementMarkers,
+  renderTimelineQuizBoard,
+  shiftTimelinePlacement,
+} from "./structure-quiz-board.js";
 import { buildVerifiedReferenceFact, renderReferenceFactEditor } from "./reference-fact-editor.js";
 import { MISSING_PHOTO_SRC } from "./photo-assets.js";
 import { escapeHtml } from "./html.js";
@@ -312,6 +321,7 @@ export async function initApp(deps) {
       demoRelations: clone(SAMPLE_RELATIONS),
       demoFacts: clone(LEARNING_FACTS),
       demoReferenceFacts: clone(DEMO_REFERENCE_FACTS),
+      demoRetiredReferenceFactIds: [...DEMO_RETIRED_REFERENCE_FACT_IDS],
       demoKnowledgeVersion: DEMO_KNOWLEDGE_VERSION,
       demoVisitSeed: {
         title: SAMPLE_VISIT.title,
@@ -2203,7 +2213,8 @@ export async function initApp(deps) {
     const difficulties = availability.difficulties?.length
       ? availability.difficulties
       : Object.values(QUIZ_DIFFICULTIES).map((item) => ({ ...item, available: false }));
-    controls.innerHTML = `<label>対象範囲<select id="quizScopeSelect"><option value="active" ${state.quizScope === "active" ? "selected" : ""}>この訪問</option><option value="all" ${state.quizScope === "all" ? "selected" : ""}>すべての訪問</option></select></label><label>難易度<select id="quizDifficultySelect">${difficulties.map((item) => `<option value="${item.id}" ${state.quizDifficulty === item.id ? "selected" : ""} ${item.available ? "" : "disabled"}>${escapeHtml(item.label)}：${escapeHtml(item.description)}${item.available ? "" : "（対象不足）"}</option>`).join("")}</select></label><small>比較可能な対象 ${availability.comparableCount || 0}件。構造クイズは4件以上で生成します。</small>`;
+    const axisWarnings = (availability.axisReasons || []).map((reason) => `<small class="quiz-axis-warning">${escapeHtml(reason)}</small>`).join("");
+    controls.innerHTML = `<label>対象範囲<select id="quizScopeSelect"><option value="active" ${state.quizScope === "active" ? "selected" : ""}>この訪問</option><option value="all" ${state.quizScope === "all" ? "selected" : ""}>すべての訪問</option></select></label><label>難易度<select id="quizDifficultySelect">${difficulties.map((item) => `<option value="${item.id}" ${state.quizDifficulty === item.id ? "selected" : ""} ${item.available ? "" : "disabled"}>${escapeHtml(item.label)}：${escapeHtml(item.description)}${item.available ? "" : "（対象不足）"}</option>`).join("")}</select></label><small>比較可能な対象 ${availability.comparableCount || 0}件。構造クイズは原則${MIN_COMPARABLE_OBSERVATIONS}件以上で生成します（分類軸のみユーザー承認待ちの暫定措置として3件）。</small>${axisWarnings}`;
     $("#quizScopeSelect")?.addEventListener("change", (event) => {
       state.quizScope = event.target.value;
       state.quizStarted = false;
@@ -2278,13 +2289,21 @@ export async function initApp(deps) {
       });
     }).join("");
     const allPlaced = cards.every((card) => placements.some((placement) => placement.cardId === card.cardId));
-    $("#quizStage").innerHTML = `<article class="quiz-card"><div class="quiz-content"><span class="quiz-counter">${quiz.questionType === "hierarchy" ? "CLASSIFICATION" : quiz.questionType === "timeline-map" ? "GEOLOGICAL TIME" : quiz.questionType === "matching" ? "RELATION" : "OBSERVATION"} ${String(state.quizIndex + 1).padStart(2, "0")} / ${String(total).padStart(2, "0")}</span><h2>${escapeHtml(quiz.prompt)}</h2><p class="quiz-placement-help">カードを選んで位置をクリックするか、カードを位置へドラッグしてください。全件を配置してから採点します。</p><div class="quiz-placement-layout"><div class="observation-quiz-card-list">${cardMarkup}</div>${renderQuizPlacementBoard(quiz, placements, scored, state.quizAnswered)}</div><div id="quizFeedback">${scored ? renderQuizFeedback(quiz, scored) : ""}</div><div class="quiz-next-row"><small>${cards.length}件中 ${placements.length}件配置</small>${state.quizAnswered ? `<button class="ghost-button" id="retryQuizButton">もう一度回答</button>` : `<button class="primary-button" id="submitQuizButton" ${allPlaced ? "" : "disabled"}>まとめて採点</button>`}<button class="primary-button" id="nextQuizButton" ${state.quizAnswered ? "" : "disabled"}>${state.quizIndex === total - 1 ? "結果を見る" : "次の問題 →"}</button></div></div></article>`;
-    $$('[data-quiz-drop]').forEach((button) => {
+    $("#quizStage").innerHTML = `<article class="quiz-card"><div class="quiz-content"><span class="quiz-counter">${quiz.questionType === "hierarchy" ? "CLASSIFICATION" : quiz.questionType === "timeline-map" ? "TIMELINE" : quiz.questionType === "matching" ? "RELATION" : "OBSERVATION"} ${String(state.quizIndex + 1).padStart(2, "0")} / ${String(total).padStart(2, "0")}</span><h2>${escapeHtml(quiz.prompt)}</h2><p class="quiz-placement-help">カードを選んで位置をクリックするか、カードを位置へドラッグしてください。全件を配置してから採点します。</p><div class="quiz-placement-layout"><div class="observation-quiz-card-list">${cardMarkup}</div>${renderQuizPlacementBoard(quiz, placements, scored, state.quizAnswered)}</div><div id="quizFeedback">${scored ? renderQuizFeedback(quiz, scored) : ""}</div><div class="quiz-next-row"><small>${cards.length}件中 ${placements.length}件配置</small>${state.quizAnswered ? `<button class="ghost-button" id="retryQuizButton">もう一度回答</button>` : `<button class="primary-button" id="submitQuizButton" ${allPlaced ? "" : "disabled"}>まとめて採点</button>`}<button class="primary-button" id="nextQuizButton" ${state.quizAnswered ? "" : "disabled"}>${state.quizIndex === total - 1 ? "結果を見る" : "次の問題 →"}</button></div></div></article>`;
+    const dropButtons = $$('[data-quiz-drop]');
+    dropButtons.forEach((button, index) => {
       button.addEventListener("click", () => placeQuizCard(quiz, state.quizActiveCardId, button.dataset.quizDrop));
       button.addEventListener("dragover", (event) => event.preventDefault());
       button.addEventListener("drop", (event) => {
         event.preventDefault();
         placeQuizCard(quiz, event.dataTransfer?.getData("text/plain") || state.quizActiveCardId, button.dataset.quizDrop);
+      });
+      button.addEventListener("keydown", (event) => {
+        if (event.key === "ArrowLeft" || event.key === "ArrowUp" || event.key === "ArrowRight" || event.key === "ArrowDown") {
+          event.preventDefault();
+          const offset = event.key === "ArrowLeft" || event.key === "ArrowUp" ? -1 : 1;
+          dropButtons[(index + offset + dropButtons.length) % dropButtons.length]?.focus();
+        }
       });
     });
     $$('[data-observation-card]').forEach((button) => {
@@ -2294,6 +2313,10 @@ export async function initApp(deps) {
         event.dataTransfer?.setData("text/plain", button.dataset.observationCard);
       });
     });
+    $$('[data-quiz-shift-card]').forEach((button) => button.addEventListener("click", () => {
+      state.quizCurrentAnswer = shiftTimelinePlacement(quiz, state.quizCurrentAnswer, button.dataset.quizShiftCard, Number(button.dataset.quizShift));
+      renderQuiz();
+    }));
     $("#submitQuizButton")?.addEventListener("click", () => answerGeneratedQuiz(quiz));
     $("#retryQuizButton")?.addEventListener("click", () => {
       state.quizRetry = true;
@@ -2315,52 +2338,26 @@ export async function initApp(deps) {
     return { records: attemptRecords, scored };
   }
 
-  function placementMarkers(quiz, optionId, placements, scored) {
-    return getQuizCards(quiz).flatMap((card) => {
-      const selectedId = placements.find((placement) => placement.cardId === card.cardId)?.referenceId;
-      const item = scored?.items.find((result) => result.cardId === card.cardId);
-      if (!scored && selectedId === optionId) return [{ label: card.label, className: "selected", suffix: "配置" }];
-      if (item?.correct && item.targetReferenceId === optionId) return [{ label: card.label, className: "correct", suffix: "正解" }];
-      const markers = [];
-      if (item && !item.correct && item.selectedReferenceId === optionId) markers.push({ label: card.label, className: "incorrect", suffix: "自分" });
-      if (item && !item.correct && item.targetReferenceId === optionId) markers.push({ label: card.label, className: "correct", suffix: "正解" });
-      return markers;
-    });
-  }
-
-  function renderPlacementMarkers(markers) {
-    return markers.length ? `<span class="quiz-placement-markers">${markers.map((marker) => `<i class="${marker.className}">${escapeHtml(marker.label)}：${marker.suffix}</i>`).join("")}</span>` : "";
-  }
-
   function renderQuizPlacementBoard(/** @type {any} */ quiz, placements, scored, /** @type {boolean} */ answered) {
     const options = [...quiz.options];
     if (quiz.questionType === "hierarchy") {
-      const depth = (option) => {
-        let value = 0;
-        let current = option;
-        const seen = new Set();
-        while (current?.parentIds?.length && !seen.has(current.id)) {
-          seen.add(current.id);
-          const parent = options.find((item) => current.parentIds.includes(item.id));
-          if (!parent) break;
-          value += 1;
-          current = parent;
-        }
-        return value;
-      };
-      return `<div class="quiz-hierarchy-board" aria-label="分類樹">${options.map((option) => { const markers = placementMarkers(quiz, option.id, placements, scored); const resultClass = markers.some((item) => item.className === "incorrect") ? "incorrect" : markers.some((item) => item.className === "correct") ? "correct" : markers.length ? "selected" : ""; return `<button class="quiz-placement quiz-tree-node ${resultClass}" style="--tree-depth:${depth(option)}" data-quiz-drop="${escapeHtml(option.id)}" ${answered ? "disabled" : ""}>${escapeHtml(option.label)}${option.labelEn ? `<small>${escapeHtml(option.labelEn)}</small>` : ""}${renderPlacementMarkers(markers)}</button>`; }).join("")}</div>`;
+      return renderHierarchyQuizBoard(quiz, placements, scored, answered);
     }
     if (quiz.questionType !== "timeline-map") {
-      return `<div class="quiz-choice-board" aria-label="候補一覧">${options.map((option) => { const optionPhoto = option.photoId ? photoById(option.photoId) : null; const markers = placementMarkers(quiz, option.id, placements, scored); const resultClass = markers.some((item) => item.className === "incorrect") ? "incorrect" : markers.some((item) => item.className === "correct") ? "correct" : markers.length ? "selected" : ""; return `<button class="quiz-placement quiz-choice-option ${resultClass}" data-quiz-drop="${escapeHtml(option.id)}" ${answered ? "disabled" : ""}>${optionPhoto ? renderQuizPhotoMedia(optionPhoto, option.region, { label: option.label, className: "quiz-choice-media" }) : `<span>${escapeHtml(option.label)}</span>`}${renderPlacementMarkers(markers)}</button>`; }).join("")}</div>`;
+      return `<div class="quiz-choice-board" aria-label="候補一覧">${options.map((option) => { const optionPhoto = option.photoId ? photoById(option.photoId) : null; const markers = quizPlacementMarkers(quiz, option.id, placements, scored); const resultClass = markers.some((item) => item.className === "incorrect") ? "incorrect" : markers.some((item) => item.className === "correct") ? "correct" : markers.length ? "selected" : ""; return `<button class="quiz-placement quiz-choice-option ${resultClass}" data-quiz-drop="${escapeHtml(option.id)}" ${answered ? "disabled" : ""}>${optionPhoto ? renderQuizPhotoMedia(optionPhoto, option.region, { label: option.label, className: "quiz-choice-media" }) : `<span>${escapeHtml(option.label)}</span>`}${renderQuizPlacementMarkers(markers)}</button>`; }).join("")}</div>`;
     }
-    const sorted = options.sort(compareGeologicalTimeNodes);
-    return `<div class="quiz-timeline-board" aria-label="地質時代の時間軸"><div class="quiz-time-axis"><span>古い</span><i></i><span>新しい</span></div><div class="quiz-time-slots">${sorted.map((option) => { const markers = placementMarkers(quiz, option.id, placements, scored); const resultClass = markers.some((item) => item.className === "incorrect") ? "incorrect" : markers.some((item) => item.className === "correct") ? "correct" : markers.length ? "selected" : ""; return `<button class="quiz-placement quiz-time-slot ${resultClass}" data-quiz-drop="${escapeHtml(option.id)}" ${answered ? "disabled" : ""}><strong>${escapeHtml(option.label)}</strong><small>${option.startMa == null ? "" : `${option.startMa} Ma`} ${option.endMa == null ? "" : `〜 ${option.endMa} Ma`}</small>${renderPlacementMarkers(markers)}</button>`; }).join("")}</div></div>`;
+    return renderTimelineQuizBoard(quiz, placements, scored, answered);
   }
 
   function placeQuizCard(quiz, cardId, referenceId) {
-    if (state.quizAnswered || !cardId || !getQuizCards(quiz).some((card) => card.cardId === cardId)) return;
+    const placementOption = quiz.options.find((option) => option.id === referenceId);
+    if (state.quizAnswered || !cardId || !placementOption || placementOption.placementEligible === false
+      || !getQuizCards(quiz).some((card) => card.cardId === cardId)) return;
     const placements = (state.quizCurrentAnswer?.placements || []).filter((placement) => placement.cardId !== cardId);
-    placements.push({ cardId, referenceId });
+    const timelinePlacement = quiz.questionType === "timeline-map"
+      ? placementForTimelineReference(quiz, cardId, referenceId)
+      : null;
+    placements.push(timelinePlacement || { cardId, referenceId });
     state.quizCurrentAnswer = { placements };
     const cards = getQuizCards(quiz);
     const currentIndex = cards.findIndex((card) => card.cardId === cardId);
@@ -2375,7 +2372,11 @@ export async function initApp(deps) {
       const card = getQuizCards(quiz).find((candidate) => candidate.cardId === item.cardId);
       const selected = quiz.options.find((option) => option.id === item.selectedReferenceId)?.label || "未配置";
       const target = quiz.options.find((option) => option.id === item.targetReferenceId)?.label || item.targetReferenceId;
-      return `<li class="${item.correct ? "correct" : "incorrect"}"><strong>${escapeHtml(card?.label || item.cardId)}：${item.correct ? "正解" : "不正解"}</strong><span>自分の配置：${escapeHtml(selected)} ／ 正解位置：${escapeHtml(target)}</span></li>`;
+      const boundary = item.timelineKind === "period"
+        ? `<span>開始：${item.selectedStartMa ?? "不明"} Ma（正解 ${item.targetStartMa ?? "不明"} Ma） ／ 終了：${item.selectedEndMa ?? "不明"} Ma（正解 ${item.targetEndMa ?? "不明"} Ma）</span>`
+        : "";
+      const resultLabel = item.correct ? "正解" : item.partial ? "部分正解" : "不正解";
+      return `<li class="${item.correct ? "correct" : "incorrect"}"><strong>${escapeHtml(card?.label || item.cardId)}：${resultLabel}</strong><span>自分の配置：${escapeHtml(selected)} ／ 正解位置：${escapeHtml(target)}</span>${boundary}</li>`;
     }).join("");
     return `<div class="quiz-feedback"><strong>全体結果：${scored.correctCount} / ${scored.totalCount}件正解</strong><ul class="quiz-individual-results">${rows}</ul><small>分類樹・時間軸には正解位置と周辺構造を表示しています。</small><p>${escapeHtml(quiz.explanation)}</p></div>`;
   }

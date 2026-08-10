@@ -10,6 +10,7 @@ import {
   generateAllVisitQuizzes,
   generateVisitQuizzes,
   getQuizDifficultyAvailability,
+  MIN_COMPARABLE_OBSERVATIONS,
   MAX_PER_TYPE,
   RELATION_QUIZ_TEMPLATES,
   scoreQuizAnswer,
@@ -31,6 +32,7 @@ const referenceGraph = {
   edges: [
     { id: "taxon-edge", type: "SUBCLASS_OF", sourceId: "taxon:child", targetId: "taxon:root" },
     { id: "taxon-sibling-edge", type: "SUBCLASS_OF", sourceId: "taxon:sibling", targetId: "taxon:root" },
+    { id: "taxon-context-edge", type: "SUBCLASS_OF", sourceId: "taxon:not-eligible", targetId: "taxon:root" },
   ],
   metadata: { displayRootIdsByAxis: { taxonomy: ["taxon:root"], "geological-time": ["geo:period"] } },
 };
@@ -73,6 +75,7 @@ function comparableProject(count = 4) {
       region: { x: index * 5, y: index * 4, w: 20, h: 20 },
     });
     value.referenceFacts.push({ id: `f-time-${index}`, targetObservationId: observationId, predicate: "livedDuring", value: index % 2 ? "geo:other" : "geo:period", status: "verified", sourceType: "curated" });
+    if (index % 2) value.referenceFacts.push({ id: `f-tax-${index}`, targetObservationId: observationId, predicate: "classifiedAs", value: "taxon:sibling", status: "verified", sourceType: "curated" });
   }
   return value;
 }
@@ -103,11 +106,24 @@ describe("quiz generation from the visit knowledge graph", () => {
     expect(new Set(first.map((option) => option.id)).size).toBe(4);
   });
 
-  it("requires four comparable Observations before generating structure questions", () => {
-    expect(generateVisitQuizzes(comparableProject(3), "v1", registries, referenceGraph)).toEqual([]);
-    const availability = describeQuizAvailability(comparableProject(3), "v1", registries, referenceGraph);
+  it("requires four time Observations while allowing three diverse taxonomy Observations", () => {
+    expect(MIN_COMPARABLE_OBSERVATIONS).toBe(4);
+    const easy = generateVisitQuizzes(comparableProject(3), "v1", registries, referenceGraph);
+    expect(easy.filter((quiz) => quiz.questionType === "hierarchy")).toHaveLength(3);
+    expect(easy.filter((quiz) => quiz.questionType === "timeline-map")).toHaveLength(0);
+    expect(easy.find((quiz) => quiz.questionType === "hierarchy").options.find((option) => option.id === "taxon:not-eligible"))
+      .toMatchObject({ placementEligible: false });
+    const availability = describeQuizAvailability(comparableProject(3), "v1", registries, referenceGraph, { difficulty: "hard" });
     expect(availability.reason).toContain("4件以上");
     expect(availability.comparableCount).toBe(3);
+    expect(availability.axisAvailability).toMatchObject({
+      taxonomy: { available: false, comparableCount: 3, minimumCount: 4, questionCount: 0 },
+      "geological-time": { available: false, comparableCount: 3, minimumCount: 4, questionCount: 0 },
+    });
+    expect(availability.axisReasons).toEqual([
+      "分類クイズは比較可能な対象が不足しているため出題されません（必要4件以上、現在3件）。",
+      "地質時代クイズは比較可能な対象が不足しているため出題されません（必要4件以上、現在3件）。",
+    ]);
   });
 
   it("uses the same cards array path for easy one-card structure questions", () => {
@@ -122,13 +138,14 @@ describe("quiz generation from the visit knowledge graph", () => {
 
   it("groups normal questions into two or three cards", () => {
     const quizzes = generateVisitQuizzes(comparableProject(5), "v1", registries, referenceGraph, { difficulty: "normal" });
-    expect(quizzes.filter((quiz) => quiz.questionType === "hierarchy").map((quiz) => quiz.cards.length)).toEqual([3, 2]);
-    expect(quizzes.filter((quiz) => quiz.questionType === "timeline-map").map((quiz) => quiz.cards.length).sort()).toEqual([2, 3]);
+    expect(quizzes.filter((quiz) => quiz.questionType === "hierarchy").map((quiz) => quiz.cards.length)).toEqual([3, 3, 3, 3, 3]);
+    expect(quizzes.filter((quiz) => quiz.questionType === "timeline-map").map((quiz) => quiz.cards.length)).toEqual([3, 3, 3, 3, 3]);
   });
 
   it("groups hard questions into four or more cards", () => {
     const quizzes = generateVisitQuizzes(comparableProject(5), "v1", registries, referenceGraph, { difficulty: "hard" });
-    expect(quizzes.map((quiz) => [quiz.questionType, quiz.cards.length])).toEqual([["hierarchy", 5], ["timeline-map", 5]]);
+    expect(quizzes.filter((quiz) => quiz.questionType === "hierarchy").map((quiz) => quiz.cards.length)).toEqual([4, 4, 4, 4, 4]);
+    expect(quizzes.filter((quiz) => quiz.questionType === "timeline-map").map((quiz) => quiz.cards.length)).toEqual([4, 4, 4, 4, 4]);
   });
 
   it("caps hard questions at eight cards while keeping every group at hard difficulty", () => {
@@ -139,7 +156,7 @@ describe("quiz generation from the visit knowledge graph", () => {
 
   it("matches difficulty availability to whether structure questions are generated", () => {
     expect(getQuizDifficultyAvailability(comparableProject(3), "v1", registries, referenceGraph).difficulties.map((item) => [item.id, item.available])).toEqual([
-      ["easy", false], ["normal", false], ["hard", false],
+      ["easy", true], ["normal", true], ["hard", false],
     ]);
     expect(getQuizDifficultyAvailability(comparableProject(4), "v1", registries, referenceGraph).difficulties.every((item) => item.available)).toBe(true);
     for (const count of [3, 4]) {
@@ -150,6 +167,10 @@ describe("quiz generation from the visit knowledge graph", () => {
           .filter((quiz) => quiz.questionType === "hierarchy" || quiz.questionType === "timeline-map");
         if (difficulty.available) expect(structureQuestions.length).toBeGreaterThan(0);
         else expect(structureQuestions).toEqual([]);
+        for (const axis of ["taxonomy", "geological-time"]) {
+          expect(difficulty.axes[axis].available).toBe(structureQuestions.some((quiz) => quiz.axis === axis));
+          expect(difficulty.axes[axis].questionCount).toBe(structureQuestions.filter((quiz) => quiz.axis === axis).length);
+        }
       }
     }
   });
@@ -193,10 +214,12 @@ describe("quiz generation from the visit knowledge graph", () => {
       .flatMap(([questionType, count]) => Array.from({ length: count }, (_, index) => ({ id: `${questionType}:${index}`, questionType })))
       .reverse();
     const first = selectQuizQuestions(questions);
-    expect(MAX_PER_TYPE).toEqual({ hierarchy: 3, "timeline-map": 3, matching: 2, "observation-choice": 2 });
-    expect(first).toHaveLength(10);
-    expect(first.filter((quiz) => quiz.questionType === "hierarchy")).toHaveLength(3);
-    expect(first.filter((quiz) => quiz.questionType === "timeline-map")).toHaveLength(3);
+    expect(MAX_PER_TYPE).toEqual({ hierarchy: 5, "timeline-map": 5, matching: 3, "observation-choice": 2 });
+    expect(first).toHaveLength(15);
+    expect(first.filter((quiz) => quiz.questionType === "hierarchy")).toHaveLength(5);
+    expect(first.filter((quiz) => quiz.questionType === "timeline-map")).toHaveLength(5);
+    expect(first.filter((quiz) => quiz.questionType === "matching")).toHaveLength(3);
+    expect(first.filter((quiz) => quiz.questionType === "observation-choice")).toHaveLength(2);
     expect(JSON.stringify(first)).toBe(JSON.stringify(selectQuizQuestions([...questions].reverse())));
   });
 
@@ -211,13 +234,27 @@ describe("quiz generation from the visit knowledge graph", () => {
     expect(scored.items.slice(1).every((item) => item.correct)).toBe(true);
   });
 
+  it("requires both normalized period boundaries and gives one matching boundary half credit", () => {
+    const quiz = generateVisitQuizzes(comparableProject(), "v1", registries, referenceGraph, { difficulty: "hard" })
+      .find((item) => item.questionType === "timeline-map");
+    const answer = correctAnswer(quiz);
+    const target = quiz.options.find((option) => option.id === quiz.cards[0].targetReferenceId);
+    answer.placements[0] = { ...answer.placements[0], startMa: target.startMa, endMa: target.endMa + 1 };
+    const partial = scoreQuizAnswer(quiz, answer);
+    expect(partial.items[0]).toMatchObject({ stableIdCorrect: true, startCorrect: true, endCorrect: false, partial: true, score: 0.5, correct: false });
+    expect(partial).toMatchObject({ score: 0.875, correctCount: 3, correct: false });
+
+    answer.placements[0].referenceId = quiz.options.find((option) => option.id !== target.id).id;
+    expect(scoreQuizAnswer(quiz, answer).items[0]).toMatchObject({ stableIdCorrect: false, partial: false, score: 0 });
+  });
+
   it("expands one visible attempt into per-ReferenceFact results without changing placements", () => {
     const quiz = generateVisitQuizzes(comparableProject(), "v1", registries, referenceGraph, { difficulty: "hard" })
       .find((item) => item.questionType === "hierarchy");
     const scored = scoreQuizAnswer(quiz, correctAnswer(quiz));
     const entries = buildQuizResultEntries(quiz, scored);
     expect(entries).toHaveLength(4);
-    expect(entries.map((entry) => entry.referenceFactId)).toEqual(["f-tax", "f-tax", "f-tax", "f-tax"]);
+    expect(entries.map((entry) => entry.referenceFactId)).toEqual(["f-tax", "f-tax", "f-tax-3", "f-tax"]);
     expect(entries.every((entry) => entry.visitId === "v1" && entry.score === 1 && entry.answer === scored.answer)).toBe(true);
     const reloaded = JSON.parse(JSON.stringify(entries));
     expect(reloaded[0].answer.placements).toHaveLength(4);
@@ -248,6 +285,7 @@ describe("quiz generation from the visit knowledge graph", () => {
       { id: "o6", photoId: "p3", label: "訪問2の標本2", status: "confirmed", included: true, entityId: "e1", region: { x: 30, y: 5, w: 20, h: 20 } },
     );
     value.referenceFacts = value.referenceFacts.filter((fact) => fact.id !== "f-other");
+    value.referenceFacts.push({ id: "f-tax-sibling", targetObservationId: "o5", predicate: "classifiedAs", value: "taxon:sibling", status: "verified", sourceType: "curated" });
     expect(generateVisitQuizzes(value, "v1", registries, referenceGraph, { difficulty: "hard" })).toEqual([]);
     const all = generateAllVisitQuizzes(value, registries, referenceGraph, { difficulty: "hard" });
     const hierarchy = all.find((quiz) => quiz.questionType === "hierarchy");
@@ -261,16 +299,38 @@ describe("quiz generation from the visit knowledge graph", () => {
     graph.nodes.push({ id: "taxon:grandchild", label: "ティラノサウルス科", axis: "taxonomy", status: "verified", quizEligible: true, visible: true, internalOnly: false, order: 1 });
     graph.edges.push({ id: "grandchild-edge", type: "SUBCLASS_OF", sourceId: "taxon:grandchild", targetId: "taxon:child" });
     const changed = comparableProject();
-    changed.referenceFacts.push({ id: "f-specific", targetObservationId: "o1", predicate: "classifiedAs", value: "taxon:grandchild", status: "verified", sourceType: "curated" });
+    changed.referenceFacts.push({ id: "f-specific-o1", targetObservationId: "o1", predicate: "classifiedAs", value: "taxon:grandchild", status: "verified", sourceType: "curated" });
     const hierarchy = generateVisitQuizzes(changed, "v1", registries, graph, { difficulty: "hard" }).find((quiz) => quiz.questionType === "hierarchy");
-    expect(hierarchy.cards.find((card) => card.cardId === "o1")).toMatchObject({ referenceFactId: "f-specific", targetReferenceId: "taxon:grandchild" });
+    expect(hierarchy.cards.find((card) => card.cardId === "o1")).toMatchObject({ referenceFactId: "f-specific-o1", targetReferenceId: "taxon:grandchild" });
     expect(hierarchy.options.map((option) => option.id)).toContain("taxon:grandchild");
   });
 
-  it("unions taxonomy surroundings and keeps a complete same-rank time band", () => {
+  it("does not generate a structure quiz when every comparable card has the same target", () => {
+    const changed = comparableProject();
+    changed.referenceFacts = changed.referenceFacts.filter((fact) => !fact.id.startsWith("f-tax-"));
+    expect(generateVisitQuizzes(changed, "v1", registries, referenceGraph, { difficulty: "hard" })
+      .some((quiz) => quiz.questionType === "hierarchy")).toBe(false);
+    expect(getQuizDifficultyAvailability(changed, "v1", registries, referenceGraph).comparableCount).toBe(4);
+
+    for (const fact of changed.referenceFacts.filter((fact) => fact.predicate === "livedDuring")) fact.value = "geo:period";
+    expect(generateVisitQuizzes(changed, "v1", registries, referenceGraph, { difficulty: "hard" })
+      .some((quiz) => quiz.questionType === "timeline-map")).toBe(false);
+    expect(getQuizDifficultyAvailability(changed, "v1", registries, referenceGraph).comparableCount).toBe(0);
+  });
+
+  it("groups classifiedAs cards by sibling targets under the same direct parent", () => {
+    const changed = comparableProject();
+    changed.referenceFacts.push({ id: "f-sibling", targetObservationId: "o6", predicate: "classifiedAs", value: "taxon:sibling", status: "verified", sourceType: "curated" });
+    const hierarchy = generateVisitQuizzes(changed, "v1", registries, referenceGraph, { difficulty: "hard" })
+      .find((quiz) => quiz.questionType === "hierarchy");
+    expect(hierarchy.cards.map((card) => card.targetReferenceId)).toEqual(expect.arrayContaining(["taxon:child", "taxon:sibling"]));
+    expect(hierarchy.cards).toHaveLength(4);
+  });
+
+  it("unions taxonomy surroundings and keeps only the target time range plus neighbors", () => {
     const taxonomy = buildPlacementBoardDataForTargets(referenceGraph, [referenceGraph.nodes.find((node) => node.id === "taxon:child"), referenceGraph.nodes.find((node) => node.id === "taxon:sibling")], "taxonomy");
     expect(taxonomy.pathIds).toEqual(expect.arrayContaining(["taxon:root", "taxon:child", "taxon:sibling"]));
-    expect(taxonomy.options.map((node) => node.id)).toEqual(["taxon:root", "taxon:child", "taxon:sibling"]);
+    expect(taxonomy.options.map((node) => node.id)).toEqual(["taxon:root", "taxon:child", "taxon:sibling", "taxon:not-eligible"]);
     const time = buildPlacementBoardData(referenceGraph, referenceGraph.nodes.find((node) => node.id === "geo:period"), "geological-time");
     expect(time.options.map((node) => node.id)).toEqual(["geo:older", "geo:period", "geo:other"]);
   });
@@ -283,7 +343,7 @@ describe("quiz generation from the visit knowledge graph", () => {
       { id: "geo:missing", label: "欠損", axis: "geological-time", rank: "period", status: "verified", quizEligible: true, visible: true, internalOnly: false, order: null, startMa: null, endMa: null },
     );
     const time = buildPlacementBoardData(graph, graph.nodes.find((node) => node.id === "geo:period"), "geological-time");
-    expect(time.options.map((node) => node.id)).toEqual(["geo:older", "geo:tie-a", "geo:tie-b", "geo:period", "geo:other", "geo:missing"]);
+    expect(time.options.map((node) => node.id)).toEqual(["geo:tie-b", "geo:period", "geo:other"]);
   });
 
   it("keeps qualified labels display-only while scoring by stable reference ID", () => {
@@ -297,7 +357,8 @@ describe("quiz generation from the visit knowledge graph", () => {
       { id: "c-early", type: "PART_OF", sourceId: "geo:epoch:cretaceous:early", targetId: "geo:other" },
     );
     const changed = comparableProject();
-    for (const fact of changed.referenceFacts.filter((fact) => fact.predicate === "livedDuring")) fact.value = "geo:epoch:jurassic:early";
+    changed.referenceFacts.filter((fact) => fact.predicate === "livedDuring")
+      .forEach((fact, index) => { fact.value = index % 2 ? "geo:epoch:cretaceous:early" : "geo:epoch:jurassic:early"; });
     const timeline = generateVisitQuizzes(changed, "v1", registries, graph, { difficulty: "hard" }).find((quiz) => quiz.questionType === "timeline-map");
     expect(timeline.options.map((option) => [option.id, option.label])).toEqual([
       ["geo:epoch:jurassic:early", "ジュラ紀前期"],
@@ -305,7 +366,7 @@ describe("quiz generation from the visit knowledge graph", () => {
     ]);
     const answer = correctAnswer(timeline);
     expect(scoreQuizAnswer(timeline, answer).correct).toBe(true);
-    expect(answer.placements.every((placement) => placement.referenceId === "geo:epoch:jurassic:early")).toBe(true);
+    expect(new Set(answer.placements.map((placement) => placement.referenceId))).toEqual(new Set(["geo:epoch:jurassic:early", "geo:epoch:cretaceous:early"]));
   });
 
   it("keeps demo observation-choice and matching questions below the structure threshold", () => {
@@ -317,10 +378,12 @@ describe("quiz generation from the visit knowledge graph", () => {
     expect(questions.some((quiz) => quiz.questionType === "hierarchy" || quiz.questionType === "timeline-map")).toBe(false);
   });
 
-  it("excludes other visits, unconfirmed facts, and ineligible references", () => {
+  it("excludes ineligible references from answers while retaining them as non-placeable context", () => {
     const changed = comparableProject();
     const quizzes = generateVisitQuizzes(changed, "v1", registries, referenceGraph, { difficulty: "hard" });
     expect(quizzes.flatMap((quiz) => quiz.cards).every((card) => card.visitId === "v1" && card.referenceFactId !== "f-draft" && card.referenceFactId !== "f-old" && card.referenceFactId !== "f-other")).toBe(true);
-    expect(quizzes.every((quiz) => quiz.options.every((option) => option.id !== "taxon:not-eligible"))).toBe(true);
+    expect(quizzes.flatMap((quiz) => quiz.cards).every((card) => card.targetReferenceId !== "taxon:not-eligible")).toBe(true);
+    expect(quizzes.find((quiz) => quiz.questionType === "hierarchy").options.find((option) => option.id === "taxon:not-eligible"))
+      .toMatchObject({ placementEligible: false });
   });
 });

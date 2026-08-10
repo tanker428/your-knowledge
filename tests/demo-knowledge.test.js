@@ -1,10 +1,10 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 import { SAMPLE_ENTITIES, SAMPLE_PHOTOS, SAMPLE_RELATIONS, LEARNING_FACTS } from "../src/data/demo/sample-data.js";
-import { DEMO_KNOWLEDGE_VERSION, DEMO_REFERENCE_FACTS } from "../src/data/demo/demo-knowledge.js";
+import { DEMO_KNOWLEDGE_VERSION, DEMO_REFERENCE_FACTS, DEMO_RETIRED_REFERENCE_FACT_IDS } from "../src/data/demo/demo-knowledge.js";
 import { buildReferenceGraph } from "../src/domain/reference-registry.js";
 import { buildVisitKnowledgeGraph } from "../src/domain/knowledge-graph.js";
-import { generateVisitQuizzes } from "../src/features/knowledge-graph/quiz-generation.js";
+import { describeQuizAvailability, generateVisitQuizzes, getQuizDifficultyAvailability } from "../src/features/knowledge-graph/quiz-generation.js";
 import { migrateProjectDocument } from "../src/features/project/migrate.js";
 import { recordQuizLearning } from "../src/domain/learning-state.js";
 
@@ -25,6 +25,7 @@ function demoProject(overrides = {}) {
     demoRelations: SAMPLE_RELATIONS,
     demoFacts: LEARNING_FACTS,
     demoReferenceFacts: [...DEMO_REFERENCE_FACTS],
+    demoRetiredReferenceFactIds: [...DEMO_RETIRED_REFERENCE_FACT_IDS],
     demoKnowledgeVersion: DEMO_KNOWLEDGE_VERSION,
     demoVisitSeed: {},
     ...overrides,
@@ -38,21 +39,67 @@ describe("demo knowledge and quiz generation", () => {
     expect(project.referenceFacts).toHaveLength(DEMO_REFERENCE_FACTS.length);
     expect(project.referenceFacts.every((fact) => fact.status === "verified")).toBe(true);
     expect(project.referenceFacts.every((fact) => graph.nodes.some((node) => node.id === fact.value && node.status === "verified"))).toBe(true);
+    const observations = new Map(project.photos.flatMap((photo) => photo.observations).map((observation) => [observation.id, observation]));
+    expect(DEMO_REFERENCE_FACTS.every((fact) => observations.get(fact.targetObservationId)?.status === "confirmed")).toBe(true);
+    expect(DEMO_REFERENCE_FACTS.every((fact) => fact.sourceType === "curated" && fact.sourceNote && fact.valueType === "reference")).toBe(true);
+    expect(DEMO_REFERENCE_FACTS.filter((fact) => fact.predicate === "classifiedAs").every((fact) => observations.get(fact.targetObservationId)?.observationType === "physical")).toBe(true);
+    expect(DEMO_REFERENCE_FACTS.filter((fact) => fact.axis === "geological-time" && observations.get(fact.targetObservationId)?.observationType === "information").every((fact) => fact.predicate === "occursDuring")).toBe(true);
+    expect(DEMO_REFERENCE_FACTS.filter((fact) => ["o19a", "o19b"].includes(fact.targetObservationId)).some((fact) => fact.predicate === "classifiedAs")).toBe(false);
     expect(project.demoKnowledgeVersion).toBe(DEMO_KNOWLEDGE_VERSION);
   });
 
-  it("keeps deterministic demo fill questions when the structure threshold is not met", async () => {
+  it.each([
+    ["easy", { hierarchy: 3, "timeline-map": 5, matching: 3, "observation-choice": 2 }],
+    ["normal", { hierarchy: 2, "timeline-map": 5, matching: 3, "observation-choice": 2 }],
+    ["hard", { hierarchy: 0, "timeline-map": 5, matching: 3, "observation-choice": 2 }],
+  ])("generates diverse demo structure questions at %s difficulty without displacing fill questions", async (difficulty, expectedCounts) => {
     const project = demoProject();
     const graph = await referenceGraph();
-    const first = generateVisitQuizzes(project, "visit-fukui", registries, graph);
-    const second = generateVisitQuizzes(project, "visit-fukui", registries, graph);
-    expect(first.length).toBeGreaterThanOrEqual(5);
-    expect(new Set(first.map((quiz) => quiz.questionType))).toEqual(new Set(["matching", "observation-choice"]));
-    expect(first.some((quiz) => quiz.questionType === "timeline-map")).toBe(false);
-    expect(first.some((quiz) => quiz.questionType === "matching")).toBe(true);
-    expect(first.some((quiz) => quiz.questionType === "observation-choice")).toBe(true);
+    const first = generateVisitQuizzes(project, "visit-fukui", registries, graph, { difficulty });
+    const second = generateVisitQuizzes(project, "visit-fukui", registries, graph, { difficulty });
+    expect(Object.fromEntries(["hierarchy", "timeline-map", "matching", "observation-choice"].map((type) => [type, first.filter((quiz) => quiz.questionType === type).length]))).toEqual(expectedCounts);
     expect(JSON.stringify(first)).toBe(JSON.stringify(second));
     expect(first.every((quiz) => new Set(quiz.options.map((option) => option.id)).size === quiz.options.length)).toBe(true);
+    for (const type of ["hierarchy", "timeline-map"]) {
+      const structures = first.filter((quiz) => quiz.questionType === type);
+      if (structures.length) expect(new Set(structures.flatMap((quiz) => quiz.cards.map((card) => card.targetReferenceId))).size).toBeGreaterThanOrEqual(2);
+      expect(structures.filter((quiz) => quiz.cards.length > 1).every((quiz) => new Set(quiz.cards.map((card) => card.targetReferenceId)).size >= 2)).toBe(true);
+    }
+  });
+
+  it("matches difficulty availability to generated structure questions and focuses timeline boards", async () => {
+    const project = demoProject();
+    const graph = await referenceGraph();
+    const availability = getQuizDifficultyAvailability(project, "visit-fukui", registries, graph);
+    expect(availability.comparableCount).toBe(6);
+    for (const difficulty of availability.difficulties) {
+      const structures = generateVisitQuizzes(project, "visit-fukui", registries, graph, { difficulty: difficulty.id })
+        .filter((quiz) => quiz.questionType === "hierarchy" || quiz.questionType === "timeline-map");
+      expect([difficulty.id, difficulty.available, structures.length]).toEqual([difficulty.id, true, { easy: 8, normal: 7, hard: 5 }[difficulty.id]]);
+      for (const axis of ["taxonomy", "geological-time"]) {
+        expect(difficulty.axes[axis].available).toBe(structures.some((quiz) => quiz.axis === axis));
+        expect(difficulty.axes[axis].questionCount).toBe(structures.filter((quiz) => quiz.axis === axis).length);
+      }
+    }
+    const hard = describeQuizAvailability(project, "visit-fukui", registries, graph, { difficulty: "hard" });
+    expect(hard.axisAvailability).toMatchObject({
+      taxonomy: { available: false, comparableCount: 3, minimumCount: 4, questionCount: 0 },
+      "geological-time": { available: true, comparableCount: 6, minimumCount: 4, questionCount: 5 },
+    });
+    expect(hard.axisReasons).toEqual([
+      "分類クイズは比較可能な対象が不足しているため出題されません（必要4件以上、現在3件）。",
+    ]);
+    expect(hard.reason).toBeNull();
+    const taxonomyContext = generateVisitQuizzes(project, "visit-fukui", registries, graph, { difficulty: "easy" })
+      .filter((quiz) => quiz.questionType === "hierarchy")
+      .flatMap((quiz) => quiz.options)
+      .find((option) => option.id === "taxon:crocodylia-pterosauria-other");
+    expect(taxonomyContext).toMatchObject({ label: "ワニ、翼竜など", placementEligible: false });
+    const timeline = generateVisitQuizzes(project, "visit-fukui", registries, graph, { difficulty: "easy" })
+      .find((quiz) => quiz.questionType === "timeline-map");
+    expect(graph.nodes.filter((node) => node.axis === "geological-time" && node.rank === "epoch" && node.quizEligible !== false)).toHaveLength(15);
+    expect(timeline.options.map((option) => option.id)).toEqual(["geo:epoch:paleocene", "geo:epoch:eocene", "geo:epoch:oligocene"]);
+    expect(timeline.options.map((option) => option.startMa)).toEqual([66, 56, 33.9]);
   });
 
   it("builds the demo graph from the same ReferenceFacts and confirmed Relations", () => {
@@ -73,12 +120,42 @@ describe("demo knowledge and quiz generation", () => {
       demoRelations: SAMPLE_RELATIONS,
       demoFacts: LEARNING_FACTS,
       demoReferenceFacts: [...DEMO_REFERENCE_FACTS],
+      demoRetiredReferenceFactIds: [...DEMO_RETIRED_REFERENCE_FACT_IDS],
       demoKnowledgeVersion: DEMO_KNOWLEDGE_VERSION,
       demoVisitSeed: {},
     }).project;
     expect(migrated.photos[0].experienceMemo).toBe("利用者が追記したメモ");
     expect(migrated.relations).toHaveLength(SAMPLE_RELATIONS.length);
     expect(migrated.referenceFacts).toHaveLength(DEMO_REFERENCE_FACTS.length);
+  });
+
+  it("removes retired bundled facts while preserving user facts during a demo upgrade", () => {
+    const saved = demoProject();
+    const userFact = {
+      id: "demo-rf-o19b-pterosauria",
+      targetObservationId: "o18a",
+      predicate: "classifiedAs",
+      value: "taxon:archosauria",
+      status: "verified",
+      sourceType: "user",
+      sourceNote: "利用者が自作した知識",
+    };
+    saved.referenceFacts.push(
+      { id: "demo-rf-o19a-pterosauria", targetObservationId: "o19a", predicate: "classifiedAs", value: "taxon:archosauria", status: "verified", sourceType: "curated" },
+      userFact,
+    );
+    saved.demoKnowledgeVersion = "2026-08-10.2";
+    const migrated = migrateProjectDocument(saved, {
+      demoPhotos: SAMPLE_PHOTOS,
+      demoRelations: SAMPLE_RELATIONS,
+      demoFacts: LEARNING_FACTS,
+      demoReferenceFacts: [...DEMO_REFERENCE_FACTS],
+      demoRetiredReferenceFactIds: [...DEMO_RETIRED_REFERENCE_FACT_IDS],
+      demoKnowledgeVersion: DEMO_KNOWLEDGE_VERSION,
+      demoVisitSeed: {},
+    }).project;
+    expect(migrated.referenceFacts.some((fact) => DEMO_RETIRED_REFERENCE_FACT_IDS.includes(fact.id) && fact.sourceType === "curated")).toBe(false);
+    expect(migrated.referenceFacts.find((fact) => fact.id === userFact.id && fact.sourceType === "user")).toEqual(userFact);
   });
 
   it("補充したデモRelationから既存v2プロジェクトにもpart-of問題を生成する", async () => {
@@ -90,6 +167,7 @@ describe("demo knowledge and quiz generation", () => {
       demoRelations: SAMPLE_RELATIONS,
       demoFacts: LEARNING_FACTS,
       demoReferenceFacts: [...DEMO_REFERENCE_FACTS],
+      demoRetiredReferenceFactIds: [...DEMO_RETIRED_REFERENCE_FACT_IDS],
       demoKnowledgeVersion: DEMO_KNOWLEDGE_VERSION,
       demoVisitSeed: {},
     }).project;

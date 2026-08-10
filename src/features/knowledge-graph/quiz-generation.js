@@ -7,17 +7,24 @@ import {
   getReferenceChildren,
   referenceNodeDisplayLabel,
 } from "../../domain/reference-registry.js";
+import { scoreTimelineBounds } from "./timeline-placement.js";
 
-const MAX_QUESTIONS = 10;
 const MIN_COMPARABLE_OBSERVATIONS = 4;
+// taxonomy.json の quizEligible な分類先でデモ写真を正しく分類できる Observation は
+// o18a / o18b / o18c の3件だけで、issue #62 本文の「4件以上」と両立しない。
+// 既定値4は維持し、分類デモを残す taxonomy だけをユーザー承認待ちの暫定措置として3件へ緩和する。
+const MIN_COMPARABLE_OBSERVATIONS_BY_AXIS = Object.freeze({ taxonomy: 3 });
 const MAX_HARD_QUESTION_CARDS = 8;
-export const MAX_PER_TYPE = Object.freeze({ hierarchy: 3, "timeline-map": 3, matching: 2, "observation-choice": 2 });
+export const MAX_PER_TYPE = Object.freeze({ hierarchy: 5, "timeline-map": 5, matching: 3, "observation-choice": 2 });
+const MAX_QUESTIONS = Object.values(MAX_PER_TYPE).reduce((total, count) => total + count, 0);
 export const QUIZ_DIFFICULTIES = Object.freeze({
   easy: Object.freeze({ id: "easy", label: "簡単", minCards: 1, description: "1件ずつ配置" }),
   normal: Object.freeze({ id: "normal", label: "普通", minCards: 2, description: "2〜3件をまとめて配置" }),
   hard: Object.freeze({ id: "hard", label: "難しい", minCards: 4, description: "4件以上をまとめて配置" }),
 });
 const QUESTION_TYPE_ORDER = Object.freeze(["hierarchy", "timeline-map", "matching", "observation-choice"]);
+const STRUCTURE_AXES = Object.freeze(["taxonomy", "geological-time"]);
+const AXIS_LABEL_BY_ID = Object.freeze({ taxonomy: "分類", "geological-time": "地質時代" });
 const TYPE_BY_AXIS = { taxonomy: "hierarchy", "geological-time": "timeline-map" };
 const PREDICATE_BY_AXIS = { taxonomy: new Set(["classifiedas", "classified_as", "classified-as"]), "geological-time": new Set(["livedduring", "occursduring", "occurreduring", "occurs-during"]) };
 const PLACEMENT_PROMPT_BY_PREDICATE = Object.freeze({
@@ -169,48 +176,33 @@ function compareCards(a, b) {
     || String(a.referenceFactId).localeCompare(String(b.referenceFactId));
 }
 
-function comparableGroupKey(card) {
-  return card.axis === "geological-time" ? `${card.axis}:${card.targetRank || "unknown"}` : card.axis;
+function comparableGroupKey(card, referenceGraph) {
+  if (card.axis === "geological-time") return `${card.axis}:${card.targetRank || "unknown"}`;
+  const root = getTaxonomyPath(referenceGraph, getReferenceNodeById(referenceGraph, card.targetReferenceId))[0];
+  return `${card.axis}:${root?.id || card.targetReferenceId}`;
 }
 
-function groupComparableCards(cards) {
+function groupComparableCards(cards, referenceGraph) {
   const groups = new Map();
   for (const card of cards) {
-    const key = comparableGroupKey(card);
+    const key = comparableGroupKey(card, referenceGraph);
     const group = groups.get(key) || [];
     group.push(card);
     groups.set(key, group);
   }
   return [...groups.entries()]
     .map(([key, group]) => ({ key, cards: group.sort(compareCards) }))
+    .filter(({ cards: group }) => new Set(group.map((card) => card.targetReferenceId)).size >= 2)
     .sort((a, b) => a.key.localeCompare(b.key));
 }
 
 function partitionCards(cards, difficulty) {
   if (difficulty === "easy") return cards.map((card) => [card]);
-  if (difficulty === "hard") {
-    const groupCount = Math.ceil(cards.length / MAX_HARD_QUESTION_CARDS);
-    const baseSize = Math.floor(cards.length / groupCount);
-    const largerGroupCount = cards.length % groupCount;
-    const groups = [];
-    let index = 0;
-    for (let groupIndex = 0; groupIndex < groupCount; groupIndex += 1) {
-      const size = baseSize + (groupIndex < largerGroupCount ? 1 : 0);
-      groups.push(cards.slice(index, index + size));
-      index += size;
-    }
-    return groups;
-  }
-  const groups = [];
-  let index = 0;
-  while (index < cards.length) {
-    const remaining = cards.length - index;
-    const size = remaining === 4 ? 2 : Math.min(3, remaining);
-    if (size < 2) break;
-    groups.push(cards.slice(index, index + size));
-    index += size;
-  }
-  return groups;
+  const size = difficulty === "hard"
+    ? Math.min(MAX_HARD_QUESTION_CARDS, Math.max(QUIZ_DIFFICULTIES.hard.minCards, cards.length - 1))
+    : Math.min(3, Math.max(QUIZ_DIFFICULTIES.normal.minCards, cards.length - 2));
+  if (cards.length === size) return [cards];
+  return cards.map((_, start) => Array.from({ length: size }, (__, offset) => cards[(start + offset) % cards.length]));
 }
 
 function buildStructureQuestionPrompt(cards, axis) {
@@ -224,11 +216,18 @@ function buildStructureQuestionPrompt(cards, axis) {
   return `${label}を正しい${axis === "taxonomy" ? "分類" : "時代"}へ配置してください。`;
 }
 
+function minimumComparableObservations(axis, difficulty) {
+  const axisMinimum = MIN_COMPARABLE_OBSERVATIONS_BY_AXIS[axis] ?? MIN_COMPARABLE_OBSERVATIONS;
+  return Math.max(axisMinimum, QUIZ_DIFFICULTIES[difficulty].minCards);
+}
+
 function buildStructureQuestions(cards, referenceGraph, difficulty) {
   const questions = [];
-  for (const comparable of groupComparableCards(cards)) {
-    if (comparable.cards.length < MIN_COMPARABLE_OBSERVATIONS) continue;
+  for (const comparable of groupComparableCards(cards, referenceGraph)) {
+    const minimumCards = minimumComparableObservations(comparable.cards[0].axis, difficulty);
+    if (comparable.cards.length < minimumCards) continue;
     for (const questionCards of partitionCards(comparable.cards, difficulty)) {
+      if (questionCards.length > 1 && new Set(questionCards.map((card) => card.targetReferenceId)).size < 2) continue;
       const targets = questionCards.map((card) => getReferenceNodeById(referenceGraph, card.targetReferenceId)).filter(Boolean);
       const axis = questionCards[0].axis;
       const placement = buildPlacementBoardDataForTargets(referenceGraph, targets, axis);
@@ -251,6 +250,7 @@ function buildStructureQuestions(cards, referenceGraph, difficulty) {
           parentIds: node.parentIds || [],
           startMa: node.startMa ?? null,
           endMa: node.endMa ?? null,
+          placementEligible: node.quizEligible !== false,
         })),
         placementPathIds: placement.pathIds,
         placementSiblingIds: placement.siblingIds,
@@ -301,6 +301,7 @@ function buildFillQuestions(graph) {
       referenceFactId: null,
       targetReferenceId: target.observationId,
       relationIds: [relation.relationId],
+      relationType: relation.relationType,
       options: [...observations.values()].sort((a, b) => a.id.localeCompare(b.id)).map((node) => ({
         id: node.observationId,
         label: node.label,
@@ -316,17 +317,29 @@ function buildFillQuestions(graph) {
 export function selectQuizQuestions(questions) {
   const sorted = [...questions].sort((a, b) => a.id.localeCompare(b.id));
   const selected = QUESTION_TYPE_ORDER.flatMap((type) =>
-    sorted.filter((question) => question.questionType === type).slice(0, MAX_PER_TYPE[type]),
+    selectQuestionsForType(sorted.filter((question) => question.questionType === type), type, MAX_PER_TYPE[type]),
   );
-  const selectedIds = new Set(selected.map((question) => question.id));
-  const remaining = sorted.filter((question) => !selectedIds.has(question.id));
-  return [...selected, ...remaining.slice(0, Math.max(0, MAX_QUESTIONS - selected.length))]
-    .sort((a, b) => a.id.localeCompare(b.id))
-    .slice(0, MAX_QUESTIONS);
+  return selected.sort((a, b) => a.id.localeCompare(b.id)).slice(0, MAX_QUESTIONS);
+}
+
+function selectQuestionsForType(questions, type, limit) {
+  if (type !== "matching") return questions.slice(0, limit);
+  const selected = [];
+  for (const relationType of [...new Set(questions.map((question) => question.relationType).filter(Boolean))].sort()) {
+    const question = questions.find((candidate) => candidate.relationType === relationType);
+    if (question) selected.push(question);
+    if (selected.length === limit) return selected;
+  }
+  const ids = new Set(selected.map((question) => question.id));
+  return [...selected, ...questions.filter((question) => !ids.has(question.id))].slice(0, limit);
 }
 
 function isEligiblePlacementNode(node, axis) {
-  return node.axis === axis && node.status === "verified" && node.quizEligible !== false && node.internalOnly !== true && node.visible !== false;
+  return isVisiblePlacementNode(node, axis) && node.quizEligible !== false;
+}
+
+function isVisiblePlacementNode(node, axis) {
+  return node.axis === axis && node.status === "verified" && node.internalOnly !== true && node.visible !== false;
 }
 
 function getTaxonomyPath(referenceGraph, target) {
@@ -336,12 +349,12 @@ function getTaxonomyPath(referenceGraph, target) {
   while (current && !seen.has(current.id)) {
     path.unshift(current);
     seen.add(current.id);
-    current = getReferenceParents(referenceGraph, current.id).find((node) => isEligiblePlacementNode(node, "taxonomy")) || null;
+    current = getReferenceParents(referenceGraph, current.id).find((node) => isVisiblePlacementNode(node, "taxonomy")) || null;
   }
   return path;
 }
 
-/** Build the actual board: taxonomy path plus siblings, or a full same-rank time band. */
+/** Build the actual board: a focused taxonomy branch or a focused same-rank time band. */
 export function buildPlacementBoardData(referenceGraph, target, axis) {
   return buildPlacementBoardDataForTargets(referenceGraph, [target], axis);
 }
@@ -350,10 +363,16 @@ export function buildPlacementBoardData(referenceGraph, target, axis) {
 export function buildPlacementBoardDataForTargets(referenceGraph, targets, axis) {
   if (axis === "geological-time") {
     const ranks = new Set(targets.map((target) => target.rank));
-    const options = referenceGraph.nodes
+    const sameRank = referenceGraph.nodes
       .filter((node) => isEligiblePlacementNode(node, axis) && ranks.has(node.rank))
       .sort(compareGeologicalTimeNodes);
     const targetIds = new Set(targets.map((target) => target.id));
+    const targetIndexes = sameRank
+      .map((node, index) => targetIds.has(node.id) ? index : -1)
+      .filter((index) => index >= 0);
+    const first = Math.max(0, Math.min(...targetIndexes) - 1);
+    const last = Math.min(sameRank.length - 1, Math.max(...targetIndexes) + 1);
+    const options = targetIndexes.length ? sameRank.slice(first, last + 1) : [];
     return { options, pathIds: [], siblingIds: options.filter((node) => !targetIds.has(node.id)).map((node) => node.id) };
   }
 
@@ -361,14 +380,14 @@ export function buildPlacementBoardDataForTargets(referenceGraph, targets, axis)
   const pathIds = new Set();
   const siblingIds = new Set();
   for (const target of targets) {
-    const path = getTaxonomyPath(referenceGraph, target);
+    const path = getTaxonomyPath(referenceGraph, target).slice(-3);
     for (const node of path) {
       candidates.set(node.id, node);
       pathIds.add(node.id);
     }
     for (let index = 0; index < path.length - 1; index += 1) {
       for (const node of getReferenceChildren(referenceGraph, path[index].id)) {
-        if (!isEligiblePlacementNode(node, axis)) continue;
+        if (!isVisiblePlacementNode(node, axis)) continue;
         candidates.set(node.id, node);
         if (node.id !== path[index + 1].id) siblingIds.add(node.id);
       }
@@ -403,7 +422,12 @@ export function scoreQuizAnswer(question, answer) {
   const items = getQuizCards(question).map((card) => {
     const placement = placements.find((item) => item.cardId === card.cardId);
     const selectedReferenceId = placement?.referenceId ?? null;
-    const correct = selectedReferenceId === card.targetReferenceId;
+    const selectedOption = question.options?.find((option) => option.id === selectedReferenceId);
+    const targetOption = question.options?.find((option) => option.id === card.targetReferenceId);
+    const stableIdCorrect = selectedReferenceId === card.targetReferenceId;
+    const timeline = question.questionType === "timeline-map" ? scoreTimelineBounds(placement, selectedOption, targetOption) : null;
+    const correct = stableIdCorrect && (!timeline || timeline.timelineBoundsCorrect);
+    const itemScore = correct ? 1 : stableIdCorrect && timeline?.partial ? 0.5 : 0;
     return {
       cardId: card.cardId,
       observationId: card.observationId,
@@ -411,12 +435,15 @@ export function scoreQuizAnswer(question, answer) {
       referenceFactId: card.referenceFactId,
       selectedReferenceId,
       targetReferenceId: card.targetReferenceId,
-      score: correct ? 1 : 0,
+      score: itemScore,
       correct,
+      stableIdCorrect,
+      ...(timeline || {}),
+      partial: stableIdCorrect && timeline?.partial === true,
     };
   });
   const correctCount = items.filter((item) => item.correct).length;
-  const score = items.length ? correctCount / items.length : 0;
+  const score = items.length ? items.reduce((total, item) => total + item.score, 0) / items.length : 0;
   return { score, correct: items.length > 0 && correctCount === items.length, correctCount, totalCount: items.length, items, answer: { placements } };
 }
 
@@ -448,14 +475,46 @@ function buildScopeGraphs(project, visitId, registries, scope) {
 
 export function getQuizDifficultyAvailability(project, visitId, registries = {}, referenceGraph, options = {}) {
   const graphs = buildScopeGraphs(project, visitId, registries, options.scope);
-  const groups = groupComparableCards(collectPlacementCards(graphs, referenceGraph));
+  const placementCards = collectPlacementCards(graphs, referenceGraph);
+  const groups = groupComparableCards(placementCards, referenceGraph);
   const comparableCount = groups.reduce((maximum, group) => Math.max(maximum, group.cards.length), 0);
+  const comparableCountsByAxis = Object.fromEntries(STRUCTURE_AXES.map((axis) => [
+    axis,
+    groups
+      .filter((group) => group.cards[0]?.axis === axis)
+      .reduce((maximum, group) => Math.max(maximum, group.cards.length), 0),
+  ]));
   return {
     comparableCount,
-    difficulties: Object.values(QUIZ_DIFFICULTIES).map((difficulty) => ({
-      ...difficulty,
-      available: comparableCount >= Math.max(MIN_COMPARABLE_OBSERVATIONS, difficulty.minCards),
-    })),
+    comparableCountsByAxis,
+    difficulties: Object.values(QUIZ_DIFFICULTIES).map((difficulty) => {
+      const structureQuestions = selectQuizQuestions(buildStructureQuestions(placementCards, referenceGraph, difficulty.id));
+      const axes = Object.fromEntries(STRUCTURE_AXES.map((axis) => {
+        const minimumCount = minimumComparableObservations(axis, difficulty.id);
+        const axisQuestions = structureQuestions.filter((question) => question.axis === axis);
+        const axisComparableCount = comparableCountsByAxis[axis];
+        const available = axisQuestions.length > 0;
+        const reason = available
+          ? null
+          : axisComparableCount < minimumCount
+            ? `${AXIS_LABEL_BY_ID[axis]}クイズは比較可能な対象が不足しているため出題されません（必要${minimumCount}件以上、現在${axisComparableCount}件）。`
+            : `${AXIS_LABEL_BY_ID[axis]}クイズは正解が2箇所以上に分散した比較可能な対象がないため出題されません。`;
+        return [axis, {
+          axis,
+          label: AXIS_LABEL_BY_ID[axis],
+          comparableCount: axisComparableCount,
+          minimumCount,
+          questionCount: axisQuestions.length,
+          available,
+          reason,
+        }];
+      }));
+      return {
+        ...difficulty,
+        available: Object.values(axes).some((axis) => axis.available),
+        axes,
+      };
+    }),
   };
 }
 
@@ -463,15 +522,16 @@ export function describeQuizAvailability(project, visitId, registries = {}, refe
   const graphs = buildScopeGraphs(project, visitId, registries, options.scope);
   const questions = generateQuizzesFromKnowledgeGraphs(graphs, referenceGraph, options);
   const difficulty = getQuizDifficultyAvailability(project, visitId, registries, referenceGraph, options);
-  if (questions.length) return { questions, reason: null, ...difficulty };
+  const selectedDifficulty = difficulty.difficulties.find((item) => item.id === normalizeDifficulty(options.difficulty));
+  const axisAvailability = selectedDifficulty?.axes || {};
+  const axisReasons = STRUCTURE_AXES.map((axis) => axisAvailability[axis]?.reason).filter(Boolean);
+  if (questions.length) return { questions, reason: null, ...difficulty, axisAvailability, axisReasons };
   const confirmed = graphs.flatMap((graph) => graph.nodes).filter((node) => node.type === "Observation" && node.status === "confirmed");
-  if (!confirmed.length) return { questions, reason: "confirmed Observationがないため問題を作成できません。", ...difficulty };
+  if (!confirmed.length) return { questions, reason: "confirmed Observationがないため問題を作成できません。", ...difficulty, axisAvailability, axisReasons };
   const facts = graphs.flatMap((graph) => graph.nodes).filter((node) => node.type === "ReferenceFact" && node.status === "verified");
-  if (!facts.length) return { questions, reason: "確認済みの知識がないため問題を作成できません。", ...difficulty };
-  if (difficulty.comparableCount < MIN_COMPARABLE_OBSERVATIONS) {
-    return { questions, reason: `構造クイズには同じ分類・時代で比較できるObservationが4件以上必要です（現在${difficulty.comparableCount}件）。`, ...difficulty };
-  }
-  return { questions, reason: "対応する確認済みの知識または参照データがないため問題を作成できません。", ...difficulty };
+  if (!facts.length) return { questions, reason: "確認済みの知識がないため問題を作成できません。", ...difficulty, axisAvailability, axisReasons };
+  if (axisReasons.length) return { questions, reason: axisReasons.join(" "), ...difficulty, axisAvailability, axisReasons };
+  return { questions, reason: "対応する確認済みの知識または参照データがないため問題を作成できません。", ...difficulty, axisAvailability, axisReasons };
 }
 
 export { MAX_QUESTIONS, MIN_COMPARABLE_OBSERVATIONS };
