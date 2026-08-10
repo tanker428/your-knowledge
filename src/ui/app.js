@@ -51,11 +51,11 @@ import {
   updateObservation,
 } from "../domain/observation.js";
 import {
-  TUTORIAL_STEPS,
   isTutorialSeen,
   markTutorialSeen,
   nextTutorialIndex,
   previousTutorialIndex,
+  renderTutorialStep as renderTutorialStepContent,
 } from "./tutorial.js";
 import {
   createRelation,
@@ -87,13 +87,21 @@ import {
   filterGraphByAxis,
   getKnowledgeGraphNodeDetail,
   getRadialNodeShape,
+  shouldShowKnowledgeAxisControls,
 } from "../features/knowledge-graph/selectors.js";
 import { describeQuizAvailability, scoreQuizAnswer } from "../features/knowledge-graph/quiz-generation.js";
-import { getReferenceChildren, getReferenceNodeById } from "../domain/reference-registry.js";
+import { compareGeologicalTimeNodes, getReferenceChildren, getReferenceNodeById } from "../domain/reference-registry.js";
 import { LOCAL_USER_ID, mergeQuizResultsIntoLearningEvents, rebuildUserKnowledgeStates, recordQuizLearning, removeVisitLearningRecords } from "../domain/learning-state.js";
 import { getLearnedReferenceFacts } from "../domain/learned-reference-facts.js";
-import { buildCollectionProgress } from "../features/collections/collection-progress.js";
-import { displayedPointToStoredPoint, normalizePhotoRotation, rotatePhoto, unrotateImagePoint } from "../domain/photo-rotation.js";
+import { buildCollectionProgressForView } from "../features/collections/collection-progress.js";
+import { displayedPointToStoredPoint, normalizePhotoRotation, rotatePhoto } from "../domain/photo-rotation.js";
+import { bindObservationAddButton, observationNumberAnchorClass, renderObservationCandidateStep } from "./organize-view.js";
+import { applyMagnifierGeometry, bindMagnifierInteractions, calculateMagnifierGeometry } from "./organize-magnifier.js";
+import { renderKnowledgeDisplayAttributes } from "./knowledge-display.js";
+import { knowledgeEdgeLabel, knowledgeNodeLabel, knowledgeNodeText } from "./knowledge-labels.js";
+import { renderQuizPhotoMedia } from "./quiz-photo.js";
+import { MISSING_PHOTO_SRC } from "./photo-assets.js";
+import { escapeHtml } from "./html.js";
 
 const MAX_UPLOAD_BATCH = 120;
 const STATUS_LABELS = {
@@ -125,10 +133,6 @@ const FACT_SOURCE_LABELS = {
   user: "自分のメモ",
 };
 
-/** 1x1 transparent gif — placeholder for a photo whose binary is not on this device. */
-const MISSING_PHOTO_SRC =
-  "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
-
 /**
  * @param {string} selector
  * @param {ParentNode} [root]
@@ -144,18 +148,6 @@ const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 
 const clone = (/** @type {any} */ value) => JSON.parse(JSON.stringify(value));
-const escapeHtml = (/** @type {unknown} */ value) =>
-  String(value ?? "").replace(
-    /[&<>'"]/g,
-    (c) =>
-      /** @type {any} */ ({
-        "&": "&amp;",
-        "<": "&lt;",
-        ">": "&gt;",
-        "'": "&#39;",
-        '"': "&quot;",
-      })[c],
-  );
 const uid = (/** @type {string} */ prefix) =>
   `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -272,10 +264,8 @@ export async function initApp(deps) {
   let imageSurfaceFrame = null;
   let organizeInteractionMode = "pan";
   let organizeMagnifierActive = false;
-  let organizeLensPointerId = null;
   let organizeLensPoint = null;
-  let organizeLensLongPressTimer = null;
-  let organizeLensLongPressStart = null;
+  let organizeMagnifierBinding = null;
   let organizeLensZoom = 2;
   const ORGANIZE_LENS_MIN_ZOOM = 2;
   const ORGANIZE_LENS_MAX_ZOOM = 6;
@@ -600,7 +590,7 @@ export async function initApp(deps) {
 
   function switchView(/** @type {string} */ viewName) {
     cancelRegionDrawing({ clearDraft: true });
-    if (viewName !== "organize") hideOrganizeLens();
+    if (viewName !== "organize") organizeMagnifierBinding?.reset();
     $$(".view").forEach((view) =>
       view.classList.toggle("active", view.id === `view-${viewName}`),
     );
@@ -718,7 +708,7 @@ export async function initApp(deps) {
         const { x, y, w, h } = observation.region;
         return `
         <button class="observation-box ${observation.id === state.activeObservationId ? "active" : ""}" style="left:${x}%;top:${y}%;width:${w}%;height:${h}%" data-overlay-observation="${escapeHtml(observation.id)}" aria-label="${escapeHtml(observation.label)}" ${interactive ? "" : 'tabindex="-1"'}>
-          <span class="observation-number-anchor-${normalizePhotoRotation(photo.rotation)}">${index + 1}</span>
+          <span class="${observationNumberAnchorClass(photo.rotation)}">${index + 1}</span>
         </button>`;
       })
       .join("");
@@ -868,16 +858,8 @@ export async function initApp(deps) {
     showToast(`写真の向きを${photo.rotation}度にしました`);
   }
 
-  function clearOrganizeLensTimer() {
-    if (organizeLensLongPressTimer !== null) clearTimeout(organizeLensLongPressTimer);
-    organizeLensLongPressTimer = null;
-    organizeLensLongPressStart = null;
-  }
-
   function hideOrganizeLens() {
-    clearOrganizeLensTimer();
     organizeMagnifierActive = false;
-    organizeLensPointerId = null;
     organizeLensPoint = null;
     const lens = $("#imageMagnifierLens");
     const controls = $("#imageMagnifierControls");
@@ -894,50 +876,18 @@ export async function initApp(deps) {
     const controls = $("#imageMagnifierControls");
     if (!baseRect || !container || !lens || !lensImage) return;
     const containerRect = container.getBoundingClientRect();
-    const size = Math.max(120, Math.min(ORGANIZE_LENS_SIZE, containerRect.width - 8, containerRect.height - 8));
-    const x = Math.min(baseRect.left + baseRect.width, Math.max(baseRect.left, point.x));
-    const y = Math.min(baseRect.top + baseRect.height, Math.max(baseRect.top, point.y));
-    const left = Math.min(Math.max(0, x - containerRect.left - size / 2), Math.max(0, containerRect.width - size));
-    const top = Math.min(Math.max(0, y - containerRect.top - size / 2), Math.max(0, containerRect.height - size));
     const rotation = normalizePhotoRotation(currentOrganizePhoto()?.rotation);
-    const visualPoint = {
-      x: (x - baseRect.left) / baseRect.width,
-      y: (y - baseRect.top) / baseRect.height,
-    };
-    const imagePoint = unrotateImagePoint(visualPoint, rotation);
-    const unrotatedWidth = rotation === 90 || rotation === 270
-      ? baseRect.height
-      : baseRect.width;
-    const unrotatedHeight = rotation === 90 || rotation === 270
-      ? baseRect.width
-      : baseRect.height;
-    const vectorX = (imagePoint.x - 0.5) * unrotatedWidth * organizeLensZoom;
-    const vectorY = (imagePoint.y - 0.5) * unrotatedHeight * organizeLensZoom;
-    const rotatedVector = rotation === 90
-      ? { x: -vectorY, y: vectorX }
-      : rotation === 180
-        ? { x: -vectorX, y: -vectorY }
-        : rotation === 270
-          ? { x: vectorY, y: -vectorX }
-          : { x: vectorX, y: vectorY };
-    lens.style.width = `${size}px`;
-    lens.style.height = `${size}px`;
-    lens.style.left = `${left}px`;
-    lens.style.top = `${top}px`;
-    lensImage.src = $("#organizeImage")?.src || lensImage.src;
-    lensImage.style.width = `${unrotatedWidth * organizeLensZoom}px`;
-    lensImage.style.height = `${unrotatedHeight * organizeLensZoom}px`;
-    lensImage.style.transformOrigin = "50% 50%";
-    lensImage.style.transform = `rotate(${rotation}deg)`;
-    lensImage.style.left = `${left + size / 2 - rotatedVector.x - unrotatedWidth * organizeLensZoom / 2}px`;
-    lensImage.style.top = `${top + size / 2 - rotatedVector.y - unrotatedHeight * organizeLensZoom / 2}px`;
-    $("#imageMagnifierLevel").textContent = `${organizeLensZoom.toFixed(1)}×`;
-    if (controls) {
-      controls.style.left = `${Math.min(Math.max(0, left + size - 76), Math.max(0, containerRect.width - 76))}px`;
-      controls.style.top = `${top + size + 8 <= containerRect.height ? top + size + 8 : Math.max(0, top - 42)}px`;
-    }
-    lens.classList.remove("hidden");
-    controls?.classList.remove("hidden");
+    const geometry = calculateMagnifierGeometry(baseRect, containerRect, point, rotation, organizeLensZoom, ORGANIZE_LENS_SIZE);
+    applyMagnifierGeometry({
+      lens,
+      image: lensImage,
+      controls,
+      level: $("#imageMagnifierLevel"),
+      source: $("#organizeImage")?.src,
+      geometry,
+      rotation,
+      zoom: organizeLensZoom,
+    });
   }
 
   function renderOrganizeMagnifier() {
@@ -958,82 +908,26 @@ export async function initApp(deps) {
 
   function bindMagnifierLens() {
     const container = $("#annotatedPhoto");
-    if (!container || container.dataset.magnifierBound) return;
-    container.dataset.magnifierBound = "true";
-    container.addEventListener("contextmenu", (/** @type {MouseEvent} */ event) => {
-      const baseRect = organizeBaseRect();
-      const target = /** @type {Element|null} */ (event.target);
-      const inImage = baseRect
-        && event.clientX >= baseRect.left
-        && event.clientX <= baseRect.left + baseRect.width
-        && event.clientY >= baseRect.top
-        && event.clientY <= baseRect.top + baseRect.height;
-      if (inImage || target?.closest("#observationOverlay, #regionDrawLayer")) event.preventDefault();
-    });
-    container.addEventListener("wheel", (/** @type {WheelEvent} */ event) => {
-      if (!organizeMagnifierActive) return;
-      event.preventDefault();
-      setOrganizeLensZoom(event.deltaY < 0 ? 1 : -1);
-    }, { passive: false });
-    container.addEventListener("pointerdown", (/** @type {PointerEvent} */ event) => {
-      const target = /** @type {Element|null} */ (event.target);
-      if (target?.closest("#imageMagnifierControls") || state.regionDrawing || organizeInteractionMode === "region") return;
-      const baseRect = organizeBaseRect();
-      if (!baseRect
-        || event.clientX < baseRect.left
-        || event.clientX > baseRect.left + baseRect.width
-        || event.clientY < baseRect.top
-        || event.clientY > baseRect.top + baseRect.height) return;
-      if (event.pointerType === "mouse") {
-        if (event.button !== 2) return;
+    if (!container || organizeMagnifierBinding) return;
+    organizeMagnifierBinding = bindMagnifierInteractions({
+      container,
+      windowTarget: window,
+      zoomInButton: $("#imageMagnifierInButton"),
+      zoomOutButton: $("#imageMagnifierOutButton"),
+      getBaseRect: organizeBaseRect,
+      isBlocked: () => state.regionDrawing || organizeInteractionMode === "region",
+      activate: (point) => {
         organizeMagnifierActive = true;
-        organizeLensPointerId = event.pointerId;
-        organizeLensPoint = { x: event.clientX, y: event.clientY };
-        container.setPointerCapture(event.pointerId);
-        event.preventDefault();
+        organizeLensPoint = point;
         alignOrganizeSurfaces();
-        return;
-      }
-      organizeLensLongPressStart = { x: event.clientX, y: event.clientY, pointerId: event.pointerId };
-      clearOrganizeLensTimer();
-      organizeLensLongPressStart = { x: event.clientX, y: event.clientY, pointerId: event.pointerId };
-      organizeLensLongPressTimer = setTimeout(() => {
-        if (!organizeLensLongPressStart || organizeLensLongPressStart.pointerId !== event.pointerId) return;
-        organizeMagnifierActive = true;
-        organizeLensPointerId = event.pointerId;
-        organizeLensPoint = { x: event.clientX, y: event.clientY };
-        container.setPointerCapture(event.pointerId);
-        event.preventDefault();
-        alignOrganizeSurfaces();
-      }, 350);
+      },
+      move: (point) => {
+        organizeLensPoint = point;
+        updateOrganizeLens(point);
+      },
+      deactivate: hideOrganizeLens,
+      changeZoom: setOrganizeLensZoom,
     });
-    container.addEventListener("pointermove", (/** @type {PointerEvent} */ event) => {
-      if (organizeMagnifierActive && event.pointerId === organizeLensPointerId) {
-        organizeLensPoint = { x: event.clientX, y: event.clientY };
-        updateOrganizeLens(organizeLensPoint);
-        event.preventDefault();
-        return;
-      }
-      if (organizeLensLongPressStart?.pointerId === event.pointerId && Math.hypot(
-        event.clientX - organizeLensLongPressStart.x,
-        event.clientY - organizeLensLongPressStart.y,
-      ) > 10) clearOrganizeLensTimer();
-    });
-    const endLens = (/** @type {PointerEvent} */ event) => {
-      if (event.pointerId === organizeLensPointerId || event.pointerType === "mouse") {
-        event.preventDefault();
-        hideOrganizeLens();
-      }
-      else if (organizeLensLongPressStart?.pointerId === event.pointerId) clearOrganizeLensTimer();
-    };
-    container.addEventListener("pointerup", endLens);
-    container.addEventListener("pointercancel", endLens);
-    container.addEventListener("pointerleave", (/** @type {PointerEvent} */ event) => {
-      if (event.pointerType === "mouse") hideOrganizeLens();
-    });
-    window.addEventListener("blur", hideOrganizeLens);
-    $("#imageMagnifierInButton")?.addEventListener("click", () => setOrganizeLensZoom(1));
-    $("#imageMagnifierOutButton")?.addEventListener("click", () => setOrganizeLensZoom(-1));
   }
 
   function renderRegionDraft() {
@@ -1318,8 +1212,7 @@ export async function initApp(deps) {
     cancelRegionDrawing({ clearDraft: true });
     state.organizePhotoId = photoId;
     organizeMagnifierActive = false;
-    clearOrganizeLensTimer();
-    organizeLensPointerId = null;
+    organizeMagnifierBinding?.reset();
     organizeLensPoint = null;
     organizeLensZoom = ORGANIZE_LENS_MIN_ZOOM;
     state.organizeStep = 1;
@@ -1374,27 +1267,11 @@ export async function initApp(deps) {
   }
 
   function renderStepOne(/** @type {any} */ photo) {
-    const analysed = photo.source === "sample";
-    const intro = analysed
-      ? "<strong>この写真から複数の対象を見つけました。</strong><p>一つだけを中心に決める必要はありません。保存したい対象をすべて残し、不要な候補だけ外してください。</p>"
-      : `<strong>この写真はまだ解析していません。</strong><p>${escapeHtml(analysisProvider.isConnected() ? "" : "AI解析は接続されていません。")}写真に写っている対象を手動で追加してください。一枚から複数追加できます。</p>`;
-    return `
-      <div class="assistant-message"><span class="assistant-avatar">Y</span><div>${intro}</div></div>
-      <div class="candidate-list">${photo.observations
-        .map(
-          (/** @type {any} */ observation, /** @type {number} */ index) => `
-        <article class="candidate-card ${observation.included !== false ? "selected" : ""} ${observation.id === state.activeObservationId ? "focused" : ""}">
-          <button class="candidate-main" data-toggle-observation="${escapeHtml(observation.id)}">
-            <span class="candidate-check">${observation.included !== false ? "✓" : "+"}</span>
-            <span class="observation-number">${index + 1}</span>
-            <span><strong>${escapeHtml(observation.label)}</strong><small>${escapeHtml(OBSERVATION_TYPE_LABELS[observation.observationType] || "")}・${observation.origin === "user" ? "自分で追加" : `AI候補 ${Math.round((observation.confidence || 0) * 100)}%`}</small></span>
-          </button>
-          <span class="candidate-actions"><button type="button" data-edit-observation="${escapeHtml(observation.id)}" aria-label="${escapeHtml(observation.label)}を編集">編集</button><button type="button" data-delete-observation="${escapeHtml(observation.id)}" aria-label="${escapeHtml(observation.label)}を削除">削除</button></span>
-        </article>`,
-        )
-        .join("")}</div>
-      ${photo.observations.length ? "" : '<div class="empty-state"><strong>対象がまだありません</strong><p>下のボタンから、写真に写っているものを追加してください。</p></div>'}
-      <div class="quick-action-row"><button class="ghost-button dark" data-bulk-action="include-all">すべて残す</button><button class="text-button" id="stepAddObservation">＋ 対象を追加</button></div>`;
+    return renderObservationCandidateStep(photo, {
+      analysisConnected: analysisProvider.isConnected(),
+      observationTypeLabels: OBSERVATION_TYPE_LABELS,
+      activeObservationId: state.activeObservationId,
+    });
   }
 
   function chipButton(
@@ -1892,9 +1769,7 @@ export async function initApp(deps) {
       }),
     );
 
-    $("#stepAddObservation")?.addEventListener("click", () =>
-      openObservationEditor(null),
-    );
+    bindObservationAddButton(document, () => openObservationEditor(null));
     $("#addRelationButton")?.addEventListener("click", () =>
       openRelationEditor(null),
     );
@@ -2108,13 +1983,14 @@ export async function initApp(deps) {
     const view = state.activeVisitId ? buildKnowledgeGraphView(project, state.activeVisitId, registry, referenceData?.graph) : null;
     const observations = view?.source.nodes.filter((node) => node.type === "Observation") || [];
     if (!observations.some((node) => node.observationId === state.knowledgeObservationId)) state.knowledgeObservationId = observations[0]?.observationId || null;
-    const focus = state.knowledgeObservationId ? buildObservationFocusGraph(view.source, `Observation:${state.knowledgeObservationId}`, referenceData?.graph) : null;
+    const focus = state.knowledgeObservationId ? buildObservationFocusGraph(view.source, `Observation:${state.knowledgeObservationId}`, referenceData?.graph, registry) : null;
     const base = state.knowledgeViewMode === "focus" && focus ? focus : view?.overview;
     const expandedReferenceIds = [...state.knowledgeExpanded].filter((id) => id.startsWith("reference:")).map((id) => id.slice("reference:".length));
     const expanded = base ? expandReferenceGraphNodes(base, referenceData?.graph, expandedReferenceIds) : null;
     const graph = expanded ? filterGraphByAxis(expanded, state.knowledgeAxis) : null;
     $$("#knowledgeViewModeControl [data-knowledge-view-mode]").forEach((button) => button.classList.toggle("active", button.dataset.knowledgeViewMode === state.knowledgeViewMode));
     $$("#knowledgeLayoutControl [data-knowledge-layout]").forEach((button) => button.classList.toggle("active", button.dataset.knowledgeLayout === state.knowledgeLayoutMode));
+    $("#knowledgeAxisControl")?.classList.toggle("hidden", !shouldShowKnowledgeAxisControls(state.knowledgeViewMode));
     $$("#knowledgeAxisControl [data-knowledge-axis]").forEach((button) => button.classList.toggle("active", button.dataset.knowledgeAxis === state.knowledgeAxis));
     const query = state.knowledgeSearch.trim().toLowerCase();
     $("#knowledgeObservationList").innerHTML = observations.length ? observations.filter((node) => !query || `${node.label} ${photoById(node.photoId)?.title || ""}`.toLowerCase().includes(query)).map((node) => renderKnowledgeObservationItem(node)).join("") : '<div class="empty-state"><strong>この訪問には表示できるObservationがありません</strong><p>写真を追加してObservationを整理すると、ここに知識グラフが表示されます。</p></div>';
@@ -2160,7 +2036,7 @@ export async function initApp(deps) {
       return `<section class="kg-node-group kg-${type.toLowerCase()}"><div class="kg-group-title"><span>${knowledgeNodeIcon(type)}</span><strong>${escapeHtml(knowledgeNodeLabel(type))}</strong><small>${nodes.length}</small></div><div class="kg-node-grid">${nodes.map((node) => renderKnowledgeNode(node, graph)).join("")}</div></section>`;
     }).join("");
     const relations = graph.edges.filter((edge) => edge.type === "RELATES_TO");
-    const relationSection = relations.length ? `<section class="kg-relation-strip"><div class="kg-group-title"><span>↔</span><strong>関係</strong><small>${relations.length}</small></div>${relations.map((edge) => `<button class="kg-relation-row" data-kg-node="${escapeHtml(edge.targetId)}"><span>${edge.directed === false ? "↔" : "→"}</span><strong>${escapeHtml(nodeLabel(graph, edge.sourceId))}</strong><em>${escapeHtml(edge.relationType || "RELATES_TO")}</em><strong>${escapeHtml(nodeLabel(graph, edge.targetId))}</strong></button>`).join("")}</section>` : "";
+    const relationSection = relations.length ? `<section class="kg-relation-strip"><div class="kg-group-title"><span>↔</span><strong>関係</strong><small>${relations.length}</small></div>${relations.map((edge) => `<button class="kg-relation-row" data-kg-node="${escapeHtml(edge.targetId)}"><span>${edge.directed === false ? "↔" : "→"}</span><strong>${escapeHtml(nodeLabel(graph, edge.sourceId))}</strong><em>${escapeHtml(knowledgeEdgeLabel(edge.type, edge.relationType, registry.relationTypes))}</em><strong>${escapeHtml(nodeLabel(graph, edge.targetId))}</strong></button>`).join("")}</section>` : "";
     const backButton = state.knowledgeViewMode === "focus" ? '<button class="text-button" data-kg-overview>← 訪問全体へ戻る</button>' : "";
     return `<div class="kg-canvas-header"><span>DISPLAY GRAPH</span><strong>${state.knowledgeViewMode === "focus" ? "Observation詳細・1ホップ" : "訪問全体"}</strong><span class="kg-header-actions">${backButton}</span></div>${sections}${relationSection}`;
   }
@@ -2190,7 +2066,7 @@ export async function initApp(deps) {
       const shape = renderRadialNodeShape(node, position, selected);
       const referenceKey = node.type === "ReferenceNode" ? `reference:${node.referenceId}` : null;
       const referenceAction = referenceKey && shouldShowReferenceExpansion(node, displayGraph) ? `<text class="kg-svg-expand" data-kg-expand-reference="${escapeHtml(referenceKey)}" x="${position.x}" y="${position.y + 59}" text-anchor="middle">${state.knowledgeExpanded.has(referenceKey) ? "折り畳む" : "展開"}</text>` : "";
-      return `<g class="kg-svg-node kg-svg-${node.type.toLowerCase()} ${selected ? "selected" : ""}" data-kg-node="${escapeHtml(node.id)}">${shape}${image}${region}${imageClose}<text x="${position.x}" y="${position.y + 43}" text-anchor="middle">${escapeHtml(shortGraphLabel(node.label || node.title || node.predicate || node.referenceId || node.type))}</text>${referenceAction}<title>${escapeHtml(node.label || node.title || node.predicate || node.referenceId || node.type)}</title></g>`;
+      return `<g class="kg-svg-node kg-svg-${node.type.toLowerCase()} ${selected ? "selected" : ""}" data-kg-node="${escapeHtml(node.id)}">${shape}${image}${region}${imageClose}<text x="${position.x}" y="${position.y + 43}" text-anchor="middle">${escapeHtml(shortGraphLabel(knowledgeNodeText(node)))}</text>${referenceAction}<title>${escapeHtml(knowledgeNodeText(node))}</title></g>`;
     }).join("");
     const zoom = state.knowledgeZoom;
     const backButton = state.knowledgeViewMode === "focus" ? '<button class="text-button" data-kg-overview>← 訪問全体へ戻る</button>' : "";
@@ -2220,7 +2096,7 @@ export async function initApp(deps) {
   function renderKnowledgeNode(node, graph) {
     const photo = node.type === "Photo" || node.type === "Observation" ? photoById(node.photoId) : null;
     const image = photo ? `<span class="kg-node-image">${rotatedPhotoFrame(photo, `<img src="${escapeHtml(photo.thumbSrc || photo.src || MISSING_PHOTO_SRC)}" alt="" />${node.region ? `<i style="left:${node.region.x}%;top:${node.region.y}%;width:${node.region.w}%;height:${node.region.h}%"></i>` : ""}`)}</span>` : "";
-    const card = `<button class="kg-node-card kg-shape-${node.type.toLowerCase()}" data-kg-node="${escapeHtml(node.id)}">${image}<span class="kg-node-icon">${knowledgeNodeIcon(node.type)}</span><strong>${escapeHtml(node.label || node.title || node.predicate || node.referenceId || node.type)}</strong><small>${escapeHtml(knowledgeNodeLabel(node.type))}</small></button>`;
+    const card = `<button class="kg-node-card kg-shape-${node.type.toLowerCase()}" data-kg-node="${escapeHtml(node.id)}">${image}<span class="kg-node-icon">${knowledgeNodeIcon(node.type)}</span><strong>${escapeHtml(knowledgeNodeText(node))}</strong>${renderKnowledgeDisplayAttributes(node)}<small>${escapeHtml(knowledgeNodeLabel(node.type))}</small></button>`;
     return node.type === "ReferenceNode" && shouldShowReferenceExpansion(node, graph) ? `<div class="kg-reference-node-wrap">${card}<button class="text-button kg-reference-expand" data-kg-expand-reference="reference:${escapeHtml(node.referenceId)}">${state.knowledgeExpanded.has(`reference:${node.referenceId}`) ? "折り畳む" : "展開"}</button></div>` : card;
   }
 
@@ -2239,7 +2115,7 @@ export async function initApp(deps) {
     const photo = node.photoId ? photoById(node.photoId) : null;
     const referenceEditor = node.type === "Observation" || node.type === "Entity" ? renderReferenceFactEditor(node) : "";
     const photoMarkup = photo ? rotatedPhotoFrame(photo, `<img src="${escapeHtml(photo.src || photo.thumbSrc || MISSING_PHOTO_SRC)}" alt="${escapeHtml(photo.title)}" />`) : "";
-    return `<div class="kg-detail-header"><span>${knowledgeNodeIcon(node.type)} ${escapeHtml(knowledgeNodeLabel(node.type))}</span><h2>${escapeHtml(node.label || node.title || node.predicate || node.referenceId || node.type)}</h2>${photo ? `<button class="ghost-button dark" data-open-photo="${escapeHtml(photo.id)}">元写真を見る</button>` : ""}</div>${photo ? `<div class="kg-detail-photo">${photoMarkup}<strong>${escapeHtml(photo.title)}</strong></div>` : ""}${referenceEditor}<div class="kg-detail-meta"><p>接続 ${detail.incoming.length + detail.outgoing.length}件</p>${detail.outgoing.map((edge) => `<button data-kg-node="${escapeHtml(edge.targetId)}">→ ${escapeHtml(nodeLabel(graph, edge.targetId))}</button>`).join("")}${detail.incoming.map((edge) => `<button data-kg-node="${escapeHtml(edge.sourceId)}">← ${escapeHtml(nodeLabel(graph, edge.sourceId))}</button>`).join("")}</div>`;
+    return `<div class="kg-detail-header"><span>${knowledgeNodeIcon(node.type)} ${escapeHtml(knowledgeNodeLabel(node.type))}</span><h2>${escapeHtml(knowledgeNodeText(node))}</h2>${renderKnowledgeDisplayAttributes(node)}${photo ? `<button class="ghost-button dark" data-open-photo="${escapeHtml(photo.id)}">元写真を見る</button>` : ""}</div>${photo ? `<div class="kg-detail-photo">${photoMarkup}<strong>${escapeHtml(photo.title)}</strong></div>` : ""}${referenceEditor}<div class="kg-detail-meta"><p>接続 ${detail.incoming.length + detail.outgoing.length}件</p>${detail.outgoing.map((edge) => `<button data-kg-node="${escapeHtml(edge.targetId)}">→ ${escapeHtml(knowledgeEdgeLabel(edge.type, edge.relationType, registry.relationTypes))}：${escapeHtml(nodeLabel(graph, edge.targetId))}</button>`).join("")}${detail.incoming.map((edge) => `<button data-kg-node="${escapeHtml(edge.sourceId)}">← ${escapeHtml(knowledgeEdgeLabel(edge.type, edge.relationType, registry.relationTypes))}：${escapeHtml(nodeLabel(graph, edge.sourceId))}</button>`).join("")}</div>`;
   }
 
   function renderReferenceFactEditor(node) {
@@ -2249,7 +2125,6 @@ export async function initApp(deps) {
   }
 
   function nodeLabel(graph, nodeId) { const node = getKnowledgeGraphNodeDetail(graph, nodeId)?.node; return node?.label || node?.title || nodeId; }
-  function knowledgeNodeLabel(type) { return { User: "利用者", Visit: "訪問", Photo: "写真", Observation: "観察対象", Entity: "関連する対象", ReferenceFact: "確認済みの知識", ReferenceNode: "参照分類・時代", GenericCategory: "対象の種類", DomainCategory: "テーマ別の分類", LearningRole: "学ぶうえでの役割" }[type] || type; }
   function knowledgeNodeIcon(type) { return { User: "●", Visit: "⬡", Photo: "▣", Observation: "◎", Entity: "◇", ReferenceFact: "▤", ReferenceNode: "⌘", GenericCategory: "◌", DomainCategory: "◆", LearningRole: "✦" }[type] || "•"; }
   function bindKnowledgeGraphEvents() {
     $$('[data-knowledge-observation]').forEach((button) => button.addEventListener("click", () => { state.knowledgeObservationId = button.dataset.knowledgeObservation; state.knowledgeViewMode = "focus"; renderKnowledge(); }));
@@ -2443,7 +2318,7 @@ export async function initApp(deps) {
     const retrying = state.quizRetry === true;
     state.quizAnswered = Boolean(stored) && !retrying;
     const selectedReferenceId = retrying ? null : stored?.answer?.placements?.find((placement) => placement.cardId === quiz.observationId)?.referenceId || null;
-     $("#quizStage").innerHTML = `<article class="quiz-card"><div class="quiz-content"><span class="quiz-counter">${quiz.questionType === "hierarchy" ? "CLASSIFICATION" : quiz.questionType === "timeline-map" ? "GEOLOGICAL TIME" : quiz.questionType === "matching" ? "RELATION" : "OBSERVATION"} ${String(state.quizIndex + 1).padStart(2, "0")} / ${String(total).padStart(2, "0")}</span><h2>${escapeHtml(quiz.prompt)}</h2><div class="quiz-placement-layout"><div class="quiz-photo-card" draggable="${state.quizAnswered ? "false" : "true"}" data-quiz-card="${escapeHtml(quiz.observationId)}"><img src="${escapeHtml(photo?.src || MISSING_PHOTO_SRC)}" alt="${escapeHtml(photo?.title || "写真")}" />${quiz.region ? `<i style="left:${quiz.region.x}%;top:${quiz.region.y}%;width:${quiz.region.w}%;height:${quiz.region.h}%"></i>` : ""}<strong>${escapeHtml(photo?.title || "写真")}</strong></div>${renderQuizPlacementBoard(quiz, selectedReferenceId, state.quizAnswered)}</div><div id="quizFeedback">${state.quizAnswered ? `<div class="quiz-feedback"><strong>${stored.correct ? "正解です。" : `正解は「${escapeHtml(quiz.options.find((option) => option.id === quiz.targetReferenceId)?.label || quiz.targetReferenceId)}」です。`}</strong>${escapeHtml(quiz.explanation)}</div>` : ""}</div><div class="quiz-next-row"><small>${escapeHtml(photo?.title || "写真")}</small>${state.quizAnswered ? `<button class="ghost-button" id="retryQuizButton">もう一度回答</button>` : ""}<button class="primary-button" id="nextQuizButton" ${state.quizAnswered ? "" : "disabled"}>${state.quizIndex === total - 1 ? "結果を見る" : "次の問題 →"}</button></div></div></article>`;
+     $("#quizStage").innerHTML = `<article class="quiz-card"><div class="quiz-content"><span class="quiz-counter">${quiz.questionType === "hierarchy" ? "CLASSIFICATION" : quiz.questionType === "timeline-map" ? "GEOLOGICAL TIME" : quiz.questionType === "matching" ? "RELATION" : "OBSERVATION"} ${String(state.quizIndex + 1).padStart(2, "0")} / ${String(total).padStart(2, "0")}</span><h2>${escapeHtml(quiz.prompt)}</h2><div class="quiz-placement-layout"><div class="quiz-photo-card" draggable="${state.quizAnswered ? "false" : "true"}" data-quiz-card="${escapeHtml(quiz.observationId)}">${renderQuizPhotoMedia(photo, quiz.region, { label: photo?.title || "写真" })}</div>${renderQuizPlacementBoard(quiz, selectedReferenceId, state.quizAnswered)}</div><div id="quizFeedback">${state.quizAnswered ? `<div class="quiz-feedback"><strong>${stored.correct ? "正解です。" : `正解は「${escapeHtml(quiz.options.find((option) => option.id === quiz.targetReferenceId)?.label || quiz.targetReferenceId)}」です。`}</strong>${escapeHtml(quiz.explanation)}</div>` : ""}</div><div class="quiz-next-row"><small>${escapeHtml(photo?.title || "写真")}</small>${state.quizAnswered ? `<button class="ghost-button" id="retryQuizButton">もう一度回答</button>` : ""}<button class="primary-button" id="nextQuizButton" ${state.quizAnswered ? "" : "disabled"}>${state.quizIndex === total - 1 ? "結果を見る" : "次の問題 →"}</button></div></div></article>`;
     $$('[data-quiz-drop]').forEach((button) => {
       button.addEventListener("click", () => answerGeneratedQuiz(quiz, button.dataset.quizDrop));
       button.addEventListener("dragover", (event) => event.preventDefault());
@@ -2473,9 +2348,9 @@ export async function initApp(deps) {
       return `<div class="quiz-hierarchy-board" aria-label="分類樹">${options.map((option) => `<button class="quiz-placement quiz-tree-node ${selectedReferenceId === option.id ? (answered ? "correct" : "selected") : ""}" style="--tree-depth:${depth(option)}" data-quiz-drop="${escapeHtml(option.id)}" ${answered ? "disabled" : ""}>${escapeHtml(option.label)}${option.labelEn ? `<small>${escapeHtml(option.labelEn)}</small>` : ""}</button>`).join("")}</div>`;
     }
     if (quiz.questionType !== "timeline-map") {
-      return `<div class="quiz-choice-board" aria-label="候補一覧">${options.map((option) => { const optionPhoto = option.photoId ? photoById(option.photoId) : null; return `<button class="quiz-placement quiz-choice-option ${selectedReferenceId === option.id ? (answered ? "correct" : "selected") : ""}" data-quiz-drop="${escapeHtml(option.id)}" ${answered ? "disabled" : ""}>${optionPhoto ? `<img src="${escapeHtml(optionPhoto.src || MISSING_PHOTO_SRC)}" alt="" style="${rotationStyle(optionPhoto.rotation)}" />` : ""}<span>${escapeHtml(option.label)}</span></button>`; }).join("")}</div>`;
+      return `<div class="quiz-choice-board" aria-label="候補一覧">${options.map((option) => { const optionPhoto = option.photoId ? photoById(option.photoId) : null; return `<button class="quiz-placement quiz-choice-option ${selectedReferenceId === option.id ? (answered ? "correct" : "selected") : ""}" data-quiz-drop="${escapeHtml(option.id)}" ${answered ? "disabled" : ""}>${optionPhoto ? renderQuizPhotoMedia(optionPhoto, option.region, { label: option.label, className: "quiz-choice-media" }) : `<span>${escapeHtml(option.label)}</span>`}</button>`; }).join("")}</div>`;
     }
-    const sorted = options.sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER) || a.id.localeCompare(b.id));
+    const sorted = options.sort(compareGeologicalTimeNodes);
     return `<div class="quiz-timeline-board" aria-label="地質時代の時間軸"><div class="quiz-time-axis"><span>古い</span><i></i><span>新しい</span></div><div class="quiz-time-slots">${sorted.map((option) => `<button class="quiz-placement quiz-time-slot ${selectedReferenceId === option.id ? (answered ? "correct" : "selected") : ""}" data-quiz-drop="${escapeHtml(option.id)}" ${answered ? "disabled" : ""}><strong>${escapeHtml(option.label)}</strong><small>${option.startMa == null ? "" : `${option.startMa} Ma`} ${option.endMa == null ? "" : `〜 ${option.endMa} Ma`}</small></button>`).join("")}</div></div>`;
   }
 
@@ -2544,9 +2419,9 @@ export async function initApp(deps) {
   function renderCollections() {
     // toProject intentionally strips transient Blob/asset URLs for persistence.
     // Collection covers are a view concern, so keep the in-memory image URLs here.
-    const collectionProject = { ...toProject(), photos: state.photos };
-    const collections = buildCollectionProgress(
-      collectionProject,
+    const collections = buildCollectionProgressForView(
+      toProject(),
+      state.photos,
       state.activeVisitId,
       state.userId,
       registry,
@@ -2863,21 +2738,7 @@ export async function initApp(deps) {
   }
 
   function renderTutorialStep() {
-    const step = TUTORIAL_STEPS[tutorialIndex];
-    if (!step) return;
-    $("#tutorialScreen").textContent = step.screen;
-    $("#tutorialTitle").textContent = step.title;
-    $("#tutorialDescription").textContent = step.description;
-    $("#tutorialProgress").textContent = `${tutorialIndex + 1} / ${TUTORIAL_STEPS.length}`;
-    $("#tutorialBackButton").disabled = tutorialIndex === 0;
-    $("#tutorialNextButton").classList.toggle(
-      "hidden",
-      tutorialIndex === TUTORIAL_STEPS.length - 1,
-    );
-    $("#tutorialDoneButton").classList.toggle(
-      "hidden",
-      tutorialIndex !== TUTORIAL_STEPS.length - 1,
-    );
+    renderTutorialStepContent(document, tutorialIndex);
   }
 
   function finishTutorial() {

@@ -1,9 +1,44 @@
 import { buildVisitKnowledgeGraph } from "../../domain/knowledge-graph.js";
-import { getReferenceNodeById, getReferenceParents, getReferenceChildren } from "../../domain/reference-registry.js";
+import {
+  compareGeologicalTimeNodes,
+  getReferenceNodeById,
+  getReferenceParents,
+  getReferenceChildren,
+  referenceNodeDisplayLabel,
+} from "../../domain/reference-registry.js";
 
 const MAX_QUESTIONS = 10;
+export const MAX_PER_TYPE = Object.freeze({ hierarchy: 3, "timeline-map": 3, matching: 2, "observation-choice": 2 });
+const QUESTION_TYPE_ORDER = Object.freeze(["hierarchy", "timeline-map", "matching", "observation-choice"]);
 const TYPE_BY_AXIS = { taxonomy: "hierarchy", "geological-time": "timeline-map" };
 const PREDICATE_BY_AXIS = { taxonomy: new Set(["classifiedas", "classified_as", "classified-as"]), "geological-time": new Set(["livedduring", "occursduring", "occurreduring", "occurs-during"]) };
+const PLACEMENT_PROMPT_BY_PREDICATE = Object.freeze({
+  classifiedas: (label) => `${label}を正しい分類へ配置してください。`,
+  classified_as: (label) => `${label}を正しい分類へ配置してください。`,
+  "classified-as": (label) => `${label}を正しい分類へ配置してください。`,
+  livedduring: (label) => `${label}が生きた時代を配置してください。`,
+  occursduring: (label) => `${label}が示す時代を配置してください。`,
+  occurreduring: (label) => `${label}が示す時代を配置してください。`,
+  "occurs-during": (label) => `${label}が示す時代を配置してください。`,
+});
+export const RELATION_QUIZ_TEMPLATES = Object.freeze({
+  explains: (source) => `${source.label}の説明で説明されている対象はどれですか？`,
+  "part-of": (source) => `${source.label}が含まれる全体はどれですか？`,
+});
+
+export function buildObservationChoiceOptions(observations, targetObservationId) {
+  const sorted = [...observations].sort((a, b) => a.id.localeCompare(b.id));
+  const target = sorted.find((node) => node.observationId === targetObservationId);
+  if (!target) return [];
+  return [target, ...sorted.filter((node) => node.observationId !== targetObservationId).slice(0, 3)].map((node) => ({
+    id: node.observationId, label: node.label, photoId: node.photoId, region: node.region || null,
+  }));
+}
+
+export function buildPlacementQuizPrompt(label, predicate) {
+  const template = PLACEMENT_PROMPT_BY_PREDICATE[String(predicate || "").toLowerCase()];
+  return template ? template(label) : `${label}に対応する位置を配置してください。`;
+}
 
 export function generateVisitQuizzes(project, visitId, registries = {}, referenceGraph) {
   const graph = buildVisitKnowledgeGraph(project, visitId, registries);
@@ -44,14 +79,14 @@ export function generateQuizzesFromKnowledgeGraph(graph, referenceGraph) {
         id: `quiz:${TYPE_BY_AXIS[axis]}:${fact.referenceFactId}:${observation.observationId}:${target.id}`,
         questionType: TYPE_BY_AXIS[axis],
         axis,
-        prompt: axis === "taxonomy" ? `${observation.label}を正しい分類へ配置してください。` : `${observation.label}が生きた時代を配置してください。`,
+        prompt: buildPlacementQuizPrompt(observation.label, fact.predicate),
         observationId: observation.observationId,
         photoId: observation.photoId,
         region: observation.region || null,
         referenceFactId: fact.referenceFactId,
         targetReferenceId: target.id,
         relationIds,
-        options: placement.options.map((node) => ({ id: node.id, label: node.label, labelEn: node.labelEn || node.scientificName || null, axis: node.axis, order: node.order ?? null, rank: node.rank ?? null, parentIds: node.parentIds || [], startMa: node.startMa ?? null, endMa: node.endMa ?? null })),
+        options: placement.options.map((node) => ({ id: node.id, label: referenceNodeDisplayLabel(referenceGraph, node), labelEn: node.labelEn || node.scientificName || null, axis: node.axis, order: node.order ?? null, rank: node.rank ?? null, parentIds: node.parentIds || [], startMa: node.startMa ?? null, endMa: node.endMa ?? null })),
         placementPathIds: placement.pathIds,
         placementSiblingIds: placement.siblingIds,
         explanation: "確認済みの参照知識と分類・時代データに基づく配置です。",
@@ -60,37 +95,30 @@ export function generateQuizzesFromKnowledgeGraph(graph, referenceGraph) {
   }
   const visit = graph.nodes.find((node) => node.type === "Visit");
   if (visit?.source === "demo") {
-    const observationOptions = [...observations.values()]
-      .sort((a, b) => a.id.localeCompare(b.id))
-      .map((node) => ({
-        id: node.observationId,
-        label: node.label,
-        photoId: node.photoId,
-        region: node.region || null,
-      }));
     for (const observation of [...observations.values()].slice(0, 2)) {
       questions.push({
         id: `quiz:observation:${observation.observationId}`,
         questionType: "observation-choice",
-        prompt: "写真で示されている対象はどれですか？",
+        prompt: "この対象はなんですか？",
         observationId: observation.observationId,
         photoId: observation.photoId,
         region: observation.region || null,
         referenceFactId: null,
         targetReferenceId: observation.observationId,
         relationIds: [],
-        options: observationOptions,
+        options: buildObservationChoiceOptions(observations.values(), observation.observationId),
         explanation: "写真とObservationの対応を確認する問題です。",
       });
     }
-    for (const relation of graph.edges.filter((edge) => edge.type === "RELATES_TO" && edge.status === "confirmed")) {
+    for (const relation of graph.edges.filter((edge) => edge.type === "RELATES_TO" && edge.status === "confirmed" && RELATION_QUIZ_TEMPLATES[edge.relationType])) {
       const source = observations.get(relation.sourceId);
       const target = observations.get(relation.targetId);
       if (!source || !target) continue;
+      if (source.photoId === target.photoId) continue;
       questions.push({
         id: `quiz:matching:${relation.relationId}`,
         questionType: "matching",
-        prompt: `${source.label}と「${relation.relationType || "関連"}」でつながる対象はどれですか？`,
+        prompt: RELATION_QUIZ_TEMPLATES[relation.relationType](source),
         observationId: source.observationId,
         photoId: source.photoId,
         region: source.region || null,
@@ -107,7 +135,19 @@ export function generateQuizzesFromKnowledgeGraph(graph, referenceGraph) {
       });
     }
   }
-  return questions.sort((a, b) => a.id.localeCompare(b.id)).slice(0, MAX_QUESTIONS);
+  return selectQuizQuestions(questions);
+}
+
+export function selectQuizQuestions(questions) {
+  const sorted = [...questions].sort((a, b) => a.id.localeCompare(b.id));
+  const selected = QUESTION_TYPE_ORDER.flatMap((type) =>
+    sorted.filter((question) => question.questionType === type).slice(0, MAX_PER_TYPE[type]),
+  );
+  const selectedIds = new Set(selected.map((question) => question.id));
+  const remaining = sorted.filter((question) => !selectedIds.has(question.id));
+  return [...selected, ...remaining.slice(0, Math.max(0, MAX_QUESTIONS - selected.length))]
+    .sort((a, b) => a.id.localeCompare(b.id))
+    .slice(0, MAX_QUESTIONS);
 }
 
 function isEligiblePlacementNode(node, axis) {
@@ -131,7 +171,7 @@ export function buildPlacementBoardData(referenceGraph, target, axis) {
   if (axis === "geological-time") {
     const options = referenceGraph.nodes
       .filter((node) => isEligiblePlacementNode(node, axis) && node.rank === target.rank)
-      .sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER) || (b.startMa ?? -Infinity) - (a.startMa ?? -Infinity) || a.id.localeCompare(b.id));
+      .sort(compareGeologicalTimeNodes);
     return { options, pathIds: [], siblingIds: options.filter((node) => node.id !== target.id).map((node) => node.id) };
   }
 

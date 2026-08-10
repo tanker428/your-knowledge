@@ -12,7 +12,7 @@
 
 // Replaced with a content-derived value by scripts/build.mjs. The fallback is
 // useful for the local source tree and is never used by the production build.
-const VERSION = "build-738d1ef2c22ce3f4";
+const VERSION = "build-85b9f373ea123050";
 const SHELL_CACHE = `your-knowledge-shell-${VERSION}`;
 const SAMPLE_CACHE = `your-knowledge-samples-${VERSION}`;
 const SHARED_PHOTO_DB = "your-knowledge-shared-photos";
@@ -70,6 +70,13 @@ const SHELL_ASSETS = [
   "./src/services/analysis/analysis-provider.js",
   "./src/services/analysis/demo-analysis-provider.js",
   "./src/ui/app.js",
+  "./src/ui/html.js",
+  "./src/ui/knowledge-display.js",
+  "./src/ui/knowledge-labels.js",
+  "./src/ui/organize-magnifier.js",
+  "./src/ui/organize-view.js",
+  "./src/ui/photo-assets.js",
+  "./src/ui/quiz-photo.js",
   "./src/ui/tutorial.js",
   "./styles.css",
   "./sw.js"
@@ -223,9 +230,26 @@ async function serveSample(request) {
   return response;
 }
 
+function isPullRequestPreviewRequest(url) {
+  if (url.origin !== self.location.origin) return false;
+  const scopePath = new URL(self.registration.scope).pathname.replace(/\/+$/, "");
+  const previewPattern = new RegExp(
+    `^${scopePath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/pr/\\d+(?:/|$)`,
+  );
+  return previewPattern.test(url.pathname);
+}
+
 self.addEventListener("fetch", (event) => {
   const request = event.request;
   const url = new URL(request.url);
+
+  // A production worker can control the preview path because its scope is
+  // /your-knowledge/. Never let that worker read or mutate production caches
+  // for a PR preview, including offline navigation fallback.
+  if (isPullRequestPreviewRequest(url)) {
+    event.respondWith(fetch(request));
+    return;
+  }
 
   if (request.method === "POST" && url.pathname.endsWith("/share-target")) {
     event.respondWith(handleShareTarget(request));
