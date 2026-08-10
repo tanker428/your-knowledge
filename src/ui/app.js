@@ -89,7 +89,6 @@ import {
   getRadialNodeShape,
   shouldShowKnowledgeAxisControls,
 } from "../features/knowledge-graph/selectors.js";
-import { mountMagnifier } from "./magnifier.js";
 import { describeQuizAvailability, scoreQuizAnswer } from "../features/knowledge-graph/quiz-generation.js";
 import { compareGeologicalTimeNodes, getReferenceChildren, getReferenceNodeById } from "../domain/reference-registry.js";
 import { LOCAL_USER_ID, mergeQuizResultsIntoLearningEvents, rebuildUserKnowledgeStates, recordQuizLearning, removeVisitLearningRecords } from "../domain/learning-state.js";
@@ -97,7 +96,15 @@ import { getLearnedReferenceFacts } from "../domain/learned-reference-facts.js";
 import { buildCollectionProgressForView } from "../features/collections/collection-progress.js";
 import { displayedPointToStoredPoint, normalizePhotoRotation, rotatePhoto } from "../domain/photo-rotation.js";
 import { bindObservationAddButton, observationNumberAnchorClass, renderObservationCandidateStep } from "./organize-view.js";
-import { applyMagnifierGeometry, bindMagnifierInteractions, calculateMagnifierGeometry } from "./organize-magnifier.js";
+import {
+  applyMagnifierGeometry,
+  bindMagnifierInteractions,
+  calculateMagnifierGeometry,
+  clampMagnifierZoom,
+  MAGNIFIER_MIN_ZOOM,
+  MAGNIFIER_ZOOM_STEP,
+  mountMagnifier,
+} from "./organize-magnifier.js";
 import { renderKnowledgeDisplayAttributes } from "./knowledge-display.js";
 import { knowledgeEdgeLabel, knowledgeNodeLabel, knowledgeNodeText } from "./knowledge-labels.js";
 import { renderQuizPhotoMedia } from "./quiz-photo.js";
@@ -267,11 +274,7 @@ export async function initApp(deps) {
   let organizeMagnifierActive = false;
   let organizeLensPoint = null;
   let organizeMagnifierBinding = null;
-  let organizeLensZoom = 2;
-  const ORGANIZE_LENS_MIN_ZOOM = 2;
-  const ORGANIZE_LENS_MAX_ZOOM = 6;
-  const ORGANIZE_LENS_STEP = 0.5;
-  const ORGANIZE_LENS_SIZE = 200;
+  let organizeLensZoom = MAGNIFIER_MIN_ZOOM;
 
   /**
    * The bundled demo photos, as records. The migration layers saved state on
@@ -562,6 +565,23 @@ export async function initApp(deps) {
 
   function photoById(/** @type {string|null} */ id) {
     return state.photos.find((photo) => photo.id === id);
+  }
+
+  function originalPhotoSource(/** @type {any} */ photo) {
+    return photo?.src || photo?.originalSrc || MISSING_PHOTO_SRC;
+  }
+
+  function mountPhotoMagnifier(
+    /** @type {any} */ container,
+    /** @type {any} */ image,
+    /** @type {any} */ photo,
+    { showControls = true } = {},
+  ) {
+    return mountMagnifier(container, image, {
+      showControls,
+      rotation: normalizePhotoRotation(photo?.rotation),
+      source: originalPhotoSource(photo),
+    });
   }
 
   function observationById(/** @type {string|null} */ id) {
@@ -878,7 +898,13 @@ export async function initApp(deps) {
     if (!baseRect || !container || !lens || !lensImage) return;
     const containerRect = container.getBoundingClientRect();
     const rotation = normalizePhotoRotation(currentOrganizePhoto()?.rotation);
-    const geometry = calculateMagnifierGeometry(baseRect, containerRect, point, rotation, organizeLensZoom, ORGANIZE_LENS_SIZE);
+    const geometry = calculateMagnifierGeometry(
+      baseRect,
+      containerRect,
+      point,
+      rotation,
+      organizeLensZoom,
+    );
     applyMagnifierGeometry({
       lens,
       image: lensImage,
@@ -900,9 +926,8 @@ export async function initApp(deps) {
   }
 
   function setOrganizeLensZoom(direction) {
-    organizeLensZoom = Math.min(
-      ORGANIZE_LENS_MAX_ZOOM,
-      Math.max(ORGANIZE_LENS_MIN_ZOOM, Math.round((organizeLensZoom + direction * ORGANIZE_LENS_STEP) * 10) / 10),
+    organizeLensZoom = clampMagnifierZoom(
+      organizeLensZoom + direction * MAGNIFIER_ZOOM_STEP,
     );
     if (organizeLensPoint) updateOrganizeLens(organizeLensPoint);
   }
@@ -1215,7 +1240,7 @@ export async function initApp(deps) {
     organizeMagnifierActive = false;
     organizeMagnifierBinding?.reset();
     organizeLensPoint = null;
-    organizeLensZoom = ORGANIZE_LENS_MIN_ZOOM;
+    organizeLensZoom = MAGNIFIER_MIN_ZOOM;
     state.organizeStep = 1;
     state.activeObservationId =
       photo.observations.find(
@@ -1418,7 +1443,15 @@ export async function initApp(deps) {
     const filtered = searchRelationEntries(entries, query);
     options.innerHTML = `<input class="endpoint-search" type="search" placeholder="写真名・Observation名で検索" value="${escapeHtml(query)}" data-endpoint-search="${kind}" />${filtered.length ? filtered.map(optionMarkup).join("") : '<p class="muted-copy">該当する候補はありません。</p>'}`;
     options.classList.toggle("hidden", state.relationPicker !== kind);
-    options.querySelectorAll(".endpoint-option").forEach((card) => mountMagnifier(card.querySelector(".endpoint-image"), card.querySelector("img"), { showControls: false }));
+    options.querySelectorAll(".endpoint-option").forEach((card) => {
+      const entry = relationEntryById(card.dataset.endpointOption);
+      mountPhotoMagnifier(
+        card.querySelector(".endpoint-image"),
+        card.querySelector("img"),
+        entry?.photo,
+        { showControls: false },
+      );
+    });
   }
 
   function renderRelationEditor() {
@@ -1428,10 +1461,20 @@ export async function initApp(deps) {
     const targetEntry = relationEntryById(draft.targetId);
     $("#relationSourceCard").innerHTML = endpointMarkup(sourceEntry);
     $("#relationTargetCard").innerHTML = endpointMarkup(targetEntry);
-    [$("#relationSourceCard"), $("#relationTargetCard")].forEach((card) => {
-      const imageHost = card?.querySelector(".endpoint-image");
-      mountMagnifier(imageHost, imageHost?.querySelector("img"), { showControls: false });
-    });
+    const sourceImageHost = $("#relationSourceCard .endpoint-image");
+    const targetImageHost = $("#relationTargetCard .endpoint-image");
+    mountPhotoMagnifier(
+      sourceImageHost,
+      sourceImageHost?.querySelector("img"),
+      sourceEntry?.photo,
+      { showControls: false },
+    );
+    mountPhotoMagnifier(
+      targetImageHost,
+      targetImageHost?.querySelector("img"),
+      targetEntry?.photo,
+      { showControls: false },
+    );
     $("#chooseRelationSourceButton").textContent = endpointSelectionLabel("source", Boolean(sourceEntry));
     $("#chooseRelationTargetButton").textContent = endpointSelectionLabel("target", Boolean(targetEntry));
     $("#relationTypeSelect").innerHTML = registry.relationTypes
@@ -2326,7 +2369,14 @@ export async function initApp(deps) {
     const selectedReferenceId = retrying ? null : stored?.answer?.placements?.find((placement) => placement.cardId === quiz.observationId)?.referenceId || null;
      $("#quizStage").innerHTML = `<article class="quiz-card"><div class="quiz-content"><span class="quiz-counter">${quiz.questionType === "hierarchy" ? "CLASSIFICATION" : quiz.questionType === "timeline-map" ? "GEOLOGICAL TIME" : quiz.questionType === "matching" ? "RELATION" : "OBSERVATION"} ${String(state.quizIndex + 1).padStart(2, "0")} / ${String(total).padStart(2, "0")}</span><h2>${escapeHtml(quiz.prompt)}</h2><div class="quiz-placement-layout"><div class="quiz-photo-card" draggable="${state.quizAnswered ? "false" : "true"}" data-quiz-card="${escapeHtml(quiz.observationId)}">${renderQuizPhotoMedia(photo, quiz.region, { label: photo?.title || "写真" })}</div>${renderQuizPlacementBoard(quiz, selectedReferenceId, state.quizAnswered)}</div><div id="quizFeedback">${state.quizAnswered ? `<div class="quiz-feedback"><strong>${stored.correct ? "正解です。" : `正解は「${escapeHtml(quiz.options.find((option) => option.id === quiz.targetReferenceId)?.label || quiz.targetReferenceId)}」です。`}</strong>${escapeHtml(quiz.explanation)}</div>` : ""}</div><div class="quiz-next-row"><small>${escapeHtml(photo?.title || "写真")}</small>${state.quizAnswered ? `<button class="ghost-button" id="retryQuizButton">もう一度回答</button>` : ""}<button class="primary-button" id="nextQuizButton" ${state.quizAnswered ? "" : "disabled"}>${state.quizIndex === total - 1 ? "結果を見る" : "次の問題 →"}</button></div></div></article>`;
     const quizPhotoCard = $("[data-quiz-card]");
-    mountMagnifier(quizPhotoCard, quizPhotoCard?.querySelector("img"));
+    mountPhotoMagnifier(quizPhotoCard, quizPhotoCard?.querySelector("img"), photo);
+    $$("#quizStage .quiz-choice-option").forEach((card) => {
+      const option = quiz.options.find((item) => item.id === card.dataset.quizDrop);
+      const optionPhoto = option?.photoId ? photoById(option.photoId) : null;
+      mountPhotoMagnifier(card, card.querySelector("img"), optionPhoto, {
+        showControls: false,
+      });
+    });
     $$('[data-quiz-drop]').forEach((button) => {
       button.addEventListener("click", () => answerGeneratedQuiz(quiz, button.dataset.quizDrop));
       button.addEventListener("dragover", (event) => event.preventDefault());

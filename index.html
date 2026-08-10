@@ -486,9 +486,6 @@
     .upload-rotation-label { position:absolute; left:5px; bottom:5px; padding:3px 5px; border-radius:5px; background:rgba(20,21,19,.78); color:white; font-size:8px; font-weight:800; }
     .upload-preview figure [data-rotate-upload] { right:31px; }
     .image-tools { display:flex; align-items:center; justify-content:flex-end; gap:7px; flex-wrap:wrap; }
-    .magnifier-button.active { color:var(--accent); font-weight:900; }
-    .image-zoom-controls { display:inline-flex; align-items:center; gap:4px; border:1px solid var(--line); border-radius:8px; padding:2px 5px; background:var(--paper); }
-    .image-zoom-controls strong { min-width:38px; text-align:center; font-size:9px; }
     .image-zoom-hint { display:block; width:100%; color:var(--muted); font-size:9px; line-height:1.5; text-align:right; }
     .image-tools .text-button.active { color:var(--accent); font-weight:900; }
     @media(max-width:520px){ .image-help { align-items:flex-start; flex-direction:column; } .photo-rotation-actions { width:100%; justify-content:space-between; } .photo-rotation-label { margin-right:8px; } }
@@ -503,7 +500,8 @@
     .candidate-actions { display: flex; gap: 4px; padding-right: 8px; }
     .candidate-actions button { border: 1px solid var(--line); background: white; border-radius: 7px; padding: 5px 7px; color: var(--muted); font-size: 8px; font-weight: 800; }
     .candidate-actions button:hover { border-color: var(--accent); color: var(--accent); }
-    .relation-editor-card { max-height: 92vh; overflow:auto; }
+    #relationEditorModal { align-items:flex-start; overflow:auto; }
+    .relation-editor-card { max-height:none; margin-block:auto; overflow:visible; }
     .relation-scope-controls { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
     .relation-scope-controls button { border:1px solid var(--line); border-radius:8px; background:white; color:var(--muted); padding:8px 9px; font-size:9px; font-weight:800; }
     .relation-scope-controls button.active { background:var(--ink); border-color:var(--ink); color:white; }
