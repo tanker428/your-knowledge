@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { recordQuizLearning } from "../src/domain/learning-state.js";
 import {
-  buildObservationChoiceOptions,
   buildPlacementBoardData,
   buildPlacementBoardDataForTargets,
   buildPlacementQuizPrompt,
@@ -12,6 +11,9 @@ import {
   getQuizDifficultyAvailability,
   MIN_COMPARABLE_OBSERVATIONS,
   MAX_PER_TYPE,
+  prioritizeEntityAnswerCards,
+  QUIZ_DIFFICULTIES,
+  QUIZ_QUESTION_TYPES,
   RELATION_QUIZ_TEMPLATES,
   scoreQuizAnswer,
   selectQuizQuestions,
@@ -86,24 +88,9 @@ function correctAnswer(quiz) {
 
 describe("quiz generation from the visit knowledge graph", () => {
   it("uses natural Japanese allowlisted templates for learning-value relations", () => {
-    expect(RELATION_QUIZ_TEMPLATES.explains({ label: "説明パネル" })).toBe("説明パネルの説明で説明されている対象はどれですか？");
-    expect(RELATION_QUIZ_TEMPLATES["part-of"]({ label: "分類・時代・産地の記載" })).toBe("分類・時代・産地の記載が含まれる全体はどれですか？");
+    expect(RELATION_QUIZ_TEMPLATES.explains({ label: "説明パネル" })).toBe("「説明パネル」の説明で説明されている対象はどれですか？");
+    expect(RELATION_QUIZ_TEMPLATES["part-of"]({ label: "分類・時代・産地の記載" })).toBe("「分類・時代・産地の記載」が含まれる全体はどれですか？");
     expect(RELATION_QUIZ_TEMPLATES["same-exhibit"]).toBeUndefined();
-  });
-
-  it("uses deterministic four-choice photo options", () => {
-    const observations = [
-      { id: "Observation:o3", observationId: "o3", label: "三", photoId: "p3" },
-      { id: "Observation:o1", observationId: "o1", label: "一", photoId: "p1" },
-      { id: "Observation:o2", observationId: "o2", label: "二", photoId: "p2" },
-      { id: "Observation:o4", observationId: "o4", label: "四", photoId: "p4" },
-      { id: "Observation:o5", observationId: "o5", label: "五", photoId: "p5" },
-    ];
-    const first = buildObservationChoiceOptions(observations, "o3");
-    expect(first).toEqual(buildObservationChoiceOptions(observations, "o3"));
-    expect(first).toHaveLength(4);
-    expect(first[0].id).toBe("o3");
-    expect(new Set(first.map((option) => option.id)).size).toBe(4);
   });
 
   it("requires four comparable Observations on every structure axis", () => {
@@ -177,16 +164,16 @@ describe("quiz generation from the visit knowledge graph", () => {
   });
 
   it("uses predicate-specific one-card prompts with a safe fallback", () => {
-    expect(buildPlacementQuizPrompt("全身骨格", "livedDuring")).toBe("全身骨格が生きた時代を配置してください。");
-    expect(buildPlacementQuizPrompt("森林復元模型", "occursDuring")).toBe("森林復元模型が示す時代を配置してください。");
-    expect(buildPlacementQuizPrompt("未知の対象", "futurePredicate")).toBe("未知の対象に対応する位置を配置してください。");
+    expect(buildPlacementQuizPrompt("全身骨格", "livedDuring")).toBe("「全身骨格」が生きた時代を配置してください。");
+    expect(buildPlacementQuizPrompt("森林復元模型", "occursDuring")).toBe("「森林復元模型」が示す時代を配置してください。");
+    expect(buildPlacementQuizPrompt("未知の対象", "futurePredicate")).toBe("「未知の対象」に対応する位置を配置してください。");
 
     const changed = comparableProject();
     changed.referenceFacts.find((fact) => fact.id === "f-time").predicate = "occursDuring";
     changed.photos[0].observations[0].label = "中生代の森林復元模型";
     const timeline = generateVisitQuizzes(changed, "v1", registries, referenceGraph, { difficulty: "easy" })
       .find((quiz) => quiz.questionType === "timeline-map" && quiz.cards[0].cardId === "o1");
-    expect(timeline.prompt).toBe("中生代の森林復元模型が示す時代を配置してください。");
+    expect(timeline.prompt).toBe("「中生代の森林復元模型」が示す時代を配置してください。");
   });
 
   it("uses predicate-specific prompts for homogeneous multi-card questions", () => {
@@ -211,17 +198,19 @@ describe("quiz generation from the visit knowledge graph", () => {
   });
 
   it("reserves every available question type and keeps MAX_PER_TYPE question-based", () => {
-    const questions = Object.entries({ hierarchy: 5, "timeline-map": 5, matching: 5, "observation-choice": 5 })
+    const questions = Object.entries({ hierarchy: 5, "timeline-map": 5, matching: 5 })
       .flatMap(([questionType, count]) => Array.from({ length: count }, (_, index) => ({ id: `${questionType}:${index}`, questionType })))
       .reverse();
     const first = selectQuizQuestions(questions);
-    expect(MAX_PER_TYPE).toEqual({ hierarchy: 5, "timeline-map": 5, matching: 3, "observation-choice": 2 });
-    expect(first).toHaveLength(15);
+    expect(MAX_PER_TYPE).toEqual({ hierarchy: 5, "timeline-map": 5, matching: 3 });
+    expect(QUIZ_QUESTION_TYPES.map((type) => type.id)).toEqual(["hierarchy", "timeline-map", "matching"]);
+    expect(first).toHaveLength(13);
     expect(first.filter((quiz) => quiz.questionType === "hierarchy")).toHaveLength(5);
     expect(first.filter((quiz) => quiz.questionType === "timeline-map")).toHaveLength(5);
     expect(first.filter((quiz) => quiz.questionType === "matching")).toHaveLength(3);
-    expect(first.filter((quiz) => quiz.questionType === "observation-choice")).toHaveLength(2);
     expect(JSON.stringify(first)).toBe(JSON.stringify(selectQuizQuestions([...questions].reverse())));
+    expect(selectQuizQuestions(questions, { questionTypes: ["matching", "hierarchy"] }).map((quiz) => quiz.questionType))
+      .toEqual([...Array(5).fill("hierarchy"), ...Array(3).fill("matching")]);
   });
 
   it("scores every card by stable ID and reports individual plus aggregate results", () => {
@@ -255,7 +244,7 @@ describe("quiz generation from the visit knowledge graph", () => {
     const scored = scoreQuizAnswer(quiz, correctAnswer(quiz));
     const entries = buildQuizResultEntries(quiz, scored);
     expect(entries).toHaveLength(4);
-    expect(entries.map((entry) => entry.referenceFactId)).toEqual(["f-tax", "f-tax", "f-tax-3", "f-tax"]);
+    expect(entries.map((entry) => entry.referenceFactId)).toEqual(["f-tax", "f-tax-3", "f-tax", "f-tax"]);
     expect(entries.every((entry) => entry.visitId === "v1" && entry.score === 1 && entry.answer === scored.answer)).toBe(true);
     const reloaded = JSON.parse(JSON.stringify(entries));
     expect(reloaded[0].answer.placements).toHaveLength(4);
@@ -290,9 +279,9 @@ describe("quiz generation from the visit knowledge graph", () => {
     expect(generateVisitQuizzes(value, "v1", registries, referenceGraph, { difficulty: "hard" })).toEqual([]);
     const all = generateAllVisitQuizzes(value, registries, referenceGraph, { difficulty: "hard" });
     const hierarchy = all.find((quiz) => quiz.questionType === "hierarchy");
-    expect(hierarchy.cards.map((card) => card.visitId)).toEqual(["v1", "v1", "v2", "v2"]);
+    expect(hierarchy.cards.map((card) => card.visitId)).toEqual(["v1", "v2", "v1", "v2"]);
     const entries = buildQuizResultEntries(hierarchy, scoreQuizAnswer(hierarchy, correctAnswer(hierarchy)));
-    expect(entries.map((entry) => entry.visitId)).toEqual(["v1", "v1", "v2", "v2"]);
+    expect(entries.map((entry) => entry.visitId)).toEqual(["v1", "v2", "v1", "v2"]);
   });
 
   it("chooses the most detailed registered stable ID for each Observation and axis", () => {
@@ -370,13 +359,57 @@ describe("quiz generation from the visit knowledge graph", () => {
     expect(new Set(answer.placements.map((placement) => placement.referenceId))).toEqual(new Set(["geo:epoch:jurassic:early", "geo:epoch:cretaceous:early"]));
   });
 
-  it("keeps demo observation-choice and matching questions below the structure threshold", () => {
+  it("keeps demo matching questions below the structure threshold", () => {
     const demoProject = project();
     demoProject.visits[0].source = "demo";
     const questions = generateVisitQuizzes(demoProject, "v1", registries, referenceGraph);
-    expect(questions.some((quiz) => quiz.questionType === "observation-choice")).toBe(true);
     expect(questions.some((quiz) => quiz.questionType === "matching")).toBe(true);
     expect(questions.some((quiz) => quiz.questionType === "hierarchy" || quiz.questionType === "timeline-map")).toBe(false);
+  });
+
+  it("filters question types in generation and keeps matching-only difficulty selections available", () => {
+    const demoProject = comparableProject(3);
+    demoProject.visits[0].source = "demo";
+    const questions = generateVisitQuizzes(demoProject, "v1", registries, referenceGraph, { difficulty: "hard", questionTypes: ["matching"] });
+    expect(questions.length).toBeGreaterThan(0);
+    expect(questions.every((quiz) => quiz.questionType === "matching")).toBe(true);
+    const availability = getQuizDifficultyAvailability(demoProject, "v1", registries, referenceGraph, { questionTypes: ["matching"] });
+    expect(availability.difficulties.every((difficulty) => difficulty.available)).toBe(true);
+    expect(availability.questionTypes.find((type) => type.id === "matching")).toMatchObject({ available: true, questionCount: 1 });
+    expect(generateVisitQuizzes(demoProject, "v1", registries, referenceGraph, { questionTypes: [] })).toEqual([]);
+  });
+
+  it("keeps every non-empty type combination usable across all difficulties", () => {
+    const demoProject = comparableProject();
+    demoProject.visits[0].source = "demo";
+    const typeIds = QUIZ_QUESTION_TYPES.map((type) => type.id);
+    const selections = Array.from({ length: (2 ** typeIds.length) - 1 }, (_, mask) =>
+      typeIds.filter((_, index) => (mask + 1) & (1 << index)));
+    for (const difficulty of Object.keys(QUIZ_DIFFICULTIES)) {
+      for (const questionTypes of selections) {
+        const questions = generateVisitQuizzes(demoProject, "v1", registries, referenceGraph, { difficulty, questionTypes });
+        expect(questions.length, `${difficulty}:${questionTypes.join(",")}`).toBeGreaterThan(0);
+        expect(questions.every((quiz) => questionTypes.includes(quiz.questionType))).toBe(true);
+        const availability = getQuizDifficultyAvailability(demoProject, "v1", registries, referenceGraph, { questionTypes });
+        expect(availability.difficulties.find((item) => item.id === difficulty).available).toBe(true);
+      }
+    }
+  });
+
+  it("chooses stable entity/answer representatives and only restores duplicates to fill a shortage", () => {
+    const cards = [
+      { axis: "taxonomy", visitId: "v1", observationId: "o2", referenceFactId: "f2", targetReferenceId: "taxon:a", entityIds: ["Entity:e1"] },
+      { axis: "taxonomy", visitId: "v1", observationId: "o1", referenceFactId: "f1", targetReferenceId: "taxon:a", entityIds: ["Entity:e1"] },
+      { axis: "taxonomy", visitId: "v1", observationId: "o3", referenceFactId: "f3", targetReferenceId: "taxon:a", entityIds: ["Entity:e2"] },
+      { axis: "taxonomy", visitId: "v1", observationId: "o4", referenceFactId: "f4", targetReferenceId: "taxon:b", entityIds: ["Entity:e1"] },
+      { axis: "taxonomy", visitId: "v1", observationId: "o5", referenceFactId: "f5", targetReferenceId: "taxon:a", entityIds: [] },
+    ];
+    const preferred = prioritizeEntityAnswerCards(cards);
+    expect(preferred.map((card) => card.observationId)).toEqual(["o1", "o3", "o4", "o5"]);
+    expect(prioritizeEntityAnswerCards([...cards].reverse())).toEqual(preferred);
+    const filled = prioritizeEntityAnswerCards(cards, 5);
+    expect(filled.map((card) => card.observationId)).toEqual(["o1", "o3", "o4", "o5", "o2"]);
+    expect(new Set(filled.map((card) => card.targetReferenceId))).toEqual(new Set(["taxon:a", "taxon:b"]));
   });
 
   it("excludes ineligible references from answers while retaining them as non-placeable context", () => {

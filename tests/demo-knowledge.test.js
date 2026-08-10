@@ -51,15 +51,15 @@ describe("demo knowledge and quiz generation", () => {
   });
 
   it.each([
-    ["easy", { hierarchy: 5, "timeline-map": 5, matching: 3, "observation-choice": 2 }],
-    ["normal", { hierarchy: 5, "timeline-map": 5, matching: 3, "observation-choice": 2 }],
-    ["hard", { hierarchy: 5, "timeline-map": 5, matching: 3, "observation-choice": 2 }],
-  ])("generates diverse demo structure questions at %s difficulty without displacing fill questions", async (difficulty, expectedCounts) => {
+    ["easy", { hierarchy: 5, "timeline-map": 5, matching: 3 }],
+    ["normal", { hierarchy: 5, "timeline-map": 5, matching: 3 }],
+    ["hard", { hierarchy: 5, "timeline-map": 5, matching: 3 }],
+  ])("generates diverse demo questions at %s difficulty", async (difficulty, expectedCounts) => {
     const project = demoProject();
     const graph = await referenceGraph();
     const first = generateVisitQuizzes(project, "visit-fukui", registries, graph, { difficulty });
     const second = generateVisitQuizzes(project, "visit-fukui", registries, graph, { difficulty });
-    expect(Object.fromEntries(["hierarchy", "timeline-map", "matching", "observation-choice"].map((type) => [type, first.filter((quiz) => quiz.questionType === type).length]))).toEqual(expectedCounts);
+    expect(Object.fromEntries(["hierarchy", "timeline-map", "matching"].map((type) => [type, first.filter((quiz) => quiz.questionType === type).length]))).toEqual(expectedCounts);
     expect(JSON.stringify(first)).toBe(JSON.stringify(second));
     expect(first.every((quiz) => new Set(quiz.options.map((option) => option.id)).size === quiz.options.length)).toBe(true);
     for (const type of ["hierarchy", "timeline-map"]) {
@@ -68,6 +68,10 @@ describe("demo knowledge and quiz generation", () => {
       expect(structures.filter((quiz) => quiz.cards.length > 1).every((quiz) => new Set(quiz.cards.map((card) => card.targetReferenceId)).size >= 2)).toBe(true);
       if (difficulty === "hard") expect(structures.every((quiz) => quiz.cards.length >= 4)).toBe(true);
     }
+    const basilosaurusEocene = first.filter((quiz) => quiz.questionType === "timeline-map")
+      .flatMap((quiz) => quiz.cards)
+      .filter((card) => card.entityIds.includes("Entity:e-basilo") && card.targetReferenceId === "geo:epoch:eocene");
+    expect(new Set(basilosaurusEocene.map((card) => card.observationId))).toEqual(new Set(["o07a"]));
   });
 
   it("matches difficulty availability to generated structure questions and focuses timeline boards", async () => {

@@ -8,7 +8,7 @@ import {
 } from "../src/ui/structure-quiz-board.js";
 
 const cards = [
-  { cardId: "o1", observationId: "o1", label: "翼竜", targetReferenceId: "taxon:child" },
+  { cardId: "o1", observationId: "o1", label: "翼竜", photoId: "p1", targetReferenceId: "taxon:child" },
 ];
 
 describe("structure quiz boards", () => {
@@ -29,9 +29,12 @@ describe("structure quiz boards", () => {
     expect(document.querySelectorAll("[data-quiz-drop]")).toHaveLength(3);
     expect([...document.querySelectorAll("[role=treeitem]")].map((node) => node.getAttribute("aria-level"))).toEqual(["1", "2", "3", "3"]);
     expect(document.querySelector("[data-quiz-drop='taxon:child']").getAttribute("aria-label")).toContain("恐竜類");
-    expect(document.querySelector(".quiz-tree-unavailable").textContent).toBe("文脈表示（配置不可）");
-    expect(document.querySelector(".quiz-tree-unavailable").getAttribute("aria-label")).toContain("翼竜など");
+    expect(document.querySelector(".quiz-tree-unavailable").textContent).toContain("正解候補ではないため、カードは置けません");
+    expect(document.querySelector(".quiz-tree-unavailable").getAttribute("aria-label")).toBe("翼竜などは分類のつながりを示すために表示しています。このクイズの正解候補ではないため、カードは置けません。");
     expect(document.querySelector("[data-quiz-drop='taxon:sibling']")).toBeNull();
+    expect(document.querySelector(".depth-0 > .quiz-tree-row > .quiz-reference-node strong").textContent).toBe("双弓類");
+    expect(document.querySelector(".depth-1").closest(".quiz-tree-children").parentElement.classList.contains("depth-0")).toBe(true);
+    expect(document.querySelector(".depth-2").closest(".quiz-tree-children").parentElement.classList.contains("depth-1")).toBe(true);
   });
 
   it("renders normalized durations as proportional period bars and single ages as points", () => {
@@ -63,10 +66,29 @@ describe("structure quiz boards", () => {
       ],
     };
     const scored = { items: [{ cardId: "o1", selectedReferenceId: "taxon:wrong", targetReferenceId: "taxon:child", correct: false }] };
-    const dom = new JSDOM(renderHierarchyQuizBoard(quiz, [{ cardId: "o1", referenceId: "taxon:wrong" }], scored, true));
+    const dom = new JSDOM(renderHierarchyQuizBoard(quiz, [{ cardId: "o1", referenceId: "taxon:wrong" }], scored, true, { photoById: () => ({ src: "/wing.jpg", originalWidth: 800, originalHeight: 600, rotation: 90 }) }));
     expect(dom.window.document.querySelector("[data-quiz-drop='taxon:wrong']").textContent).toContain("自分");
     expect(dom.window.document.querySelector("[data-quiz-drop='taxon:child']").textContent).toContain("正解");
+    expect(dom.window.document.querySelectorAll(".observation-quiz-card-thumbnail image")).toHaveLength(2);
+    expect([...dom.window.document.querySelectorAll(".observation-quiz-card-thumbnail svg")].every((svg) => svg.style.transform === "rotate(90deg) scale(.75)")).toBe(true);
+    expect(dom.window.document.querySelectorAll("[data-observation-card]")).toHaveLength(0);
     expect([...dom.window.document.querySelectorAll("[data-quiz-drop]")].every((button) => button.disabled)).toBe(true);
+  });
+
+  it("shows the placed card thumbnail inside a timeline slot before scoring", () => {
+    const quiz = {
+      questionType: "timeline-map",
+      cards: [{ ...cards[0], targetReferenceId: "time:middle" }],
+      options: [
+        { id: "time:old", label: "古い", startMa: 300, endMa: 200 },
+        { id: "time:middle", label: "中間", startMa: 200, endMa: 100 },
+      ],
+    };
+    const dom = new JSDOM(renderTimelineQuizBoard(quiz, [{ cardId: "o1", referenceId: "time:middle" }], null, false, { photoById: () => ({ src: "/wing.jpg", originalWidth: 800, originalHeight: 600 }) }));
+    const placed = dom.window.document.querySelector("[data-quiz-drop='time:middle']");
+    expect(placed.classList.contains("selected")).toBe(true);
+    expect(placed.querySelector(".observation-quiz-card-thumbnail image").getAttribute("href")).toBe("/wing.jpg");
+    expect(dom.window.document.querySelector("[data-quiz-drop='time:old'] .observation-quiz-card-thumbnail")).toBeNull();
   });
 
   it("moves a placement in both old and new directions while retaining normalized boundaries", () => {

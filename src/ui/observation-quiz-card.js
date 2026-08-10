@@ -40,9 +40,17 @@ export function renderObservationQuizCard(card, photo, options = {}) {
   const rotation = normalizePhotoRotation(photo?.rotation);
   const scale = rotation % 180 === 0 ? "" : " scale(.75)";
   const transform = rotation ? ` style="transform:rotate(${rotation}deg)${scale}"` : "";
+  const cropMarkup = `<span class="observation-card-crop"><svg viewBox="${crop.x} ${crop.y} ${crop.width} ${crop.height}" role="img" aria-label="${escapeHtml(card.label || "観察対象")}"${transform}><image href="${escapeHtml(source)}" x="0" y="0" width="${crop.sourceWidth}" height="${crop.sourceHeight}" preserveAspectRatio="none"></image></svg></span>`;
+  if (options.variant === "thumbnail") {
+    return `<span class="observation-quiz-card-thumbnail" aria-label="${escapeHtml(`${card.label || "観察対象"}の配置画像`)}">${cropMarkup}<span>${escapeHtml(card.label || "観察対象")}</span></span>`;
+  }
   const resultClass = options.result === "correct" ? " correct" : options.result === "incorrect" ? " incorrect" : "";
   const selectedClass = options.selected ? " selected" : "";
+  const placed = options.placed ?? Boolean(options.placementLabel && options.placementLabel !== "未配置");
+  const placementClass = placed ? " placed" : " unplaced";
   const draggable = options.draggable === true ? "true" : "false";
-  const placement = options.placementLabel ? `<small>${escapeHtml(options.placementLabel)}</small>` : "";
-  return `<button type="button" class="observation-quiz-card${selectedClass}${resultClass}" data-observation-card="${escapeHtml(card.cardId || card.observationId)}" draggable="${draggable}" aria-label="${escapeHtml(`${card.label || "観察対象"}のカード${options.placementLabel ? `。現在の配置は${options.placementLabel}` : ""}`)}" aria-pressed="${options.selected ? "true" : "false"}" aria-grabbed="${options.selected ? "true" : "false"}" ${options.disabled ? "disabled" : ""}><span class="observation-card-crop"><svg viewBox="${crop.x} ${crop.y} ${crop.width} ${crop.height}" role="img" aria-label="${escapeHtml(card.label || "観察対象")}"${transform}><image href="${escapeHtml(source)}" x="0" y="0" width="${crop.sourceWidth}" height="${crop.sourceHeight}" preserveAspectRatio="none"></image></svg></span><strong>${escapeHtml(card.label || "観察対象")}</strong>${placement}</button>`;
+  const placement = options.placementLabel
+    ? `<small class="observation-card-placement-status"><span aria-hidden="true">${placed ? "✓" : "○"}</span>${placed ? `配置済み：${escapeHtml(options.placementLabel)}` : "未配置"}</small>`
+    : "";
+  return `<button type="button" class="observation-quiz-card${placementClass}${selectedClass}${resultClass}" data-observation-card="${escapeHtml(card.cardId || card.observationId)}" draggable="${draggable}" aria-label="${escapeHtml(`${card.label || "観察対象"}のカード${options.placementLabel ? `。現在の配置は${options.placementLabel}` : ""}`)}" aria-pressed="${options.selected ? "true" : "false"}" aria-grabbed="${options.selected ? "true" : "false"}" ${options.disabled ? "disabled" : ""}>${cropMarkup}<strong>${escapeHtml(card.label || "観察対象")}</strong>${placement}</button>`;
 }

@@ -23,10 +23,11 @@ describe("reusable Observation quiz card", () => {
     expect(root.dataset.observationCard).toBe("o1");
     expect(root.getAttribute("draggable")).toBe("true");
     expect(root.getAttribute("aria-pressed")).toBe("true");
+    expect(root.classList.contains("placed")).toBe(true);
     expect(root.querySelector("svg").getAttribute("viewBox")).toBe("120 160 360 320");
     expect(root.querySelector("image").getAttribute("href")).toBe("/photo.jpg");
     expect(root.querySelector("strong").textContent).toBe("頭骨");
-    expect(root.querySelector("small").textContent).toBe("獣脚類");
+    expect(root.querySelector("small").textContent).toBe("✓配置済み：獣脚類");
     expect(root.querySelector(".quiz-photo-region")).toBeNull();
     expect(root.querySelectorAll("image")).toHaveLength(1);
   });
@@ -37,5 +38,17 @@ describe("reusable Observation quiz card", () => {
     expect(root.classList.contains("incorrect")).toBe(true);
     expect(root.querySelector("svg").style.transform).toBe("rotate(90deg) scale(.75)");
     expect(root.querySelector("image").getAttribute("href")).toMatch(/^data:image\//);
+  });
+
+  it("marks unplaced cards redundantly and renders a non-interactive rotated slot thumbnail", () => {
+    const unplaced = new JSDOM(renderObservationQuizCard(card, photo, { placed: false, placementLabel: "未配置" }));
+    const root = unplaced.window.document.querySelector(".observation-quiz-card");
+    expect(root.classList.contains("unplaced")).toBe(true);
+    expect(root.querySelector(".observation-card-placement-status").textContent).toBe("○未配置");
+
+    const thumbnail = new JSDOM(renderObservationQuizCard(card, { ...photo, rotation: 270 }, { variant: "thumbnail" }));
+    expect(thumbnail.window.document.querySelector("button")).toBeNull();
+    expect(thumbnail.window.document.querySelector(".observation-quiz-card-thumbnail svg").style.transform).toBe("rotate(270deg) scale(.75)");
+    expect(thumbnail.window.document.querySelector("image").getAttribute("href")).toBe("/photo.jpg");
   });
 });
