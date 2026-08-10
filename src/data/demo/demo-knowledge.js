@@ -3,7 +3,7 @@
  * These records use the same ReferenceFact contract as user data; they are
  * not a second quiz-only graph.
  */
-export const DEMO_KNOWLEDGE_VERSION = "2026-08-07.1";
+export const DEMO_KNOWLEDGE_VERSION = "2026-08-10.1";
 
 export const DEMO_REFERENCE_FACTS = Object.freeze([
   {
@@ -79,4 +79,3 @@ export const DEMO_REFERENCE_FACTS = Object.freeze([
     status: "verified",
   },
 ]);
-

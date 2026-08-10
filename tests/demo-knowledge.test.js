@@ -75,8 +75,30 @@ describe("demo knowledge and quiz generation", () => {
       demoVisitSeed: {},
     }).project;
     expect(migrated.photos[0].experienceMemo).toBe("利用者が追記したメモ");
-    expect(migrated.relations).toHaveLength(1);
+    expect(migrated.relations).toHaveLength(SAMPLE_RELATIONS.length);
     expect(migrated.referenceFacts).toHaveLength(DEMO_REFERENCE_FACTS.length);
+  });
+
+  it("補充したデモRelationから既存v2プロジェクトにもpart-of問題を生成する", async () => {
+    const saved = demoProject();
+    saved.relations = saved.relations.filter((relation) => relation.id !== "r19");
+    saved.demoKnowledgeVersion = "2026-08-07.1";
+    const migrated = migrateProjectDocument(saved, {
+      demoPhotos: SAMPLE_PHOTOS,
+      demoRelations: SAMPLE_RELATIONS,
+      demoFacts: LEARNING_FACTS,
+      demoReferenceFacts: [...DEMO_REFERENCE_FACTS],
+      demoKnowledgeVersion: DEMO_KNOWLEDGE_VERSION,
+      demoVisitSeed: {},
+    }).project;
+    const quizzes = generateVisitQuizzes(
+      migrated,
+      "visit-fukui",
+      registries,
+      await referenceGraph(),
+    );
+    expect(migrated.relations.some((relation) => relation.id === "r19")).toBe(true);
+    expect(quizzes.some((quiz) => quiz.id === "quiz:matching:r19")).toBe(true);
   });
 
   it("records non-ReferenceFact demo answers as events without inventing a knowledge state", () => {

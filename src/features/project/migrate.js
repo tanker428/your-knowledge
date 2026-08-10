@@ -155,6 +155,27 @@ export function migrateProjectDocument(stored, context) {
         ? stored.referenceFacts.map((fact) => ({ ...fact }))
         : [];
       const knownReferenceFactIds = new Set(storedReferenceFacts.map((fact) => fact.id));
+      const storedRelations = Array.isArray(stored.relations)
+        ? stored.relations.map((relation) => ({ ...relation }))
+        : [];
+      const knownRelationIds = new Set(storedRelations.map((relation) => relation.id));
+      const demoObservationIds = new Set(
+        (context.demoPhotos || []).flatMap((photo) =>
+          (photo.observations || []).map((observation) => observation.id),
+        ),
+      );
+      const demoRelationsToAdd = hasDemoVisit
+        ? (context.demoRelations || [])
+            .filter(
+              (relation) =>
+                demoObservationIds.has(relation.sourceId) &&
+                demoObservationIds.has(relation.targetId) &&
+                !knownRelationIds.has(relation.id),
+            )
+            .map((relation) => ({ ...relation }))
+        : [];
+      const relations = [...storedRelations, ...demoRelationsToAdd];
+      const demoDataChanged = shouldSeedDemo || demoRelationsToAdd.length > 0;
       if (shouldSeedDemo) {
         storedReferenceFacts.push(
           ...(context.demoReferenceFacts || [])
@@ -164,8 +185,10 @@ export function migrateProjectDocument(stored, context) {
       }
       return {
         ok: true,
-        changed: false,
-        notes: ["移行は不要でした。"],
+        changed: demoDataChanged,
+        notes: demoDataChanged
+          ? ["保存済みデモ訪問へ不足していた初期知識を補充しました。"]
+          : ["移行は不要でした。"],
         project: {
           ...stored,
           schemaVersion: PROJECT_SCHEMA_VERSION,
@@ -176,8 +199,9 @@ export function migrateProjectDocument(stored, context) {
             : [],
           learningEvents: Array.isArray(stored.learningEvents) ? stored.learningEvents : [],
           userKnowledgeStates: Array.isArray(stored.userKnowledgeStates) ? stored.userKnowledgeStates : [],
+          relations,
           referenceFacts: storedReferenceFacts,
-          demoKnowledgeVersion: shouldSeedDemo
+          demoKnowledgeVersion: demoDataChanged
             ? context.demoKnowledgeVersion
             : stored.demoKnowledgeVersion || null,
         },

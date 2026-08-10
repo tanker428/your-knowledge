@@ -87,6 +87,7 @@ import {
   filterGraphByAxis,
   getKnowledgeGraphNodeDetail,
   getRadialNodeShape,
+  shouldShowKnowledgeAxisControls,
 } from "../features/knowledge-graph/selectors.js";
 import { describeQuizAvailability, scoreQuizAnswer } from "../features/knowledge-graph/quiz-generation.js";
 import { getReferenceChildren, getReferenceNodeById } from "../domain/reference-registry.js";
@@ -94,6 +95,11 @@ import { LOCAL_USER_ID, mergeQuizResultsIntoLearningEvents, rebuildUserKnowledge
 import { getLearnedReferenceFacts } from "../domain/learned-reference-facts.js";
 import { buildCollectionProgress } from "../features/collections/collection-progress.js";
 import { displayedPointToStoredPoint, normalizePhotoRotation, rotatePhoto, unrotateImagePoint } from "../domain/photo-rotation.js";
+import { renderKnowledgeDisplayAttributes } from "./knowledge-display.js";
+import { knowledgeEdgeLabel, knowledgeNodeLabel, knowledgeNodeText } from "./knowledge-labels.js";
+import { renderQuizPhotoMedia } from "./quiz-photo.js";
+import { MISSING_PHOTO_SRC } from "./photo-assets.js";
+import { escapeHtml } from "./html.js";
 
 const MAX_UPLOAD_BATCH = 120;
 const STATUS_LABELS = {
@@ -103,10 +109,20 @@ const STATUS_LABELS = {
 };
 const OBSERVATION_TYPE_LABELS = {
   physical: "実体",
-  information: "情報表現",
+  information: "説明・図表",
   space: "場所・空間",
   concept: "概念",
   feature: "部分・特徴",
+};
+const LEARNING_ROLE_DESCRIPTIONS = {
+  direct: "今回の中心となる展示物や対象です。",
+  explains: "他の対象を説明するパネルや資料です。",
+  comparison: "違いや共通点を比べるための対象です。",
+  context: "時代、環境、歴史などを補足する対象です。",
+  detail: "全体の一部や、注目した細かな箇所です。",
+  route: "展示場所、移動経路、周辺環境です。",
+  memory: "自分の体験や印象に関係する対象です。",
+  evidence: "判断の根拠となる標本、図表、説明です。",
 };
 const FACT_SOURCE_LABELS = {
   panel: "説明パネルから",
@@ -114,10 +130,6 @@ const FACT_SOURCE_LABELS = {
   external: "外部資料から",
   user: "自分のメモ",
 };
-
-/** 1x1 transparent gif — placeholder for a photo whose binary is not on this device. */
-const MISSING_PHOTO_SRC =
-  "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
 
 /**
  * @param {string} selector
@@ -134,18 +146,6 @@ const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 
 const clone = (/** @type {any} */ value) => JSON.parse(JSON.stringify(value));
-const escapeHtml = (/** @type {unknown} */ value) =>
-  String(value ?? "").replace(
-    /[&<>'"]/g,
-    (c) =>
-      /** @type {any} */ ({
-        "&": "&amp;",
-        "<": "&lt;",
-        ">": "&gt;",
-        "'": "&#39;",
-        '"': "&quot;",
-      })[c],
-  );
 const uid = (/** @type {string} */ prefix) =>
   `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -1182,7 +1182,7 @@ export async function initApp(deps) {
     const wasEditing = Boolean(state.editingObservationId);
     const label = $("#newObservationLabel").value.trim();
     if (!label) {
-      showToast("短い名前を入力してください");
+      showToast("名前を入力してください");
       return;
     }
     const photo = currentOrganizePhoto();
@@ -1413,8 +1413,10 @@ export async function initApp(deps) {
     /** @type {string} */ label,
     /** @type {boolean} */ selected,
     /** @type {string} */ type,
+    /** @type {string} */ description = "",
   ) {
-    return `<button class="label-chip ${selected ? "selected" : ""}" data-chip-type="${escapeHtml(type)}" data-chip-id="${escapeHtml(id)}">${selected ? "✓ " : ""}${escapeHtml(label)}</button>`;
+    const info = description ? `<span class="chip-info" data-chip-info="${escapeHtml(description)}" role="button" tabindex="0" aria-label="${escapeHtml(label)}の説明">ⓘ</span>` : "";
+    return `<button class="label-chip ${selected ? "selected" : ""}" data-chip-type="${escapeHtml(type)}" data-chip-id="${escapeHtml(id)}">${selected ? "✓ " : ""}${escapeHtml(label)}${info}</button>`;
   }
 
   function renderStepTwo(
@@ -1424,11 +1426,11 @@ export async function initApp(deps) {
     if (!observation)
       return '<div class="empty-state"><strong>対象がありません</strong><p>ステップ1で対象を追加してください。</p></div>';
     return `
-      <div class="assistant-message"><span class="assistant-avatar">Y</span><div><strong>まず、場所を問わず使える汎用分類を確認します。</strong><p>「何が写っているか」と「学習上どんな役割か」は複数選択できます。</p></div></div>
+      <div class="assistant-message"><span class="assistant-avatar">Y</span><div><strong>この対象は、どのようなものですか？</strong><p>写真に写っている対象の種類と、学ぶうえでの役割を選びます。複数選択でき、あとで変更できます。</p></div></div>
       ${renderObservationTabs(photo)}
-      <div class="classification-block"><h3>${escapeHtml(observation.label)}</h3><small>対象の形式</small><div class="chip-grid">${registry.genericCategories.map((item) => chipButton(item.id, `${item.icon} ${item.label}`, observation.genericCategories.includes(item.id), "generic")).join("")}</div></div>
-      <div class="classification-block"><small>学習上の役割</small><div class="chip-grid roles">${registry.learningRoles.map((item) => chipButton(item.id, item.label, observation.learningRoles.includes(item.id), "role")).join("")}</div></div>
-      <div class="quick-action-row"><button class="primary-button inline" data-bulk-action="confirm-generic">全対象の汎用分類を一括確認</button><span>曖昧な対象だけ個別に直せます</span></div>`;
+      <div class="classification-block"><h3>${escapeHtml(observation.label)}</h3><small>対象の種類</small><div class="chip-grid">${registry.genericCategories.map((item) => chipButton(item.id, `${item.icon} ${item.label}`, observation.genericCategories.includes(item.id), "generic", item.description || "写真に写っている対象の種類です。")).join("")}</div></div>
+      <div class="classification-block"><small>学ぶうえでの役割</small><div class="chip-grid roles">${registry.learningRoles.map((item) => chipButton(item.id, item.label, observation.learningRoles.includes(item.id), "role", LEARNING_ROLE_DESCRIPTIONS[item.id] || "この対象を学ぶときの役割です。")).join("")}</div></div>
+      <div class="quick-action-row"><button class="primary-button inline" data-bulk-action="confirm-generic">全対象の種類を一括確認</button><span>曖昧な対象だけ個別に直せます</span></div>`;
   }
 
   function renderStepThree(
@@ -1445,10 +1447,10 @@ export async function initApp(deps) {
         packCategories(packId).map((item) => ({ ...item, packId })),
     );
     return `
-      <div class="assistant-message"><span class="assistant-avatar">Y</span><div><strong>次に、訪問分野に合わせた浅い分類を確認します。</strong><p>年代や細かな特徴はまだ質問しません。分野パックを足せば、別の場所にも同じ手順が使えます。</p></div></div>
+      <div class="assistant-message"><span class="assistant-avatar">Y</span><div><strong>この対象を、今回のテーマに沿って分類します</strong><p>自然史・古生物など、選択した分野に合う分類を追加します。次の画面でより詳しい知識を登録できます。</p></div></div>
       ${renderObservationTabs(photo)}
       <div class="classification-block"><h3>${escapeHtml(observation.label)}</h3><small>分野パック</small><div class="chip-grid domains">${registry.packs.map((item) => chipButton(item.id, `${item.icon} ${item.label}`, observation.domainPacks.includes(item.id), "domain")).join("")}</div></div>
-      <div class="classification-block"><small>分野別の浅い分類</small><div class="chip-grid">${categoryButtons.map((item) => `<button class="label-chip ${observation.domainCategories.includes(item.id) ? "selected" : ""}" data-chip-type="domain-category" data-chip-domain="${escapeHtml(item.packId)}" data-chip-id="${escapeHtml(item.id)}">${observation.domainCategories.includes(item.id) ? "✓ " : ""}${escapeHtml(item.label)}</button>`).join("") || '<p class="muted-copy">分野パックを選択してください。</p>'}</div></div>
+      <div class="classification-block"><small>テーマに沿った分類</small><div class="chip-grid">${categoryButtons.map((item) => `<button class="label-chip ${observation.domainCategories.includes(item.id) ? "selected" : ""}" data-chip-type="domain-category" data-chip-domain="${escapeHtml(item.packId)}" data-chip-id="${escapeHtml(item.id)}">${observation.domainCategories.includes(item.id) ? "✓ " : ""}${escapeHtml(item.label)}<span class="chip-info" data-chip-info="${escapeHtml(item.description || "今回の展示や学習テーマに沿った分類です。")}" role="button" tabindex="0" aria-label="${escapeHtml(item.label)}の説明">ⓘ</span></button>`).join("") || '<p class="muted-copy">分野パックを選択してください。</p>'}</div></div>
       <div class="quick-action-row"><button class="primary-button inline" data-bulk-action="confirm-domain">全対象の分野分類を一括確認</button><span>具体名は明確な場合だけ任意で追加します</span></div>`;
   }
 
@@ -1752,7 +1754,7 @@ export async function initApp(deps) {
             (/** @type {any} */ observation, /** @type {number} */ index) => {
               const packId = observation.domainPacks[0];
               return `<button class="preview-observation ${observation.id === state.activeObservationId ? "active" : ""}" data-preview-observation="${escapeHtml(observation.id)}">
-        <span class="observation-number">${index + 1}</span><span><strong>${escapeHtml(observation.label)}</strong><small>${observation.genericCategories.map(genericLabel).join("・") || "汎用分類なし"}</small><em>${packId ? `${packLabel(packId)} / ${observation.domainCategories.map((/** @type {string} */ id) => packCategoryLabel(packId, id)).join("・")}` : "分野未設定"}</em></span><i>${observation.status === "confirmed" ? "✓" : "候補"}</i>
+        <span class="observation-number">${index + 1}</span><span><strong>${escapeHtml(observation.label)}</strong><small>${observation.genericCategories.map(genericLabel).join("・") || "対象の種類未設定"}</small><em>${packId ? `${packLabel(packId)} / ${observation.domainCategories.map((/** @type {string} */ id) => packCategoryLabel(packId, id)).join("・")}` : "分野未設定"}</em></span><i>${observation.status === "confirmed" ? "✓" : "候補"}</i>
       </button>`;
             },
           )
@@ -1841,6 +1843,14 @@ export async function initApp(deps) {
         renderOrganize();
       }),
     );
+
+    $$("[data-chip-info]").forEach((info) => {
+      const explain = () => showToast(info.dataset.chipInfo || "この項目の説明は準備中です。");
+      info.addEventListener("click", (event) => { event.stopPropagation(); explain(); });
+      info.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); explain(); }
+      });
+    });
 
     $$("[data-bulk-action]").forEach((button) =>
       button.addEventListener("click", () => {
@@ -2042,8 +2052,8 @@ export async function initApp(deps) {
         <article class="map-center-card"><span>${escapeHtml(OBSERVATION_TYPE_LABELS[observation.observationType] || "観察対象")}</span><h3>${escapeHtml(observation.label)}</h3>${entity ? `<p class="optional-entity">任意の具体名：${escapeHtml(entity.name)}</p>` : '<p class="optional-entity">具体名がなくても保存可能</p>'}</article>
         <div class="map-connector">→</div>
         <div class="map-label-groups">
-          <article><small>汎用分類</small><div class="mini-tag-list">${observation.genericCategories.map((/** @type {string} */ id) => `<span>${escapeHtml(genericLabel(id))}</span>`).join("")}</div></article>
-          <article><small>分野別の浅い分類</small><div class="mini-tag-list accent">${observation.domainCategories.map((/** @type {string} */ id) => `<span>${escapeHtml(packCategoryLabel(packId, id))}</span>`).join("") || "<span>未設定</span>"}</div></article>
+          <article><small>対象の種類</small><div class="mini-tag-list">${observation.genericCategories.map((/** @type {string} */ id) => `<span>${escapeHtml(genericLabel(id))}</span>`).join("")}</div></article>
+          <article><small>テーマに沿った分類</small><div class="mini-tag-list accent">${observation.domainCategories.map((/** @type {string} */ id) => `<span>${escapeHtml(packCategoryLabel(packId, id))}</span>`).join("") || "<span>未設定</span>"}</div></article>
         </div>
       </div>
       <div class="knowledge-detail-grid">
@@ -2105,13 +2115,14 @@ export async function initApp(deps) {
     const view = state.activeVisitId ? buildKnowledgeGraphView(project, state.activeVisitId, registry, referenceData?.graph) : null;
     const observations = view?.source.nodes.filter((node) => node.type === "Observation") || [];
     if (!observations.some((node) => node.observationId === state.knowledgeObservationId)) state.knowledgeObservationId = observations[0]?.observationId || null;
-    const focus = state.knowledgeObservationId ? buildObservationFocusGraph(view.source, `Observation:${state.knowledgeObservationId}`, referenceData?.graph) : null;
+    const focus = state.knowledgeObservationId ? buildObservationFocusGraph(view.source, `Observation:${state.knowledgeObservationId}`, referenceData?.graph, registry) : null;
     const base = state.knowledgeViewMode === "focus" && focus ? focus : view?.overview;
     const expandedReferenceIds = [...state.knowledgeExpanded].filter((id) => id.startsWith("reference:")).map((id) => id.slice("reference:".length));
     const expanded = base ? expandReferenceGraphNodes(base, referenceData?.graph, expandedReferenceIds) : null;
     const graph = expanded ? filterGraphByAxis(expanded, state.knowledgeAxis) : null;
     $$("#knowledgeViewModeControl [data-knowledge-view-mode]").forEach((button) => button.classList.toggle("active", button.dataset.knowledgeViewMode === state.knowledgeViewMode));
     $$("#knowledgeLayoutControl [data-knowledge-layout]").forEach((button) => button.classList.toggle("active", button.dataset.knowledgeLayout === state.knowledgeLayoutMode));
+    $("#knowledgeAxisControl")?.classList.toggle("hidden", !shouldShowKnowledgeAxisControls(state.knowledgeViewMode));
     $$("#knowledgeAxisControl [data-knowledge-axis]").forEach((button) => button.classList.toggle("active", button.dataset.knowledgeAxis === state.knowledgeAxis));
     const query = state.knowledgeSearch.trim().toLowerCase();
     $("#knowledgeObservationList").innerHTML = observations.length ? observations.filter((node) => !query || `${node.label} ${photoById(node.photoId)?.title || ""}`.toLowerCase().includes(query)).map((node) => renderKnowledgeObservationItem(node)).join("") : '<div class="empty-state"><strong>この訪問には表示できるObservationがありません</strong><p>写真を追加してObservationを整理すると、ここに知識グラフが表示されます。</p></div>';
@@ -2157,7 +2168,7 @@ export async function initApp(deps) {
       return `<section class="kg-node-group kg-${type.toLowerCase()}"><div class="kg-group-title"><span>${knowledgeNodeIcon(type)}</span><strong>${escapeHtml(knowledgeNodeLabel(type))}</strong><small>${nodes.length}</small></div><div class="kg-node-grid">${nodes.map((node) => renderKnowledgeNode(node, graph)).join("")}</div></section>`;
     }).join("");
     const relations = graph.edges.filter((edge) => edge.type === "RELATES_TO");
-    const relationSection = relations.length ? `<section class="kg-relation-strip"><div class="kg-group-title"><span>↔</span><strong>関係</strong><small>${relations.length}</small></div>${relations.map((edge) => `<button class="kg-relation-row" data-kg-node="${escapeHtml(edge.targetId)}"><span>${edge.directed === false ? "↔" : "→"}</span><strong>${escapeHtml(nodeLabel(graph, edge.sourceId))}</strong><em>${escapeHtml(edge.relationType || "RELATES_TO")}</em><strong>${escapeHtml(nodeLabel(graph, edge.targetId))}</strong></button>`).join("")}</section>` : "";
+    const relationSection = relations.length ? `<section class="kg-relation-strip"><div class="kg-group-title"><span>↔</span><strong>関係</strong><small>${relations.length}</small></div>${relations.map((edge) => `<button class="kg-relation-row" data-kg-node="${escapeHtml(edge.targetId)}"><span>${edge.directed === false ? "↔" : "→"}</span><strong>${escapeHtml(nodeLabel(graph, edge.sourceId))}</strong><em>${escapeHtml(knowledgeEdgeLabel(edge.type, edge.relationType, registry.relationTypes))}</em><strong>${escapeHtml(nodeLabel(graph, edge.targetId))}</strong></button>`).join("")}</section>` : "";
     const backButton = state.knowledgeViewMode === "focus" ? '<button class="text-button" data-kg-overview>← 訪問全体へ戻る</button>' : "";
     return `<div class="kg-canvas-header"><span>DISPLAY GRAPH</span><strong>${state.knowledgeViewMode === "focus" ? "Observation詳細・1ホップ" : "訪問全体"}</strong><span class="kg-header-actions">${backButton}</span></div>${sections}${relationSection}`;
   }
@@ -2187,7 +2198,7 @@ export async function initApp(deps) {
       const shape = renderRadialNodeShape(node, position, selected);
       const referenceKey = node.type === "ReferenceNode" ? `reference:${node.referenceId}` : null;
       const referenceAction = referenceKey && shouldShowReferenceExpansion(node, displayGraph) ? `<text class="kg-svg-expand" data-kg-expand-reference="${escapeHtml(referenceKey)}" x="${position.x}" y="${position.y + 59}" text-anchor="middle">${state.knowledgeExpanded.has(referenceKey) ? "折り畳む" : "展開"}</text>` : "";
-      return `<g class="kg-svg-node kg-svg-${node.type.toLowerCase()} ${selected ? "selected" : ""}" data-kg-node="${escapeHtml(node.id)}">${shape}${image}${region}${imageClose}<text x="${position.x}" y="${position.y + 43}" text-anchor="middle">${escapeHtml(shortGraphLabel(node.label || node.title || node.predicate || node.referenceId || node.type))}</text>${referenceAction}<title>${escapeHtml(node.label || node.title || node.predicate || node.referenceId || node.type)}</title></g>`;
+      return `<g class="kg-svg-node kg-svg-${node.type.toLowerCase()} ${selected ? "selected" : ""}" data-kg-node="${escapeHtml(node.id)}">${shape}${image}${region}${imageClose}<text x="${position.x}" y="${position.y + 43}" text-anchor="middle">${escapeHtml(shortGraphLabel(knowledgeNodeText(node)))}</text>${referenceAction}<title>${escapeHtml(knowledgeNodeText(node))}</title></g>`;
     }).join("");
     const zoom = state.knowledgeZoom;
     const backButton = state.knowledgeViewMode === "focus" ? '<button class="text-button" data-kg-overview>← 訪問全体へ戻る</button>' : "";
@@ -2217,7 +2228,7 @@ export async function initApp(deps) {
   function renderKnowledgeNode(node, graph) {
     const photo = node.type === "Photo" || node.type === "Observation" ? photoById(node.photoId) : null;
     const image = photo ? `<span class="kg-node-image">${rotatedPhotoFrame(photo, `<img src="${escapeHtml(photo.thumbSrc || photo.src || MISSING_PHOTO_SRC)}" alt="" />${node.region ? `<i style="left:${node.region.x}%;top:${node.region.y}%;width:${node.region.w}%;height:${node.region.h}%"></i>` : ""}`)}</span>` : "";
-    const card = `<button class="kg-node-card kg-shape-${node.type.toLowerCase()}" data-kg-node="${escapeHtml(node.id)}">${image}<span class="kg-node-icon">${knowledgeNodeIcon(node.type)}</span><strong>${escapeHtml(node.label || node.title || node.predicate || node.referenceId || node.type)}</strong><small>${escapeHtml(knowledgeNodeLabel(node.type))}</small></button>`;
+    const card = `<button class="kg-node-card kg-shape-${node.type.toLowerCase()}" data-kg-node="${escapeHtml(node.id)}">${image}<span class="kg-node-icon">${knowledgeNodeIcon(node.type)}</span><strong>${escapeHtml(knowledgeNodeText(node))}</strong>${renderKnowledgeDisplayAttributes(node)}<small>${escapeHtml(knowledgeNodeLabel(node.type))}</small></button>`;
     return node.type === "ReferenceNode" && shouldShowReferenceExpansion(node, graph) ? `<div class="kg-reference-node-wrap">${card}<button class="text-button kg-reference-expand" data-kg-expand-reference="reference:${escapeHtml(node.referenceId)}">${state.knowledgeExpanded.has(`reference:${node.referenceId}`) ? "折り畳む" : "展開"}</button></div>` : card;
   }
 
@@ -2236,7 +2247,7 @@ export async function initApp(deps) {
     const photo = node.photoId ? photoById(node.photoId) : null;
     const referenceEditor = node.type === "Observation" || node.type === "Entity" ? renderReferenceFactEditor(node) : "";
     const photoMarkup = photo ? rotatedPhotoFrame(photo, `<img src="${escapeHtml(photo.src || photo.thumbSrc || MISSING_PHOTO_SRC)}" alt="${escapeHtml(photo.title)}" />`) : "";
-    return `<div class="kg-detail-header"><span>${knowledgeNodeIcon(node.type)} ${escapeHtml(knowledgeNodeLabel(node.type))}</span><h2>${escapeHtml(node.label || node.title || node.predicate || node.referenceId || node.type)}</h2>${photo ? `<button class="ghost-button dark" data-open-photo="${escapeHtml(photo.id)}">元写真を見る</button>` : ""}</div>${photo ? `<div class="kg-detail-photo">${photoMarkup}<strong>${escapeHtml(photo.title)}</strong></div>` : ""}${referenceEditor}<div class="kg-detail-meta"><p>接続 ${detail.incoming.length + detail.outgoing.length}件</p>${detail.outgoing.map((edge) => `<button data-kg-node="${escapeHtml(edge.targetId)}">→ ${escapeHtml(nodeLabel(graph, edge.targetId))}</button>`).join("")}${detail.incoming.map((edge) => `<button data-kg-node="${escapeHtml(edge.sourceId)}">← ${escapeHtml(nodeLabel(graph, edge.sourceId))}</button>`).join("")}</div>`;
+    return `<div class="kg-detail-header"><span>${knowledgeNodeIcon(node.type)} ${escapeHtml(knowledgeNodeLabel(node.type))}</span><h2>${escapeHtml(knowledgeNodeText(node))}</h2>${renderKnowledgeDisplayAttributes(node)}${photo ? `<button class="ghost-button dark" data-open-photo="${escapeHtml(photo.id)}">元写真を見る</button>` : ""}</div>${photo ? `<div class="kg-detail-photo">${photoMarkup}<strong>${escapeHtml(photo.title)}</strong></div>` : ""}${referenceEditor}<div class="kg-detail-meta"><p>接続 ${detail.incoming.length + detail.outgoing.length}件</p>${detail.outgoing.map((edge) => `<button data-kg-node="${escapeHtml(edge.targetId)}">→ ${escapeHtml(knowledgeEdgeLabel(edge.type, edge.relationType, registry.relationTypes))}：${escapeHtml(nodeLabel(graph, edge.targetId))}</button>`).join("")}${detail.incoming.map((edge) => `<button data-kg-node="${escapeHtml(edge.sourceId)}">← ${escapeHtml(knowledgeEdgeLabel(edge.type, edge.relationType, registry.relationTypes))}：${escapeHtml(nodeLabel(graph, edge.sourceId))}</button>`).join("")}</div>`;
   }
 
   function renderReferenceFactEditor(node) {
@@ -2246,7 +2257,6 @@ export async function initApp(deps) {
   }
 
   function nodeLabel(graph, nodeId) { const node = getKnowledgeGraphNodeDetail(graph, nodeId)?.node; return node?.label || node?.title || nodeId; }
-  function knowledgeNodeLabel(type) { return { User: "利用者", Visit: "訪問", Photo: "写真", Observation: "観察対象", Entity: "関連する対象", ReferenceFact: "確認済みの知識", ReferenceNode: "参照分類・時代", GenericCategory: "汎用分類", DomainCategory: "分野分類", LearningRole: "学習役割" }[type] || type; }
   function knowledgeNodeIcon(type) { return { User: "●", Visit: "⬡", Photo: "▣", Observation: "◎", Entity: "◇", ReferenceFact: "▤", ReferenceNode: "⌘", GenericCategory: "◌", DomainCategory: "◆", LearningRole: "✦" }[type] || "•"; }
   function bindKnowledgeGraphEvents() {
     $$('[data-knowledge-observation]').forEach((button) => button.addEventListener("click", () => { state.knowledgeObservationId = button.dataset.knowledgeObservation; state.knowledgeViewMode = "focus"; renderKnowledge(); }));
@@ -2440,7 +2450,7 @@ export async function initApp(deps) {
     const retrying = state.quizRetry === true;
     state.quizAnswered = Boolean(stored) && !retrying;
     const selectedReferenceId = retrying ? null : stored?.answer?.placements?.find((placement) => placement.cardId === quiz.observationId)?.referenceId || null;
-     $("#quizStage").innerHTML = `<article class="quiz-card"><div class="quiz-content"><span class="quiz-counter">${quiz.questionType === "hierarchy" ? "CLASSIFICATION" : quiz.questionType === "timeline-map" ? "GEOLOGICAL TIME" : quiz.questionType === "matching" ? "RELATION" : "OBSERVATION"} ${String(state.quizIndex + 1).padStart(2, "0")} / ${String(total).padStart(2, "0")}</span><h2>${escapeHtml(quiz.prompt)}</h2><div class="quiz-placement-layout"><div class="quiz-photo-card" draggable="${state.quizAnswered ? "false" : "true"}" data-quiz-card="${escapeHtml(quiz.observationId)}"><img src="${escapeHtml(photo?.src || MISSING_PHOTO_SRC)}" alt="${escapeHtml(photo?.title || "写真")}" />${quiz.region ? `<i style="left:${quiz.region.x}%;top:${quiz.region.y}%;width:${quiz.region.w}%;height:${quiz.region.h}%"></i>` : ""}<strong>${escapeHtml(photo?.title || "写真")}</strong></div>${renderQuizPlacementBoard(quiz, selectedReferenceId, state.quizAnswered)}</div><div id="quizFeedback">${state.quizAnswered ? `<div class="quiz-feedback"><strong>${stored.correct ? "正解です。" : `正解は「${escapeHtml(quiz.options.find((option) => option.id === quiz.targetReferenceId)?.label || quiz.targetReferenceId)}」です。`}</strong>${escapeHtml(quiz.explanation)}</div>` : ""}</div><div class="quiz-next-row"><small>${escapeHtml(photo?.title || "写真")}</small>${state.quizAnswered ? `<button class="ghost-button" id="retryQuizButton">もう一度回答</button>` : ""}<button class="primary-button" id="nextQuizButton" ${state.quizAnswered ? "" : "disabled"}>${state.quizIndex === total - 1 ? "結果を見る" : "次の問題 →"}</button></div></div></article>`;
+     $("#quizStage").innerHTML = `<article class="quiz-card"><div class="quiz-content"><span class="quiz-counter">${quiz.questionType === "hierarchy" ? "CLASSIFICATION" : quiz.questionType === "timeline-map" ? "GEOLOGICAL TIME" : quiz.questionType === "matching" ? "RELATION" : "OBSERVATION"} ${String(state.quizIndex + 1).padStart(2, "0")} / ${String(total).padStart(2, "0")}</span><h2>${escapeHtml(quiz.prompt)}</h2><div class="quiz-placement-layout"><div class="quiz-photo-card" draggable="${state.quizAnswered ? "false" : "true"}" data-quiz-card="${escapeHtml(quiz.observationId)}">${renderQuizPhotoMedia(photo, quiz.region, { label: photo?.title || "写真" })}</div>${renderQuizPlacementBoard(quiz, selectedReferenceId, state.quizAnswered)}</div><div id="quizFeedback">${state.quizAnswered ? `<div class="quiz-feedback"><strong>${stored.correct ? "正解です。" : `正解は「${escapeHtml(quiz.options.find((option) => option.id === quiz.targetReferenceId)?.label || quiz.targetReferenceId)}」です。`}</strong>${escapeHtml(quiz.explanation)}</div>` : ""}</div><div class="quiz-next-row"><small>${escapeHtml(photo?.title || "写真")}</small>${state.quizAnswered ? `<button class="ghost-button" id="retryQuizButton">もう一度回答</button>` : ""}<button class="primary-button" id="nextQuizButton" ${state.quizAnswered ? "" : "disabled"}>${state.quizIndex === total - 1 ? "結果を見る" : "次の問題 →"}</button></div></div></article>`;
     $$('[data-quiz-drop]').forEach((button) => {
       button.addEventListener("click", () => answerGeneratedQuiz(quiz, button.dataset.quizDrop));
       button.addEventListener("dragover", (event) => event.preventDefault());
@@ -2470,7 +2480,7 @@ export async function initApp(deps) {
       return `<div class="quiz-hierarchy-board" aria-label="分類樹">${options.map((option) => `<button class="quiz-placement quiz-tree-node ${selectedReferenceId === option.id ? (answered ? "correct" : "selected") : ""}" style="--tree-depth:${depth(option)}" data-quiz-drop="${escapeHtml(option.id)}" ${answered ? "disabled" : ""}>${escapeHtml(option.label)}${option.labelEn ? `<small>${escapeHtml(option.labelEn)}</small>` : ""}</button>`).join("")}</div>`;
     }
     if (quiz.questionType !== "timeline-map") {
-      return `<div class="quiz-choice-board" aria-label="候補一覧">${options.map((option) => { const optionPhoto = option.photoId ? photoById(option.photoId) : null; return `<button class="quiz-placement quiz-choice-option ${selectedReferenceId === option.id ? (answered ? "correct" : "selected") : ""}" data-quiz-drop="${escapeHtml(option.id)}" ${answered ? "disabled" : ""}>${optionPhoto ? `<img src="${escapeHtml(optionPhoto.src || MISSING_PHOTO_SRC)}" alt="" style="${rotationStyle(optionPhoto.rotation)}" />` : ""}<span>${escapeHtml(option.label)}</span></button>`; }).join("")}</div>`;
+      return `<div class="quiz-choice-board" aria-label="候補一覧">${options.map((option) => { const optionPhoto = option.photoId ? photoById(option.photoId) : null; return `<button class="quiz-placement quiz-choice-option ${selectedReferenceId === option.id ? (answered ? "correct" : "selected") : ""}" data-quiz-drop="${escapeHtml(option.id)}" ${answered ? "disabled" : ""}>${optionPhoto ? renderQuizPhotoMedia(optionPhoto, option.region, { label: option.label, className: "quiz-choice-media" }) : `<span>${escapeHtml(option.label)}</span>`}</button>`; }).join("")}</div>`;
     }
     const sorted = options.sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER) || a.id.localeCompare(b.id));
     return `<div class="quiz-timeline-board" aria-label="地質時代の時間軸"><div class="quiz-time-axis"><span>古い</span><i></i><span>新しい</span></div><div class="quiz-time-slots">${sorted.map((option) => `<button class="quiz-placement quiz-time-slot ${selectedReferenceId === option.id ? (answered ? "correct" : "selected") : ""}" data-quiz-drop="${escapeHtml(option.id)}" ${answered ? "disabled" : ""}><strong>${escapeHtml(option.label)}</strong><small>${option.startMa == null ? "" : `${option.startMa} Ma`} ${option.endMa == null ? "" : `〜 ${option.endMa} Ma`}</small></button>`).join("")}</div></div>`;

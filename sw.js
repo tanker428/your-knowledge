@@ -204,9 +204,26 @@ async function serveSample(request) {
   return response;
 }
 
+function isPullRequestPreviewRequest(url) {
+  if (url.origin !== self.location.origin) return false;
+  const scopePath = new URL(self.registration.scope).pathname.replace(/\/+$/, "");
+  const previewPattern = new RegExp(
+    `^${scopePath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/pr/\\d+(?:/|$)`,
+  );
+  return previewPattern.test(url.pathname);
+}
+
 self.addEventListener("fetch", (event) => {
   const request = event.request;
   const url = new URL(request.url);
+
+  // A production worker can control the preview path because its scope is
+  // /your-knowledge/. Never let that worker read or mutate production caches
+  // for a PR preview, including offline navigation fallback.
+  if (isPullRequestPreviewRequest(url)) {
+    event.respondWith(fetch(request));
+    return;
+  }
 
   if (request.method === "POST" && url.pathname.endsWith("/share-target")) {
     event.respondWith(handleShareTarget(request));
