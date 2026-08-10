@@ -50,7 +50,12 @@ function createProject() {
           region: { x: 10, y: 20, w: 40, h: 30 }, genericCategories: ["exhibit"], domainCategories: ["skeleton"],
           classificationAssertions: [{ id: "assertion-bone", categoryType: "domain", categoryId: "skeleton", status: "confirmed" }],
           learningRoles: ["subject"], domainPacks: ["paleo"], entityId: "entity-basilosaurus", status: "confirmed", included: true,
-        }],
+        }, ...[2, 3, 4].map((index) => ({
+          id: `observation-bone-${index}`, photoId: "photo-user-1", label: `骨格${index}`, observationType: "physical",
+          region: { x: index * 10, y: index * 5, w: 20, h: 20 }, genericCategories: ["exhibit"], domainCategories: ["skeleton"],
+          classificationAssertions: [{ id: `assertion-bone-${index}`, categoryType: "domain", categoryId: "skeleton", status: "confirmed" }],
+          learningRoles: ["subject"], domainPacks: ["paleo"], entityId: "entity-basilosaurus", status: "confirmed", included: true,
+        }))],
       },
       {
         id: "photo-user-2", visitId: "visit-user", title: "説明パネル", order: 2, source: "user", file: "panel.jpg",
@@ -74,7 +79,7 @@ function createProject() {
     ],
     referenceFacts: [
       { id: "reference-taxonomy", subjectId: "entity-basilosaurus", predicate: "classifiedAs", value: "taxon:child", sourceType: "curated", status: "verified" },
-      { id: "reference-time", targetObservationId: "observation-bone", predicate: "livedDuring", value: "geo:period", sourceType: "curated", status: "verified" },
+      { id: "reference-time", subjectId: "entity-basilosaurus", predicate: "livedDuring", value: "geo:period", sourceType: "curated", status: "verified" },
       { id: "reference-demo", subjectId: "entity-demo", predicate: "classifiedAs", value: "taxon:child", sourceType: "curated", status: "verified" },
       { id: "reference-draft", subjectId: "entity-basilosaurus", predicate: "classifiedAs", value: "taxon:sibling", sourceType: "curated", status: "draft" },
     ],
@@ -87,12 +92,12 @@ function createProject() {
 }
 
 function correctResult(question, index) {
-  const scored = scoreQuizAnswer(question, { placements: [{ cardId: question.observationId, referenceId: question.targetReferenceId }] });
+  const scored = scoreQuizAnswer(question, { placements: question.cards.map((card) => ({ cardId: card.cardId, referenceId: card.targetReferenceId })) });
   return {
     id: `result-${index}`,
     visitId: "visit-user",
     quizId: question.id,
-    referenceFactId: question.referenceFactId,
+    referenceFactId: question.cards[0].referenceFactId,
     answer: scored.answer,
     score: scored.score,
     correct: scored.correct,
@@ -111,10 +116,10 @@ describe("Issue #10 core loop integration", () => {
     expect(graph.nodes.some((node) => node.id.includes("demo"))).toBe(false);
     expect(graph.edges.some((edge) => edge.relationId === "relation-explains")).toBe(true);
 
-    const quizzes = generateVisitQuizzes(project, project.activeVisitId, registries, referenceGraph);
+    const quizzes = generateVisitQuizzes(project, project.activeVisitId, registries, referenceGraph, { difficulty: "hard" });
     expect(quizzes.map((quiz) => quiz.questionType)).toEqual(["hierarchy", "timeline-map"]);
-    expect(quizzes.every((quiz) => quiz.photoId === "photo-user-1")).toBe(true);
-    expect(quizzes[0].region).toEqual({ x: 10, y: 20, w: 40, h: 30 });
+    expect(quizzes.every((quiz) => quiz.cards.every((card) => card.photoId === "photo-user-1"))).toBe(true);
+    expect(quizzes[0].cards[0].region).toEqual({ x: 10, y: 20, w: 40, h: 30 });
 
     for (const [index, question] of quizzes.entries()) {
       const result = correctResult(question, index + 1);
@@ -131,7 +136,7 @@ describe("Issue #10 core loop integration", () => {
     ]));
     expect(getLearnedReferenceFacts(project, "visit-user", userId).map((item) => item.fact.id)).toEqual(["reference-taxonomy", "reference-time"]);
     expect(getLearnedReferenceFacts(project, "visit-demo", userId)).toEqual([]);
-    expect(buildCollectionProgress(project, "visit-user", userId, registries)[0]).toMatchObject({ observationCount: 2, counts: { discovery: 2, organize: 2, relation: 2, learning: 1 } });
+    expect(buildCollectionProgress(project, "visit-user", userId, registries)[0]).toMatchObject({ observationCount: 5, counts: { discovery: 5, organize: 5, relation: 2, learning: 4 } });
 
     const document = buildExportDocument({ project });
     expect(validateProjectDocument(document).ok).toBe(true);
@@ -145,7 +150,7 @@ describe("Issue #10 core loop integration", () => {
 
   it("keeps retry history, updates mastery from the latest answer, and isolates deletion by Visit", () => {
     const project = /** @type {any} */ (createProject());
-    const question = generateVisitQuizzes(project, "visit-user", registries, referenceGraph).find((item) => item.referenceFactId === "reference-taxonomy");
+    const question = generateVisitQuizzes(project, "visit-user", registries, referenceGraph, { difficulty: "hard" }).find((item) => item.cards[0].referenceFactId === "reference-taxonomy");
     const first = correctResult(question, 1);
     let recorded = recordQuizLearning({ events: [], states: [], result: first, userId });
     const retry = { ...first, id: "result-retry", attemptId: "attempt-retry", deckAttemptId: "deck-2", answeredAt: "2026-07-31T10:00:00Z", score: 0, correct: false, answer: { placements: [] } };
@@ -166,7 +171,7 @@ describe("Issue #10 core loop integration", () => {
 
   it("removes a Visit cascade without leaving related records or dangling references", () => {
     const project = /** @type {any} */ (createProject());
-    const question = generateVisitQuizzes(project, "visit-user", registries, referenceGraph)[0];
+    const question = generateVisitQuizzes(project, "visit-user", registries, referenceGraph, { difficulty: "hard" })[0];
     const result = correctResult(question, 1);
     const recorded = recordQuizLearning({ events: [], states: [], result, userId });
     project.quizResults = [result];
@@ -175,7 +180,7 @@ describe("Issue #10 core loop integration", () => {
 
     const cascade = collectVisitCascade(project, "visit-user");
     expect(cascade.photoIds).toEqual(["photo-user-1", "photo-user-2"]);
-    expect(cascade.observationIds).toEqual(["observation-bone", "observation-panel"]);
+    expect(cascade.observationIds).toEqual(["observation-bone", "observation-bone-2", "observation-bone-3", "observation-bone-4", "observation-panel"]);
     expect(cascade.relationIds).toEqual(["relation-explains", "relation-demo"]);
     expect(cascade.quizResultIds).toEqual(["result-1"]);
 
@@ -212,7 +217,7 @@ describe("Issue #10 core loop integration", () => {
 
   it("recomputes quizzes, learned display, and collection progress after ReferenceFact deletion", () => {
     const project = /** @type {any} */ (createProject());
-    const questions = generateVisitQuizzes(project, "visit-user", registries, referenceGraph);
+    const questions = generateVisitQuizzes(project, "visit-user", registries, referenceGraph, { difficulty: "hard" });
     for (const [index, question] of questions.entries()) {
       const result = correctResult(question, index + 1);
       project.quizResults.push(result);
@@ -220,17 +225,17 @@ describe("Issue #10 core loop integration", () => {
       project.learningEvents = recorded.events;
       project.userKnowledgeStates = recorded.states;
     }
-    expect(generateVisitQuizzes(project, "visit-user", registries, referenceGraph)).toHaveLength(2);
+    expect(generateVisitQuizzes(project, "visit-user", registries, referenceGraph, { difficulty: "hard" })).toHaveLength(2);
     expect(getLearnedReferenceFacts(project, "visit-user", userId)).toHaveLength(2);
-    expect(buildCollectionProgress(project, "visit-user", userId, registries)[0].counts.learning).toBe(1);
+    expect(buildCollectionProgress(project, "visit-user", userId, registries)[0].counts.learning).toBe(4);
 
     project.referenceFacts = project.referenceFacts.filter((fact) => fact.id !== "reference-taxonomy");
-    expect(generateVisitQuizzes(project, "visit-user", registries, referenceGraph).map((quiz) => quiz.referenceFactId)).toEqual(["reference-time"]);
+    expect(generateVisitQuizzes(project, "visit-user", registries, referenceGraph, { difficulty: "hard" }).map((quiz) => quiz.cards[0].referenceFactId)).toEqual(["reference-time"]);
     expect(getLearnedReferenceFacts(project, "visit-user", userId).map((item) => item.fact.id)).toEqual(["reference-time"]);
-    expect(buildCollectionProgress(project, "visit-user", userId, registries)[0].counts.learning).toBe(1);
+    expect(buildCollectionProgress(project, "visit-user", userId, registries)[0].counts.learning).toBe(4);
 
     project.referenceFacts = project.referenceFacts.filter((fact) => fact.id !== "reference-time");
-    expect(generateVisitQuizzes(project, "visit-user", registries, referenceGraph)).toEqual([]);
+    expect(generateVisitQuizzes(project, "visit-user", registries, referenceGraph, { difficulty: "hard" })).toEqual([]);
     expect(getLearnedReferenceFacts(project, "visit-user", userId)).toEqual([]);
     expect(buildCollectionProgress(project, "visit-user", userId, registries)[0].counts.learning).toBe(0);
   });

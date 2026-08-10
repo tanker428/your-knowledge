@@ -1,6 +1,7 @@
 import { buildVisitKnowledgeGraph } from "../../domain/knowledge-graph.js";
 import {
   compareGeologicalTimeNodes,
+  getReferenceAncestors,
   getReferenceNodeById,
   getReferenceParents,
   getReferenceChildren,
@@ -8,7 +9,14 @@ import {
 } from "../../domain/reference-registry.js";
 
 const MAX_QUESTIONS = 10;
+const MIN_COMPARABLE_OBSERVATIONS = 4;
+const MAX_HARD_QUESTION_CARDS = 8;
 export const MAX_PER_TYPE = Object.freeze({ hierarchy: 3, "timeline-map": 3, matching: 2, "observation-choice": 2 });
+export const QUIZ_DIFFICULTIES = Object.freeze({
+  easy: Object.freeze({ id: "easy", label: "簡単", minCards: 1, description: "1件ずつ配置" }),
+  normal: Object.freeze({ id: "normal", label: "普通", minCards: 2, description: "2〜3件をまとめて配置" }),
+  hard: Object.freeze({ id: "hard", label: "難しい", minCards: 4, description: "4件以上をまとめて配置" }),
+});
 const QUESTION_TYPE_ORDER = Object.freeze(["hierarchy", "timeline-map", "matching", "observation-choice"]);
 const TYPE_BY_AXIS = { taxonomy: "hierarchy", "geological-time": "timeline-map" };
 const PREDICATE_BY_AXIS = { taxonomy: new Set(["classifiedas", "classified_as", "classified-as"]), "geological-time": new Set(["livedduring", "occursduring", "occurreduring", "occurs-during"]) };
@@ -40,102 +48,269 @@ export function buildPlacementQuizPrompt(label, predicate) {
   return template ? template(label) : `${label}に対応する位置を配置してください。`;
 }
 
-export function generateVisitQuizzes(project, visitId, registries = {}, referenceGraph) {
+/** Preserve the existing signature while allowing a fifth, optional settings object. */
+export function generateVisitQuizzes(project, visitId, registries = {}, referenceGraph, options = {}) {
   const graph = buildVisitKnowledgeGraph(project, visitId, registries);
-  return generateQuizzesFromKnowledgeGraph(graph, referenceGraph);
+  return generateQuizzesFromKnowledgeGraphs([graph], referenceGraph, options);
 }
 
-export function generateQuizzesFromKnowledgeGraph(graph, referenceGraph) {
-  if (!graph) return [];
-  const observations = new Map(graph.nodes.filter((node) => node.type === "Observation" && node.status === "confirmed" && node.included !== false).map((node) => [node.id, node]));
-  const confirmedRelationIds = new Set(graph.edges.filter((edge) => edge.type === "RELATES_TO" && edge.status === "confirmed" && observations.has(edge.sourceId) && observations.has(edge.targetId)).map((edge) => edge.relationId));
-  const factEdges = graph.edges.filter((edge) => edge.type === "HAS_REFERENCE_FACT");
-  const entityObservationIds = new Map();
-  for (const edge of graph.edges.filter((item) => item.type === "REFERS_TO" && observations.has(item.sourceId))) {
-    const list = entityObservationIds.get(edge.targetId) || [];
-    list.push(edge.sourceId);
-    entityObservationIds.set(edge.targetId, list);
-  }
-  const questions = [];
-  for (const fact of graph.nodes.filter((node) => node.type === "ReferenceFact" && node.status === "verified")) {
-    if (!referenceGraph) break;
-    const values = Array.isArray(fact.value) ? fact.value : [fact.value];
-    for (const value of values) {
-      const target = typeof value === "string" ? getReferenceNodeById(referenceGraph, value) : null;
-      if (!target || target.status !== "verified" || target.quizEligible === false) continue;
-      const axis = target.axis;
-      const predicate = String(fact.predicate || "").toLowerCase();
-      if (!PREDICATE_BY_AXIS[axis]?.has(predicate)) continue;
+/** Generate one deck from all Visit projections without persisting a combined graph. */
+export function generateAllVisitQuizzes(project, registries = {}, referenceGraph, options = {}) {
+  const graphs = [...(project?.visits || [])]
+    .sort((a, b) => String(a.id).localeCompare(String(b.id)))
+    .map((visit) => buildVisitKnowledgeGraph(project, visit.id, registries));
+  return generateQuizzesFromKnowledgeGraphs(graphs, referenceGraph, options);
+}
+
+export function generateQuizzesFromKnowledgeGraph(graph, referenceGraph, options = {}) {
+  return generateQuizzesFromKnowledgeGraphs(graph ? [graph] : [], referenceGraph, options);
+}
+
+export function generateQuizzesFromKnowledgeGraphs(graphs, referenceGraph, options = {}) {
+  const difficulty = normalizeDifficulty(options.difficulty);
+  const placementCards = collectPlacementCards(graphs, referenceGraph);
+  const questions = buildStructureQuestions(placementCards, referenceGraph, difficulty);
+  for (const graph of graphs) questions.push(...buildFillQuestions(graph));
+  return selectQuizQuestions(questions);
+}
+
+function normalizeDifficulty(value) {
+  return Object.hasOwn(QUIZ_DIFFICULTIES, value) ? value : "easy";
+}
+
+function collectPlacementCards(graphs, referenceGraph) {
+  if (!referenceGraph) return [];
+  const cards = [];
+  for (const graph of graphs) {
+    const observations = new Map(graph.nodes
+      .filter((node) => node.type === "Observation" && node.status === "confirmed" && node.included !== false)
+      .map((node) => [node.id, node]));
+    const factEdges = graph.edges.filter((edge) => edge.type === "HAS_REFERENCE_FACT");
+    const entityObservationIds = new Map();
+    for (const edge of graph.edges.filter((item) => item.type === "REFERS_TO" && observations.has(item.sourceId))) {
+      const list = entityObservationIds.get(edge.targetId) || [];
+      list.push(edge.sourceId);
+      entityObservationIds.set(edge.targetId, list);
+    }
+    for (const fact of graph.nodes.filter((node) => node.type === "ReferenceFact" && node.status === "verified")) {
       const subjectEdge = factEdges.find((edge) => edge.targetId === fact.id);
       if (!subjectEdge) continue;
-      const candidateObservationIds = subjectEdge.sourceId.startsWith("Observation:") ? [subjectEdge.sourceId] : entityObservationIds.get(subjectEdge.sourceId) || [];
-      const observation = candidateObservationIds.map((id) => observations.get(id)).find(Boolean);
-      if (!observation) continue;
-      const placement = buildPlacementBoardData(referenceGraph, target, axis);
-      if (placement.options.length < 2) continue;
-      const observationNodeId = `Observation:${observation.observationId}`;
-      const relationIds = [...confirmedRelationIds].filter((id) => graph.edges.some((edge) => edge.relationId === id && (edge.sourceId === observationNodeId || edge.targetId === observationNodeId))).sort();
+      const candidateObservationIds = subjectEdge.sourceId.startsWith("Observation:")
+        ? [subjectEdge.sourceId]
+        : entityObservationIds.get(subjectEdge.sourceId) || [];
+      const values = Array.isArray(fact.value) ? fact.value : [fact.value];
+      for (const value of values) {
+        const target = typeof value === "string" ? getReferenceNodeById(referenceGraph, value) : null;
+        if (!target || target.status !== "verified" || target.quizEligible === false) continue;
+        const predicate = String(fact.predicate || "").toLowerCase();
+        if (!PREDICATE_BY_AXIS[target.axis]?.has(predicate)) continue;
+        const placement = buildPlacementBoardData(referenceGraph, target, target.axis);
+        if (placement.options.length < 2) continue;
+        for (const observationNodeId of [...candidateObservationIds].sort()) {
+          const observation = observations.get(observationNodeId);
+          if (!observation) continue;
+          const relationIds = graph.edges
+            .filter((edge) => edge.type === "RELATES_TO" && edge.status === "confirmed"
+              && (edge.sourceId === observationNodeId || edge.targetId === observationNodeId))
+            .map((edge) => edge.relationId)
+            .filter(Boolean)
+            .sort();
+          cards.push({
+            cardId: observation.observationId,
+            observationId: observation.observationId,
+            label: observation.label,
+            photoId: observation.photoId,
+            region: observation.region || null,
+            visitId: observation.visitId || graph.visitId,
+            referenceFactId: fact.referenceFactId,
+            targetReferenceId: target.id,
+            predicate: fact.predicate,
+            axis: target.axis,
+            targetRank: target.rank ?? null,
+            relationIds,
+            directReferenceFact: subjectEdge.sourceId.startsWith("Observation:"),
+          });
+        }
+      }
+    }
+  }
+  return selectMostDetailedCards(cards, referenceGraph);
+}
+
+/** One Observation has one answer per axis: the deepest registered stable ID wins. */
+export function selectMostDetailedCards(cards, referenceGraph) {
+  const selected = new Map();
+  for (const card of cards) {
+    const key = `${card.visitId}\u0000${card.observationId}\u0000${card.axis}`;
+    const current = selected.get(key);
+    if (!current || compareCardDetail(card, current, referenceGraph) < 0) selected.set(key, card);
+  }
+  return [...selected.values()].sort(compareCards);
+}
+
+function compareCardDetail(a, b, referenceGraph) {
+  if (a.targetReferenceId !== b.targetReferenceId) {
+    const aAncestors = new Set(getReferenceAncestors(referenceGraph, a.targetReferenceId).map((node) => node.id));
+    const bAncestors = new Set(getReferenceAncestors(referenceGraph, b.targetReferenceId).map((node) => node.id));
+    if (aAncestors.has(b.targetReferenceId)) return -1;
+    if (bAncestors.has(a.targetReferenceId)) return 1;
+    if (aAncestors.size !== bAncestors.size) return bAncestors.size - aAncestors.size;
+  }
+  if (a.directReferenceFact !== b.directReferenceFact) return a.directReferenceFact ? -1 : 1;
+  return String(a.targetReferenceId).localeCompare(String(b.targetReferenceId))
+    || String(a.referenceFactId).localeCompare(String(b.referenceFactId));
+}
+
+function compareCards(a, b) {
+  return String(a.axis).localeCompare(String(b.axis))
+    || String(a.targetRank || "").localeCompare(String(b.targetRank || ""))
+    || String(a.visitId).localeCompare(String(b.visitId))
+    || String(a.observationId).localeCompare(String(b.observationId))
+    || String(a.referenceFactId).localeCompare(String(b.referenceFactId));
+}
+
+function comparableGroupKey(card) {
+  return card.axis === "geological-time" ? `${card.axis}:${card.targetRank || "unknown"}` : card.axis;
+}
+
+function groupComparableCards(cards) {
+  const groups = new Map();
+  for (const card of cards) {
+    const key = comparableGroupKey(card);
+    const group = groups.get(key) || [];
+    group.push(card);
+    groups.set(key, group);
+  }
+  return [...groups.entries()]
+    .map(([key, group]) => ({ key, cards: group.sort(compareCards) }))
+    .sort((a, b) => a.key.localeCompare(b.key));
+}
+
+function partitionCards(cards, difficulty) {
+  if (difficulty === "easy") return cards.map((card) => [card]);
+  if (difficulty === "hard") {
+    const groupCount = Math.ceil(cards.length / MAX_HARD_QUESTION_CARDS);
+    const baseSize = Math.floor(cards.length / groupCount);
+    const largerGroupCount = cards.length % groupCount;
+    const groups = [];
+    let index = 0;
+    for (let groupIndex = 0; groupIndex < groupCount; groupIndex += 1) {
+      const size = baseSize + (groupIndex < largerGroupCount ? 1 : 0);
+      groups.push(cards.slice(index, index + size));
+      index += size;
+    }
+    return groups;
+  }
+  const groups = [];
+  let index = 0;
+  while (index < cards.length) {
+    const remaining = cards.length - index;
+    const size = remaining === 4 ? 2 : Math.min(3, remaining);
+    if (size < 2) break;
+    groups.push(cards.slice(index, index + size));
+    index += size;
+  }
+  return groups;
+}
+
+function buildStructureQuestionPrompt(cards, axis) {
+  if (cards.length === 1) return buildPlacementQuizPrompt(cards[0].label, cards[0].predicate);
+  const label = `${cards.length}件の対象`;
+  const prompts = cards.map((card) => {
+    const template = PLACEMENT_PROMPT_BY_PREDICATE[String(card.predicate || "").toLowerCase()];
+    return template ? template(label) : null;
+  });
+  if (prompts.every((prompt) => prompt === prompts[0])) return prompts[0];
+  return `${label}を正しい${axis === "taxonomy" ? "分類" : "時代"}へ配置してください。`;
+}
+
+function buildStructureQuestions(cards, referenceGraph, difficulty) {
+  const questions = [];
+  for (const comparable of groupComparableCards(cards)) {
+    if (comparable.cards.length < MIN_COMPARABLE_OBSERVATIONS) continue;
+    for (const questionCards of partitionCards(comparable.cards, difficulty)) {
+      const targets = questionCards.map((card) => getReferenceNodeById(referenceGraph, card.targetReferenceId)).filter(Boolean);
+      const axis = questionCards[0].axis;
+      const placement = buildPlacementBoardDataForTargets(referenceGraph, targets, axis);
+      const prompt = buildStructureQuestionPrompt(questionCards, axis);
       questions.push({
-        id: `quiz:${TYPE_BY_AXIS[axis]}:${fact.referenceFactId}:${observation.observationId}:${target.id}`,
+        id: `quiz:${TYPE_BY_AXIS[axis]}:${difficulty}:${questionCards.map((card) => `${card.visitId}:${card.referenceFactId}:${card.observationId}:${card.targetReferenceId}`).join("|")}`,
         questionType: TYPE_BY_AXIS[axis],
         axis,
-        prompt: buildPlacementQuizPrompt(observation.label, fact.predicate),
-        observationId: observation.observationId,
-        photoId: observation.photoId,
-        region: observation.region || null,
-        referenceFactId: fact.referenceFactId,
-        targetReferenceId: target.id,
-        relationIds,
-        options: placement.options.map((node) => ({ id: node.id, label: referenceNodeDisplayLabel(referenceGraph, node), labelEn: node.labelEn || node.scientificName || null, axis: node.axis, order: node.order ?? null, rank: node.rank ?? null, parentIds: node.parentIds || [], startMa: node.startMa ?? null, endMa: node.endMa ?? null })),
+        difficulty,
+        prompt,
+        cards: questionCards.map((card) => ({ ...card })),
+        relationIds: [...new Set(questionCards.flatMap((card) => card.relationIds))].sort(),
+        options: placement.options.map((node) => ({
+          id: node.id,
+          label: referenceNodeDisplayLabel(referenceGraph, node),
+          labelEn: node.labelEn || node.scientificName || null,
+          axis: node.axis,
+          order: node.order ?? null,
+          rank: node.rank ?? null,
+          parentIds: node.parentIds || [],
+          startMa: node.startMa ?? null,
+          endMa: node.endMa ?? null,
+        })),
         placementPathIds: placement.pathIds,
         placementSiblingIds: placement.siblingIds,
         explanation: "確認済みの参照知識と分類・時代データに基づく配置です。",
       });
     }
   }
+  return questions;
+}
+
+function buildFillQuestions(graph) {
+  const questions = [];
+  const observations = new Map(graph.nodes
+    .filter((node) => node.type === "Observation" && node.status === "confirmed" && node.included !== false)
+    .map((node) => [node.id, node]));
   const visit = graph.nodes.find((node) => node.type === "Visit");
-  if (visit?.source === "demo") {
-    for (const observation of [...observations.values()].slice(0, 2)) {
-      questions.push({
-        id: `quiz:observation:${observation.observationId}`,
-        questionType: "observation-choice",
-        prompt: "この対象はなんですか？",
-        observationId: observation.observationId,
-        photoId: observation.photoId,
-        region: observation.region || null,
-        referenceFactId: null,
-        targetReferenceId: observation.observationId,
-        relationIds: [],
-        options: buildObservationChoiceOptions(observations.values(), observation.observationId),
-        explanation: "写真とObservationの対応を確認する問題です。",
-      });
-    }
-    for (const relation of graph.edges.filter((edge) => edge.type === "RELATES_TO" && edge.status === "confirmed" && RELATION_QUIZ_TEMPLATES[edge.relationType])) {
-      const source = observations.get(relation.sourceId);
-      const target = observations.get(relation.targetId);
-      if (!source || !target) continue;
-      if (source.photoId === target.photoId) continue;
-      questions.push({
-        id: `quiz:matching:${relation.relationId}`,
-        questionType: "matching",
-        prompt: RELATION_QUIZ_TEMPLATES[relation.relationType](source),
-        observationId: source.observationId,
-        photoId: source.photoId,
-        region: source.region || null,
-        referenceFactId: null,
-        targetReferenceId: target.observationId,
-        relationIds: [relation.relationId],
-        options: [...observations.values()].sort((a, b) => a.id.localeCompare(b.id)).map((node) => ({
-          id: node.observationId,
-          label: node.label,
-          photoId: node.photoId,
-          region: node.region || null,
-        })),
-        explanation: "デモVisitに保存された確認済みRelationに基づく問題です。",
-      });
-    }
+  if (visit?.source !== "demo") return questions;
+  for (const observation of [...observations.values()].slice(0, 2)) {
+    questions.push({
+      id: `quiz:observation:${observation.observationId}`,
+      questionType: "observation-choice",
+      visitId: graph.visitId,
+      prompt: "この対象はなんですか？",
+      observationId: observation.observationId,
+      label: observation.label,
+      photoId: observation.photoId,
+      region: observation.region || null,
+      referenceFactId: null,
+      targetReferenceId: observation.observationId,
+      relationIds: [],
+      options: buildObservationChoiceOptions(observations.values(), observation.observationId),
+      explanation: "写真とObservationの対応を確認する問題です。",
+    });
   }
-  return selectQuizQuestions(questions);
+  for (const relation of graph.edges.filter((edge) => edge.type === "RELATES_TO" && edge.status === "confirmed" && RELATION_QUIZ_TEMPLATES[edge.relationType])) {
+    const source = observations.get(relation.sourceId);
+    const target = observations.get(relation.targetId);
+    if (!source || !target || source.photoId === target.photoId) continue;
+    questions.push({
+      id: `quiz:matching:${relation.relationId}`,
+      questionType: "matching",
+      visitId: graph.visitId,
+      prompt: RELATION_QUIZ_TEMPLATES[relation.relationType](source),
+      observationId: source.observationId,
+      label: source.label,
+      photoId: source.photoId,
+      region: source.region || null,
+      referenceFactId: null,
+      targetReferenceId: target.observationId,
+      relationIds: [relation.relationId],
+      options: [...observations.values()].sort((a, b) => a.id.localeCompare(b.id)).map((node) => ({
+        id: node.observationId,
+        label: node.label,
+        photoId: node.photoId,
+        region: node.region || null,
+      })),
+      explanation: "デモVisitに保存された確認済みRelationに基づく問題です。",
+    });
+  }
+  return questions;
 }
 
 export function selectQuizQuestions(questions) {
@@ -168,43 +343,135 @@ function getTaxonomyPath(referenceGraph, target) {
 
 /** Build the actual board: taxonomy path plus siblings, or a full same-rank time band. */
 export function buildPlacementBoardData(referenceGraph, target, axis) {
+  return buildPlacementBoardDataForTargets(referenceGraph, [target], axis);
+}
+
+/** Union the surrounding structures needed by every card on a shared board. */
+export function buildPlacementBoardDataForTargets(referenceGraph, targets, axis) {
   if (axis === "geological-time") {
+    const ranks = new Set(targets.map((target) => target.rank));
     const options = referenceGraph.nodes
-      .filter((node) => isEligiblePlacementNode(node, axis) && node.rank === target.rank)
+      .filter((node) => isEligiblePlacementNode(node, axis) && ranks.has(node.rank))
       .sort(compareGeologicalTimeNodes);
-    return { options, pathIds: [], siblingIds: options.filter((node) => node.id !== target.id).map((node) => node.id) };
+    const targetIds = new Set(targets.map((target) => target.id));
+    return { options, pathIds: [], siblingIds: options.filter((node) => !targetIds.has(node.id)).map((node) => node.id) };
   }
 
-  const path = getTaxonomyPath(referenceGraph, target);
-  const candidates = new Map(path.map((node) => [node.id, node]));
-  const siblingIds = [];
-  for (let index = 0; index < path.length - 1; index += 1) {
-    for (const node of getReferenceChildren(referenceGraph, path[index].id)) {
-      if (!isEligiblePlacementNode(node, axis)) continue;
+  const candidates = new Map();
+  const pathIds = new Set();
+  const siblingIds = new Set();
+  for (const target of targets) {
+    const path = getTaxonomyPath(referenceGraph, target);
+    for (const node of path) {
       candidates.set(node.id, node);
-      if (node.id !== path[index + 1].id) siblingIds.push(node.id);
+      pathIds.add(node.id);
+    }
+    for (let index = 0; index < path.length - 1; index += 1) {
+      for (const node of getReferenceChildren(referenceGraph, path[index].id)) {
+        if (!isEligiblePlacementNode(node, axis)) continue;
+        candidates.set(node.id, node);
+        if (node.id !== path[index + 1].id) siblingIds.add(node.id);
+      }
     }
   }
-  const pathIds = path.map((node) => node.id);
-  const pathIndex = new Map(pathIds.map((id, index) => [id, index]));
-  const options = [...candidates.values()].sort((a, b) => (pathIndex.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (pathIndex.get(b.id) ?? Number.MAX_SAFE_INTEGER) || a.id.localeCompare(b.id));
-  return { options, pathIds, siblingIds: [...new Set(siblingIds)].sort() };
+  const depths = new Map([...candidates.values()].map((node) => [node.id, getReferenceAncestors(referenceGraph, node.id).length]));
+  const options = [...candidates.values()].sort((a, b) => (depths.get(a.id) || 0) - (depths.get(b.id) || 0)
+    || (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER)
+    || a.id.localeCompare(b.id));
+  return { options, pathIds: [...pathIds], siblingIds: [...siblingIds].sort() };
+}
+
+/** Return the uniform card view used by both one-card and multi-card questions. */
+export function getQuizCards(question) {
+  if (Array.isArray(question?.cards)) return question.cards;
+  if (!question?.observationId) return [];
+  return [{
+    cardId: question.observationId,
+    observationId: question.observationId,
+    label: question.label || "",
+    photoId: question.photoId,
+    region: question.region || null,
+    visitId: question.visitId || null,
+    referenceFactId: question.referenceFactId || null,
+    targetReferenceId: question.targetReferenceId,
+    relationIds: question.relationIds || [],
+  }];
 }
 
 export function scoreQuizAnswer(question, answer) {
   const placements = Array.isArray(answer?.placements) ? answer.placements : [];
-  const target = placements.find((placement) => placement.cardId === question.observationId);
-  const score = target?.referenceId === question.targetReferenceId ? 1 : 0;
-  return { score, correct: score === 1, answer: { placements }, targetReferenceId: question.targetReferenceId };
+  const items = getQuizCards(question).map((card) => {
+    const placement = placements.find((item) => item.cardId === card.cardId);
+    const selectedReferenceId = placement?.referenceId ?? null;
+    const correct = selectedReferenceId === card.targetReferenceId;
+    return {
+      cardId: card.cardId,
+      observationId: card.observationId,
+      visitId: card.visitId,
+      referenceFactId: card.referenceFactId,
+      selectedReferenceId,
+      targetReferenceId: card.targetReferenceId,
+      score: correct ? 1 : 0,
+      correct,
+    };
+  });
+  const correctCount = items.filter((item) => item.correct).length;
+  const score = items.length ? correctCount / items.length : 0;
+  return { score, correct: items.length > 0 && correctCount === items.length, correctCount, totalCount: items.length, items, answer: { placements } };
 }
 
-export function describeQuizAvailability(project, visitId, registries = {}, referenceGraph) {
-  const questions = generateVisitQuizzes(project, visitId, registries, referenceGraph);
-  if (questions.length) return { questions, reason: null };
-  const graph = visitId ? buildVisitKnowledgeGraph(project, visitId, registries) : null;
-  if (!graph || !graph.nodes.some((node) => node.type === "Observation" && node.status === "confirmed")) return { questions, reason: "confirmed Observationがないため問題を作成できません。" };
-  if (!graph.nodes.some((node) => node.type === "ReferenceFact" && node.status === "verified")) return { questions, reason: "確認済みの知識がないため問題を作成できません。" };
-  return { questions, reason: "対応する確認済みの知識または参照データがないため問題を作成できません。" };
+/** Expand one visible multi-card attempt into schema-compatible per-fact results. */
+export function buildQuizResultEntries(question, scored) {
+  const items = scored.items.length ? scored.items : [{
+    visitId: question.visitId || null,
+    referenceFactId: question.referenceFactId || null,
+    score: scored.score,
+    correct: scored.correct,
+  }];
+  return items.map((item) => ({
+    visitId: item.visitId || question.visitId || null,
+    referenceFactId: item.referenceFactId || null,
+    answer: scored.answer,
+    score: item.score,
+    correct: item.correct,
+  }));
 }
 
-export { MAX_QUESTIONS };
+function buildScopeGraphs(project, visitId, registries, scope) {
+  if (scope === "all") {
+    return [...(project?.visits || [])]
+      .sort((a, b) => String(a.id).localeCompare(String(b.id)))
+      .map((visit) => buildVisitKnowledgeGraph(project, visit.id, registries));
+  }
+  return visitId ? [buildVisitKnowledgeGraph(project, visitId, registries)] : [];
+}
+
+export function getQuizDifficultyAvailability(project, visitId, registries = {}, referenceGraph, options = {}) {
+  const graphs = buildScopeGraphs(project, visitId, registries, options.scope);
+  const groups = groupComparableCards(collectPlacementCards(graphs, referenceGraph));
+  const comparableCount = groups.reduce((maximum, group) => Math.max(maximum, group.cards.length), 0);
+  return {
+    comparableCount,
+    difficulties: Object.values(QUIZ_DIFFICULTIES).map((difficulty) => ({
+      ...difficulty,
+      available: comparableCount >= Math.max(MIN_COMPARABLE_OBSERVATIONS, difficulty.minCards),
+    })),
+  };
+}
+
+export function describeQuizAvailability(project, visitId, registries = {}, referenceGraph, options = {}) {
+  const graphs = buildScopeGraphs(project, visitId, registries, options.scope);
+  const questions = generateQuizzesFromKnowledgeGraphs(graphs, referenceGraph, options);
+  const difficulty = getQuizDifficultyAvailability(project, visitId, registries, referenceGraph, options);
+  if (questions.length) return { questions, reason: null, ...difficulty };
+  const confirmed = graphs.flatMap((graph) => graph.nodes).filter((node) => node.type === "Observation" && node.status === "confirmed");
+  if (!confirmed.length) return { questions, reason: "confirmed Observationがないため問題を作成できません。", ...difficulty };
+  const facts = graphs.flatMap((graph) => graph.nodes).filter((node) => node.type === "ReferenceFact" && node.status === "verified");
+  if (!facts.length) return { questions, reason: "確認済みの知識がないため問題を作成できません。", ...difficulty };
+  if (difficulty.comparableCount < MIN_COMPARABLE_OBSERVATIONS) {
+    return { questions, reason: `構造クイズには同じ分類・時代で比較できるObservationが4件以上必要です（現在${difficulty.comparableCount}件）。`, ...difficulty };
+  }
+  return { questions, reason: "対応する確認済みの知識または参照データがないため問題を作成できません。", ...difficulty };
+}
+
+export { MAX_QUESTIONS, MIN_COMPARABLE_OBSERVATIONS };
