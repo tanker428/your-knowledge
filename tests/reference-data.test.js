@@ -16,6 +16,7 @@ import {
   getVerifiedQuizEligibleReferenceNodes,
   getVisibleReferenceRoots,
   loadReferenceData,
+  referenceNodeDisplayLabel,
 } from "../src/domain/reference-registry.js";
 import { validateReferenceData } from "../src/domain/reference-validation.js";
 
@@ -188,5 +189,56 @@ describe("paleontology reference data", () => {
     const verified = getVerifiedReferenceGraph(graph);
     expect(verified.nodes).not.toContainEqual(graph.nodes[0]);
     expect(JSON.stringify(buildReferenceGraph(loaded))).toBe(JSON.stringify(buildReferenceGraph(loaded)));
+  });
+
+  it("qualifies only duplicate labels inside the same reference axis", async () => {
+    const loaded = await data();
+    const expected = {
+      "geo:epoch:triassic:early": "三畳紀前期",
+      "geo:epoch:triassic:middle": "三畳紀中期",
+      "geo:epoch:triassic:late": "三畳紀後期",
+      "geo:epoch:jurassic:early": "ジュラ紀前期",
+      "geo:epoch:jurassic:middle": "ジュラ紀中期",
+      "geo:epoch:jurassic:late": "ジュラ紀後期",
+      "geo:epoch:cretaceous:early": "白亜紀前期",
+      "geo:epoch:cretaceous:late": "白亜紀後期",
+    };
+    for (const [id, label] of Object.entries(expected)) {
+      expect(referenceNodeDisplayLabel(loaded.graph, getReferenceNodeById(loaded.graph, id))).toBe(label);
+    }
+    expect(referenceNodeDisplayLabel(loaded.graph, getReferenceNodeById(loaded.graph, "geo:epoch:eocene"))).toBe("始新世");
+    expect(referenceNodeDisplayLabel(loaded.graph, getReferenceNodeById(loaded.graph, "geo:epoch:paleocene"))).toBe("暁新世");
+  });
+
+  it("keeps all 147 unique taxonomy labels byte-for-byte unchanged", async () => {
+    const loaded = await data();
+    const taxonomyNodes = loaded.graph.nodes.filter((node) => node.axis === "taxonomy");
+    expect(taxonomyNodes).toHaveLength(147);
+    expect(taxonomyNodes.map((node) => referenceNodeDisplayLabel(loaded.graph, node))).toEqual(
+      taxonomyNodes.map((node) => node.label),
+    );
+  });
+
+  it("uses multi-level PART_OF qualification and safely falls back when ancestry is exhausted", () => {
+    const node = (id, label, axis = "geological-time") => ({ id, label, axis });
+    const graph = /** @type {any} */ ({
+      nodes: [
+        node("a", "前期"), node("b", "前期"), node("a-parent", "区分"), node("b-parent", "区分"),
+        node("a-root", "時代A"), node("b-root", "時代B"), node("taxonomy-same", "前期", "taxonomy"),
+      ],
+      edges: [
+        { type: "PART_OF", sourceId: "a", targetId: "a-parent" },
+        { type: "PART_OF", sourceId: "b", targetId: "b-parent" },
+        { type: "PART_OF", sourceId: "a-parent", targetId: "a-root" },
+        { type: "PART_OF", sourceId: "b-parent", targetId: "b-root" },
+      ],
+      metadata: {},
+    });
+    expect(referenceNodeDisplayLabel(graph, graph.nodes[0])).toBe("時代A区分前期");
+    expect(referenceNodeDisplayLabel(graph, graph.nodes[6])).toBe("前期");
+
+    graph.nodes[5].label = "時代A";
+    expect(referenceNodeDisplayLabel(graph, graph.nodes[0])).toBe("前期");
+    expect(referenceNodeDisplayLabel(graph, graph.nodes[1])).toBe("前期");
   });
 });

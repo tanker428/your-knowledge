@@ -48,6 +48,9 @@ describe("demo knowledge and quiz generation", () => {
     const second = generateVisitQuizzes(project, "visit-fukui", registries, graph);
     expect(first.length).toBeGreaterThanOrEqual(5);
     expect(new Set(first.map((quiz) => quiz.questionType)).size).toBeGreaterThanOrEqual(3);
+    expect(first.some((quiz) => quiz.questionType === "timeline-map")).toBe(true);
+    expect(first.some((quiz) => quiz.questionType === "matching")).toBe(true);
+    expect(first.some((quiz) => quiz.questionType === "observation-choice")).toBe(true);
     expect(JSON.stringify(first)).toBe(JSON.stringify(second));
     expect(first.every((quiz) => new Set(quiz.options.map((option) => option.id)).size === quiz.options.length)).toBe(true);
     expect(first.filter((quiz) => quiz.questionType === "timeline-map").every((quiz) => quiz.options.some((option) => option.id === quiz.targetReferenceId))).toBe(true);

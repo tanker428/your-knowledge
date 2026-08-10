@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { JSDOM } from "jsdom";
 import { describe, expect, it } from "vitest";
 import {
   TUTORIAL_STORAGE_KEY,
@@ -7,6 +8,7 @@ import {
   markTutorialSeen,
   nextTutorialIndex,
   previousTutorialIndex,
+  renderTutorialStep,
 } from "../src/ui/tutorial.js";
 
 describe("initial tutorial", () => {
@@ -38,22 +40,32 @@ describe("initial tutorial", () => {
     expect(isTutorialSeen(storage)).toBe(true);
   });
 
-  it("keeps tutorial controls, copy, and mobile layout in the UI", async () => {
-    const [html, css, app] = await Promise.all([
-      readFile("index.html", "utf8"),
-      readFile("styles.css", "utf8"),
-      readFile("src/ui/app.js", "utf8"),
+  it("renders tutorial copy and navigation states into the real dialog DOM", async () => {
+    const [html, styles] = await Promise.all([
+      readFile(new URL("../index.html", import.meta.url), "utf8"),
+      readFile(new URL("../styles.css", import.meta.url), "utf8"),
     ]);
-    expect(html).toContain('id="tutorialModal"');
-    expect(html).toContain("スキップ");
-    expect(html).toContain("戻る");
-    expect(html).toContain("次へ");
-    expect(html).toContain("完了");
-    expect(html).toContain('id="openTutorialButton"');
-    expect(app).toContain("maybeShowTutorial");
-    expect(app).toContain("#tutorialSkipButton");
-    expect(app).toContain("markTutorialSeen");
-    expect(css).toContain(".tutorial-card");
-    expect(css).toContain("@media(max-width:520px){.tutorial-card");
+    const dom = new JSDOM(html);
+    const document = dom.window.document;
+    const style = document.createElement("style");
+    style.textContent = styles;
+    document.head.append(style);
+    const modal = document.querySelector("#tutorialModal");
+    expect(modal?.querySelector('[role="dialog"]')).not.toBeNull();
+    expect(document.querySelector("#openTutorialButton")?.textContent).toContain("使い方");
+    expect(document.querySelector("#tutorialSkipButton")?.textContent).toBe("スキップ");
+    expect(dom.window.getComputedStyle(document.querySelector(".tutorial-navigation")).display).toBe("flex");
+
+    expect(renderTutorialStep(document, 0)).toBe(true);
+    expect(document.querySelector("#tutorialScreen")?.textContent).toBe("概要");
+    expect(document.querySelector("#tutorialProgress")?.textContent).toBe("1 / 6");
+    expect(document.querySelector("#tutorialBackButton")?.disabled).toBe(true);
+    expect(document.querySelector("#tutorialNextButton")?.classList.contains("hidden")).toBe(false);
+    expect(document.querySelector("#tutorialDoneButton")?.classList.contains("hidden")).toBe(true);
+
+    expect(renderTutorialStep(document, 5)).toBe(true);
+    expect(document.querySelector("#tutorialScreen")?.textContent).toBe("コレクション");
+    expect(document.querySelector("#tutorialNextButton")?.classList.contains("hidden")).toBe(true);
+    expect(document.querySelector("#tutorialDoneButton")?.classList.contains("hidden")).toBe(false);
   });
 });
