@@ -5,8 +5,10 @@ import { DEMO_KNOWLEDGE_VERSION, DEMO_REFERENCE_FACTS, DEMO_RETIRED_REFERENCE_FA
 import { buildReferenceGraph } from "../src/domain/reference-registry.js";
 import { buildVisitKnowledgeGraph } from "../src/domain/knowledge-graph.js";
 import { describeQuizAvailability, generateVisitQuizzes, getQuizDifficultyAvailability } from "../src/features/knowledge-graph/quiz-generation.js";
+import { buildObservationFocusGraph } from "../src/features/knowledge-graph/selectors.js";
 import { migrateProjectDocument } from "../src/features/project/migrate.js";
 import { recordQuizLearning } from "../src/domain/learning-state.js";
+import { verifiedReferenceOptions } from "../src/ui/reference-fact-editor.js";
 
 const registries = { genericCategories: [], learningRoles: [], categoriesByPack: {}, entities: SAMPLE_ENTITIES };
 
@@ -49,9 +51,9 @@ describe("demo knowledge and quiz generation", () => {
   });
 
   it.each([
-    ["easy", { hierarchy: 3, "timeline-map": 5, matching: 3, "observation-choice": 2 }],
-    ["normal", { hierarchy: 2, "timeline-map": 5, matching: 3, "observation-choice": 2 }],
-    ["hard", { hierarchy: 0, "timeline-map": 5, matching: 3, "observation-choice": 2 }],
+    ["easy", { hierarchy: 5, "timeline-map": 5, matching: 3, "observation-choice": 2 }],
+    ["normal", { hierarchy: 5, "timeline-map": 5, matching: 3, "observation-choice": 2 }],
+    ["hard", { hierarchy: 5, "timeline-map": 5, matching: 3, "observation-choice": 2 }],
   ])("generates diverse demo structure questions at %s difficulty without displacing fill questions", async (difficulty, expectedCounts) => {
     const project = demoProject();
     const graph = await referenceGraph();
@@ -64,6 +66,7 @@ describe("demo knowledge and quiz generation", () => {
       const structures = first.filter((quiz) => quiz.questionType === type);
       if (structures.length) expect(new Set(structures.flatMap((quiz) => quiz.cards.map((card) => card.targetReferenceId))).size).toBeGreaterThanOrEqual(2);
       expect(structures.filter((quiz) => quiz.cards.length > 1).every((quiz) => new Set(quiz.cards.map((card) => card.targetReferenceId)).size >= 2)).toBe(true);
+      if (difficulty === "hard") expect(structures.every((quiz) => quiz.cards.length >= 4)).toBe(true);
     }
   });
 
@@ -71,11 +74,11 @@ describe("demo knowledge and quiz generation", () => {
     const project = demoProject();
     const graph = await referenceGraph();
     const availability = getQuizDifficultyAvailability(project, "visit-fukui", registries, graph);
-    expect(availability.comparableCount).toBe(6);
+    expect(availability.comparableCount).toBe(11);
     for (const difficulty of availability.difficulties) {
       const structures = generateVisitQuizzes(project, "visit-fukui", registries, graph, { difficulty: difficulty.id })
         .filter((quiz) => quiz.questionType === "hierarchy" || quiz.questionType === "timeline-map");
-      expect([difficulty.id, difficulty.available, structures.length]).toEqual([difficulty.id, true, { easy: 8, normal: 7, hard: 5 }[difficulty.id]]);
+      expect([difficulty.id, difficulty.available, structures.length]).toEqual([difficulty.id, true, 10]);
       for (const axis of ["taxonomy", "geological-time"]) {
         expect(difficulty.axes[axis].available).toBe(structures.some((quiz) => quiz.axis === axis));
         expect(difficulty.axes[axis].questionCount).toBe(structures.filter((quiz) => quiz.axis === axis).length);
@@ -83,14 +86,12 @@ describe("demo knowledge and quiz generation", () => {
     }
     const hard = describeQuizAvailability(project, "visit-fukui", registries, graph, { difficulty: "hard" });
     expect(hard.axisAvailability).toMatchObject({
-      taxonomy: { available: false, comparableCount: 3, minimumCount: 4, questionCount: 0 },
+      taxonomy: { available: true, comparableCount: 11, minimumCount: 4, questionCount: 5 },
       "geological-time": { available: true, comparableCount: 6, minimumCount: 4, questionCount: 5 },
     });
-    expect(hard.axisReasons).toEqual([
-      "分類クイズは比較可能な対象が不足しているため出題されません（必要4件以上、現在3件）。",
-    ]);
+    expect(hard.axisReasons).toEqual([]);
     expect(hard.reason).toBeNull();
-    const taxonomyContext = generateVisitQuizzes(project, "visit-fukui", registries, graph, { difficulty: "easy" })
+    const taxonomyContext = generateVisitQuizzes(project, "visit-fukui", registries, graph, { difficulty: "hard" })
       .filter((quiz) => quiz.questionType === "hierarchy")
       .flatMap((quiz) => quiz.options)
       .find((option) => option.id === "taxon:crocodylia-pterosauria-other");
@@ -108,6 +109,28 @@ describe("demo knowledge and quiz generation", () => {
     expect(graph.nodes.filter((node) => node.type === "ReferenceFact")).toHaveLength(DEMO_REFERENCE_FACTS.length);
     expect(graph.edges.filter((edge) => edge.type === "RELATES_TO" && edge.status === "confirmed").length).toBeGreaterThanOrEqual(2);
     expect(graph.metadata.includesUiState).toBe(false);
+  });
+
+  it("exposes the curated mammal hierarchy in graph focus and reference fact editor options", async () => {
+    const project = demoProject();
+    const graph = await referenceGraph();
+    const visitGraph = buildVisitKnowledgeGraph(project, "visit-fukui", registries);
+    const focus = buildObservationFocusGraph(visitGraph, "Observation:o07a", graph, registries);
+    expect(focus.nodes.find((node) => node.id === "Reference:taxon:cetacea")).toMatchObject({
+      label: "クジラ類",
+      axis: "taxonomy",
+      status: "verified",
+    });
+    expect(focus.nodes.map((node) => node.id)).toEqual(expect.arrayContaining([
+      "Reference:taxon:eutheria",
+      "Reference:taxon:theria",
+      "Reference:taxon:mammalia",
+    ]));
+    const editorOptionIds = new Set(verifiedReferenceOptions(graph).map((node) => node.id));
+    for (const id of ["taxon:mammalia", "taxon:primates", "taxon:cetacea", "taxon:proboscidea"]) {
+      expect(editorOptionIds.has(id)).toBe(true);
+    }
+    expect(editorOptionIds.has("taxon:mammals-other")).toBe(false);
   });
 
   it("adds the seed once without overwriting an edited demo Project", () => {

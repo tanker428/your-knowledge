@@ -10,10 +10,6 @@ import {
 import { scoreTimelineBounds } from "./timeline-placement.js";
 
 const MIN_COMPARABLE_OBSERVATIONS = 4;
-// taxonomy.json の quizEligible な分類先でデモ写真を正しく分類できる Observation は
-// o18a / o18b / o18c の3件だけで、issue #62 本文の「4件以上」と両立しない。
-// 既定値4は維持し、分類デモを残す taxonomy だけをユーザー承認待ちの暫定措置として3件へ緩和する。
-const MIN_COMPARABLE_OBSERVATIONS_BY_AXIS = Object.freeze({ taxonomy: 3 });
 const MAX_HARD_QUESTION_CARDS = 8;
 export const MAX_PER_TYPE = Object.freeze({ hierarchy: 5, "timeline-map": 5, matching: 3, "observation-choice": 2 });
 const MAX_QUESTIONS = Object.values(MAX_PER_TYPE).reduce((total, count) => total + count, 0);
@@ -216,15 +212,10 @@ function buildStructureQuestionPrompt(cards, axis) {
   return `${label}を正しい${axis === "taxonomy" ? "分類" : "時代"}へ配置してください。`;
 }
 
-function minimumComparableObservations(axis, difficulty) {
-  const axisMinimum = MIN_COMPARABLE_OBSERVATIONS_BY_AXIS[axis] ?? MIN_COMPARABLE_OBSERVATIONS;
-  return Math.max(axisMinimum, QUIZ_DIFFICULTIES[difficulty].minCards);
-}
-
 function buildStructureQuestions(cards, referenceGraph, difficulty) {
   const questions = [];
   for (const comparable of groupComparableCards(cards, referenceGraph)) {
-    const minimumCards = minimumComparableObservations(comparable.cards[0].axis, difficulty);
+    const minimumCards = MIN_COMPARABLE_OBSERVATIONS;
     if (comparable.cards.length < minimumCards) continue;
     for (const questionCards of partitionCards(comparable.cards, difficulty)) {
       if (questionCards.length > 1 && new Set(questionCards.map((card) => card.targetReferenceId)).size < 2) continue;
@@ -490,7 +481,7 @@ export function getQuizDifficultyAvailability(project, visitId, registries = {},
     difficulties: Object.values(QUIZ_DIFFICULTIES).map((difficulty) => {
       const structureQuestions = selectQuizQuestions(buildStructureQuestions(placementCards, referenceGraph, difficulty.id));
       const axes = Object.fromEntries(STRUCTURE_AXES.map((axis) => {
-        const minimumCount = minimumComparableObservations(axis, difficulty.id);
+        const minimumCount = MIN_COMPARABLE_OBSERVATIONS;
         const axisQuestions = structureQuestions.filter((question) => question.axis === axis);
         const axisComparableCount = comparableCountsByAxis[axis];
         const available = axisQuestions.length > 0;

@@ -106,11 +106,12 @@ describe("quiz generation from the visit knowledge graph", () => {
     expect(new Set(first.map((option) => option.id)).size).toBe(4);
   });
 
-  it("requires four time Observations while allowing three diverse taxonomy Observations", () => {
+  it("requires four comparable Observations on every structure axis", () => {
     expect(MIN_COMPARABLE_OBSERVATIONS).toBe(4);
-    const easy = generateVisitQuizzes(comparableProject(3), "v1", registries, referenceGraph);
-    expect(easy.filter((quiz) => quiz.questionType === "hierarchy")).toHaveLength(3);
-    expect(easy.filter((quiz) => quiz.questionType === "timeline-map")).toHaveLength(0);
+    const insufficient = generateVisitQuizzes(comparableProject(3), "v1", registries, referenceGraph);
+    expect(insufficient.filter((quiz) => quiz.questionType === "hierarchy")).toHaveLength(0);
+    expect(insufficient.filter((quiz) => quiz.questionType === "timeline-map")).toHaveLength(0);
+    const easy = generateVisitQuizzes(comparableProject(4), "v1", registries, referenceGraph);
     expect(easy.find((quiz) => quiz.questionType === "hierarchy").options.find((option) => option.id === "taxon:not-eligible"))
       .toMatchObject({ placementEligible: false });
     const availability = describeQuizAvailability(comparableProject(3), "v1", registries, referenceGraph, { difficulty: "hard" });
@@ -156,7 +157,7 @@ describe("quiz generation from the visit knowledge graph", () => {
 
   it("matches difficulty availability to whether structure questions are generated", () => {
     expect(getQuizDifficultyAvailability(comparableProject(3), "v1", registries, referenceGraph).difficulties.map((item) => [item.id, item.available])).toEqual([
-      ["easy", true], ["normal", true], ["hard", false],
+      ["easy", false], ["normal", false], ["hard", false],
     ]);
     expect(getQuizDifficultyAvailability(comparableProject(4), "v1", registries, referenceGraph).difficulties.every((item) => item.available)).toBe(true);
     for (const count of [3, 4]) {

@@ -628,7 +628,7 @@ export const SAMPLE_PHOTOS = [
           "mammal-human"
         ],
         "confidence": 0.84,
-        "status": "suggested",
+        "status": "confirmed",
         "visibleText": [],
         "entityId": null,
         "photoId": "p05"
@@ -698,7 +698,7 @@ export const SAMPLE_PHOTOS = [
           "mammal-human"
         ],
         "confidence": 0.85,
-        "status": "suggested",
+        "status": "confirmed",
         "visibleText": [],
         "entityId": null,
         "photoId": "p06"
@@ -1070,7 +1070,7 @@ export const SAMPLE_PHOTOS = [
           "anatomy"
         ],
         "confidence": 0.93,
-        "status": "suggested",
+        "status": "confirmed",
         "visibleText": [],
         "entityId": null,
         "photoId": "p11"
@@ -1101,7 +1101,7 @@ export const SAMPLE_PHOTOS = [
           "mammal-human"
         ],
         "confidence": 0.84,
-        "status": "suggested",
+        "status": "confirmed",
         "visibleText": [],
         "entityId": null,
         "photoId": "p11"
@@ -1170,7 +1170,7 @@ export const SAMPLE_PHOTOS = [
           "mammal-human"
         ],
         "confidence": 0.92,
-        "status": "suggested",
+        "status": "confirmed",
         "visibleText": [],
         "entityId": null,
         "photoId": "p12"
@@ -1201,7 +1201,7 @@ export const SAMPLE_PHOTOS = [
           "anatomy"
         ],
         "confidence": 0.88,
-        "status": "suggested",
+        "status": "confirmed",
         "visibleText": [],
         "entityId": null,
         "photoId": "p12"
@@ -1949,7 +1949,7 @@ export const SAMPLE_PHOTOS = [
           "mammal-human"
         ],
         "confidence": 0.92,
-        "status": "suggested",
+        "status": "confirmed",
         "visibleText": [],
         "entityId": null,
         "photoId": "p20"

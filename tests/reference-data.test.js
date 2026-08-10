@@ -36,8 +36,8 @@ describe("paleontology reference data", () => {
   it("loads both JSON documents and validates their schemas", async () => {
     const loaded = await data();
     expect(loaded.geologicalTime.nodes.length).toBe(32);
-    expect(loaded.taxonomy.nodes.length).toBe(147);
-    expect(loaded.graph.nodes.length).toBe(179);
+    expect(loaded.taxonomy.nodes.length).toBeGreaterThan(0);
+    expect(loaded.graph.nodes).toHaveLength(loaded.geologicalTime.nodes.length + loaded.taxonomy.nodes.length);
   });
 
   it("passes actual Ajv JSON Schema validation", async () => {
@@ -118,9 +118,14 @@ describe("paleontology reference data", () => {
   });
 
   it("preserves OCCURS_DURING and only maps IS_A to SUBCLASS_OF", async () => {
-    const graph = (await data()).graph;
-    expect(graph.edges.filter((edge) => edge.type === "SUBCLASS_OF")).toHaveLength(146);
-    expect(graph.edges.filter((edge) => edge.type === "OCCURS_DURING")).toHaveLength(317);
+    const loaded = await data();
+    const graph = loaded.graph;
+    expect(graph.edges.filter((edge) => edge.type === "SUBCLASS_OF")).toHaveLength(
+      loaded.taxonomy.relations.filter((relation) => relation.type === "IS_A").length,
+    );
+    expect(graph.edges.filter((edge) => edge.type === "OCCURS_DURING")).toHaveLength(
+      loaded.taxonomy.relations.filter((relation) => relation.type === "OCCURS_DURING").length,
+    );
     expect(graph.edges.some((edge) => edge.type === "IS_A")).toBe(false);
   });
 
@@ -150,6 +155,20 @@ describe("paleontology reference data", () => {
     expect(getReferenceParents(graph, "geo:period:triassic").map((node) => node.id)).toEqual(["geo:era:mesozoic"]);
     expect(getReferenceAncestors(graph, "geo:period:triassic").map((node) => node.id)).toContain("geo:eon:phanerozoic");
     expect(getReferenceDescendants(graph, "geo:era:mesozoic").map((node) => node.id)).toContain("geo:period:triassic");
+    expect(getReferenceParents(graph, "taxon:mammalia").map((node) => node.id)).toEqual(["taxon:mammals-other"]);
+    expect(getReferenceParents(graph, "taxon:eutheria").map((node) => node.id)).toEqual(["taxon:theria"]);
+    expect(getReferenceChildren(graph, "taxon:eutheria").map((node) => node.id)).toEqual([
+      "taxon:primates",
+      "taxon:cetacea",
+      "taxon:proboscidea",
+    ]);
+    expect(getReferenceAncestors(graph, "taxon:cetacea").map((node) => node.id)).toEqual(expect.arrayContaining([
+      "taxon:eutheria",
+      "taxon:theria",
+      "taxon:mammalia",
+      "taxon:amniota",
+      "taxon:tetrapoda",
+    ]));
   });
 
   it("separates taxonomy and geological-time axes", async () => {
@@ -167,7 +186,18 @@ describe("paleontology reference data", () => {
     expect(getReferenceNodeById(loaded.graph, "taxon:theropoda")?.scientificName).toBe("Theropoda");
     expect(getReferenceNodeById(loaded.graph, "taxon:spinosaurus")?.scientificName).toBe("Spinosaurus");
     expect(getReferenceNodeById(loaded.graph, "taxon:tyrannosaurus")?.scientificName).toBe("Tyrannosaurus");
-    expect(loaded.taxonomy.nodes.every((node) => node.sourceRef?.drawioCellId)).toBe(true);
+    const curatedMammalNodes = loaded.taxonomy.nodes.filter((node) => node.sourceRef?.name === "NCBI Taxonomy");
+    expect(curatedMammalNodes.map((node) => node.id).sort()).toEqual([
+      "taxon:cetacea",
+      "taxon:eutheria",
+      "taxon:mammalia",
+      "taxon:metatheria",
+      "taxon:primates",
+      "taxon:proboscidea",
+      "taxon:theria",
+    ]);
+    expect(curatedMammalNodes.every((node) => node.sourceRef.url.startsWith("https://www.ncbi.nlm.nih.gov/Taxonomy/"))).toBe(true);
+    expect(loaded.taxonomy.nodes.filter((node) => !curatedMammalNodes.includes(node)).every((node) => node.sourceRef?.drawioCellId)).toBe(true);
     const graphIds = new Set(loaded.graph.nodes.map((node) => node.id));
     expect(loaded.graph.edges.every((edge) => graphIds.has(edge.sourceId) && graphIds.has(edge.targetId))).toBe(true);
   });
@@ -210,10 +240,10 @@ describe("paleontology reference data", () => {
     expect(referenceNodeDisplayLabel(loaded.graph, getReferenceNodeById(loaded.graph, "geo:epoch:paleocene"))).toBe("暁新世");
   });
 
-  it("keeps all 147 unique taxonomy labels byte-for-byte unchanged", async () => {
+  it("keeps taxonomy labels unique and displays them byte-for-byte unchanged", async () => {
     const loaded = await data();
     const taxonomyNodes = loaded.graph.nodes.filter((node) => node.axis === "taxonomy");
-    expect(taxonomyNodes).toHaveLength(147);
+    expect(new Set(taxonomyNodes.map((node) => node.label)).size).toBe(taxonomyNodes.length);
     expect(taxonomyNodes.map((node) => referenceNodeDisplayLabel(loaded.graph, node))).toEqual(
       taxonomyNodes.map((node) => node.label),
     );
