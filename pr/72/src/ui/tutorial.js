@@ -56,3 +56,17 @@ export function markTutorialSeen(storage) {
     // Private browsing or disabled storage must not block the app.
   }
 }
+
+/** Render one tutorial step into the existing dialog controls. */
+export function renderTutorialStep(root, index) {
+  const step = TUTORIAL_STEPS[index];
+  if (!step || !root) return false;
+  root.querySelector("#tutorialScreen").textContent = step.screen;
+  root.querySelector("#tutorialTitle").textContent = step.title;
+  root.querySelector("#tutorialDescription").textContent = step.description;
+  root.querySelector("#tutorialProgress").textContent = `${index + 1} / ${TUTORIAL_STEPS.length}`;
+  root.querySelector("#tutorialBackButton").disabled = index === 0;
+  root.querySelector("#tutorialNextButton").classList.toggle("hidden", index === TUTORIAL_STEPS.length - 1);
+  root.querySelector("#tutorialDoneButton").classList.toggle("hidden", index !== TUTORIAL_STEPS.length - 1);
+  return true;
+}

@@ -358,8 +358,7 @@
       <p class="section-kicker">MANUAL RELATION</p><h2 id="relationEditorTitle">関係を追加</h2>
       <p class="muted-copy">Observation同士の関係を、現在の訪問内で保存します。</p>
       <div class="form-label endpoint-picker" id="relationSourcePicker"><span>関係元Observation</span><div id="relationSourceCard"></div><button type="button" class="text-button" id="chooseRelationSourceButton">選び直す</button><div id="relationSourceOptions" class="endpoint-options hidden"></div></div>
-      <label class="form-label">関係種別<select id="relationTypeSelect" class="relation-type-select"></select><small id="relationTypeDirectionHint" class="relation-type-direction-hint"></small></label>
-      <fieldset class="form-label relation-type-choices"><legend>まとめて登録する種類</legend><div id="relationTypeChoices"></div><small>選択した種類を、既存形式のRelationとして1件ずつ保存します。</small></fieldset>
+      <fieldset class="form-label relation-type-choices"><legend id="relationTypeLegend">まとめて登録する種類</legend><div id="relationTypeChoices"></div><small id="relationTypeDirectionHint" class="relation-type-direction-hint"></small><small id="relationTypeHelp">選択した種類を、既存形式のRelationとして1件ずつ保存します。</small></fieldset>
       <button type="button" class="swap-relation-button hidden" id="swapRelationEndpointsButton">⇅ 向きを逆にする</button>
       <fieldset class="form-label relation-scope-field">
         <legend>関係先の範囲</legend>
@@ -509,7 +508,6 @@
     .relation-scope-controls button { border:1px solid var(--line); border-radius:8px; background:white; color:var(--muted); padding:8px 9px; font-size:9px; font-weight:800; }
     .relation-scope-controls button.active { background:var(--ink); border-color:var(--ink); color:white; }
     .relation-direction-note { margin:12px 0 0; color:var(--accent); font-size:10px; font-weight:800; }
-    .relation-type-select { width:100%; min-width:0; }
     .relation-type-direction-hint { display:block; margin-top:5px; color:var(--muted); font-size:10px; font-weight:800; white-space:normal; }
     .swap-relation-button { width:100%; margin-top:12px; border:1px solid var(--accent); border-radius:8px; background:white; color:var(--accent); padding:9px; font-size:10px; font-weight:900; }
     .endpoint-picker { display:block; }
@@ -527,10 +525,13 @@
     .endpoint-card small { margin-top:3px; color:var(--muted); font-size:8px; }
     .endpoint-options { margin-top:8px; display:grid; gap:6px; }
     .endpoint-search { width:100%; border:1px solid var(--line); border-radius:8px; padding:9px; background:var(--paper); font-size:10px; }
-    .endpoint-option { display:grid; grid-template-columns:54px 1fr; gap:8px; width:100%; border:1px solid var(--line); border-radius:8px; background:white; padding:7px; text-align:left; }
+    .endpoint-option { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:6px; width:100%; border:1px solid var(--line); border-radius:8px; background:white; padding:6px; }
     .endpoint-option:hover { border-color:var(--accent); }
+    .endpoint-preview-button { min-width:0; display:grid; grid-template-columns:54px minmax(0,1fr); gap:8px; align-items:center; border:0; background:transparent; padding:1px; text-align:left; }
+    .endpoint-select-button { align-self:center; border:1px solid var(--line); border-radius:7px; background:var(--paper); color:var(--ink); padding:7px 8px; font-size:8px; font-weight:900; white-space:nowrap; }
+    .endpoint-preview-button:hover strong,.endpoint-preview-button:focus-visible strong,.endpoint-select-button:hover,.endpoint-select-button:focus-visible { color:var(--accent); }
     .endpoint-option .endpoint-image { width:54px; height:42px; }
-    .endpoint-option strong,.endpoint-option small { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .endpoint-preview-button strong,.endpoint-preview-button small { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .endpoint-option strong { font-size:9px; }
     .endpoint-option small { margin-top:3px; color:var(--muted); font-size:8px; }
     .relation-card { border:1px solid var(--line); border-radius:14px; padding:11px; background:white; }
@@ -546,7 +547,7 @@
     .relation-card-meta { display:flex; justify-content:space-between; gap:8px; margin-top:8px; color:var(--muted); font-size:8px; }
     .relation-card-actions { display:flex; gap:6px; margin-top:8px; }
     .relation-card-actions button { border:1px solid var(--line); border-radius:7px; background:white; padding:5px 8px; color:var(--muted); font-size:8px; font-weight:800; }
-    @media(max-width:520px){ .relation-card-main { grid-template-columns:1fr; gap:5px; } .relation-connector { text-align:left; padding-left:41px; } .relation-scope-controls button { flex:1 1 30%; } .endpoint-card-inner { grid-template-columns:68px 1fr; } .endpoint-image { width:68px; } }
+    @media(max-width:520px){ .relation-card-main { grid-template-columns:1fr; gap:5px; } .relation-connector { text-align:left; padding-left:41px; } .relation-scope-controls button { flex:1 1 30%; } .endpoint-card-inner { grid-template-columns:68px 1fr; } .endpoint-image { width:68px; } .endpoint-option { grid-template-columns:1fr; } .endpoint-select-button { width:100%; } }
   </style>
 </body>
 </html>

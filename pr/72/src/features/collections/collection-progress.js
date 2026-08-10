@@ -74,3 +74,11 @@ export function buildCollectionProgress(project, visitId, userId = project?.user
   for (const id of domainIds) collections.push(makeCollection(`domain:${id}`, domainLabels.get(id) || id, "domain", items.filter((item) => (item.observation.domainCategories || []).includes(id)), project, visitId, userId));
   return collections;
 }
+
+/**
+ * Collection covers use transient in-memory photo URLs, while the rest of the
+ * project can remain the persistence-safe document returned by `toProject`.
+ */
+export function buildCollectionProgressForView(project, photos, visitId, userId = project?.userId || "user-local", registry = {}) {
+  return buildCollectionProgress({ ...project, photos }, visitId, userId, registry);
+}
