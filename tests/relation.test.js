@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  applyRelationTypeSelection,
   createRelation,
   endpointSelectionLabel,
   isApprovableRelation,
@@ -9,6 +10,7 @@ import {
   relationDuplicate,
   relationKey,
   relationReviewActions,
+  relationsForPhotoInVisit,
   relationTypeDisplay,
   removeRelation,
   endpointPresentation,
@@ -240,5 +242,60 @@ describe("Relation candidates", () => {
     expect(searchRelationEntries(entries, "展示室A")).toHaveLength(1);
     expect(searchRelationEntries(entries, "標本")).toHaveLength(1);
     expect(searchRelationEntries(entries, "")).toHaveLength(2);
+  });
+});
+
+describe("Relation bulk save", () => {
+  it("選択したN種類を既存形式のRelationとしてちょうどN件作る", () => {
+    const result = applyRelationTypeSelection({
+      relations: [],
+      draft: { sourceId: "o1", targetId: "o2", types: ["explains", "part-of", "same-theme"] },
+      relationTypes,
+      createId: (type) => `relation-${type}`,
+    });
+
+    expect(result.error).toBeNull();
+    expect(result.relations).toHaveLength(3);
+    expect(result.relations.map((relation) => relation.type)).toEqual(["explains", "part-of", "same-theme"]);
+    expect(result.relations).toEqual(result.savedRelations);
+    expect(result.relations.every((relation) => relation.status === "confirmed" && relation.sourceId === "o1" && relation.targetId === "o2")).toBe(true);
+  });
+
+  it("保存済みtypeだけをスキップし、未保存typeは作る", () => {
+    const existing = createRelation({ id: "existing", sourceId: "o1", targetId: "o2", type: "explains" });
+    const result = applyRelationTypeSelection({
+      relations: [existing],
+      draft: { sourceId: "o1", targetId: "o2", types: ["explains", "part-of", "part-of", "same-theme"] },
+      relationTypes,
+      createId: (type) => `relation-${type}`,
+    });
+
+    expect(result.error).toBeNull();
+    expect(result.skippedTypes).toEqual(["explains"]);
+    expect(result.relations.map((relation) => relation.type)).toEqual(["explains", "part-of", "same-theme"]);
+    expect(result.relations.filter((relation) => relation.type === "part-of")).toHaveLength(1);
+  });
+
+  it("編集中の複数type指定を拒否して既存Relationを変更しない", () => {
+    const existing = createRelation({ id: "existing", sourceId: "o1", targetId: "o2", type: "explains" });
+    const result = applyRelationTypeSelection({
+      relations: [existing],
+      draft: { sourceId: "o1", targetId: "o2", types: ["part-of", "same-theme"] },
+      relationTypes,
+      editingId: existing.id,
+    });
+
+    expect(result.error).toContain("1つだけ");
+    expect(result.relations).toEqual([existing]);
+  });
+
+  it("step 4相当のVisit・Photoスコープに全typeを残す", () => {
+    const relations = ["explains", "part-of", "same-theme"].map((type) =>
+      createRelation({ id: `relation-${type}`, sourceId: "o1", targetId: "o3", type }),
+    );
+    relations.push(createRelation({ id: "outside", sourceId: "o1", targetId: "o4", type: "same-exhibit" }));
+
+    expect(relationsForPhotoInVisit(relations, photos, "v1", "p1").map((relation) => relation.type)).toEqual(["explains", "part-of", "same-theme"]);
+    expect(relationsForPhotoInVisit(relations, photos, "v1", "p2")).toHaveLength(3);
   });
 });
