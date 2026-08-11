@@ -1,0 +1,13 @@
+{
+  "id": "other",
+  "label": "その他",
+  "icon": "＋",
+  "description": "分野をあとで決める",
+  "visitTemplate": null,
+  "categories": [
+    {
+      "id": "unclassified",
+      "label": "未分類"
+    }
+  ]
+}
