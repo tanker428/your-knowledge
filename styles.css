@@ -118,6 +118,7 @@ footer{width:min(calc(100% - 36px),var(--max));margin:0 auto 88px;background:var
 .tutorial-actions{align-items:center;justify-content:space-between}
 .tutorial-navigation{display:flex;gap:8px}
 @media(max-width:820px){.tutorial-help-button{font-size:0;padding:10px 12px}.tutorial-help-button:first-letter{font-size:16px}}
+.image-help,.experience-memo{position:relative;z-index:10;background:var(--white)}
 .experience-memo{padding:0 17px 15px;border-top:1px solid var(--line);margin-top:2px;padding-top:13px}
 .experience-memo label{display:block;font-size:10px;font-weight:900;margin-bottom:6px}
 .experience-memo textarea{width:100%;border:1px solid var(--line);border-radius:11px;padding:9px 11px;font:inherit;font-size:11px;line-height:1.6;resize:vertical;background:var(--paper)}
