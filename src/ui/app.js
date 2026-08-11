@@ -26,6 +26,7 @@ import {
   SAMPLE_RELATIONS,
   SAMPLE_STORIES,
   SAMPLE_VISIT,
+  SAMPLE_VISITS,
 } from "../data/demo/sample-data.js";
 import { DEMO_KNOWLEDGE_VERSION, DEMO_REFERENCE_FACTS, DEMO_RETIRED_REFERENCE_FACT_IDS } from "../data/demo/demo-knowledge.js";
 import {
@@ -308,7 +309,7 @@ export async function initApp(deps) {
   function demoPhotos() {
     return clone(SAMPLE_PHOTOS).map((/** @type {any} */ photo) => ({
       ...photo,
-      visitId: DEMO_VISIT_ID,
+      visitId: photo.visitId || DEMO_VISIT_ID,
       source: "sample",
       observations: photo.observations.map(
         (/** @type {any} */ observation) => ({
@@ -330,11 +331,12 @@ export async function initApp(deps) {
       demoReferenceFacts: clone(DEMO_REFERENCE_FACTS),
       demoRetiredReferenceFactIds: [...DEMO_RETIRED_REFERENCE_FACT_IDS],
       demoKnowledgeVersion: DEMO_KNOWLEDGE_VERSION,
-      demoVisitSeed: {
-        title: SAMPLE_VISIT.title,
-        placeName: SAMPLE_VISIT.place,
-        domainPackIds: SAMPLE_VISIT.domainHints,
-      },
+      demoVisitSeeds: SAMPLE_VISITS.map((visit) => ({
+        id: visit.id,
+        title: visit.title,
+        placeName: visit.place,
+        domainPackIds: visit.domainHints,
+      })),
     };
   }
 

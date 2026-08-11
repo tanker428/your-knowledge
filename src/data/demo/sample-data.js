@@ -56,6 +56,19 @@ export const SAMPLE_VISIT = {
   ]
 };
 
+/**
+ * 同梱デモの Visit 一覧。seed / migration はこの配列を正として複数訪問を用意する。
+ *
+ * デモ訪問を追加するときは、ここへ Visit 定義（`id` / `title` / `place` /
+ * `domainHints` / `photoIds`）を足し、その訪問の写真を `SAMPLE_PHOTOS` へ
+ * `visitId` 付きで追加し、参照知識を `demo-knowledge.js` の
+ * `DEMO_REFERENCE_FACTS` へ足したうえで `DEMO_KNOWLEDGE_VERSION` を上げる。
+ * 各写真は自分の `visitId` を持つので、訪問の割り当てはデータ側で決まる。
+ *
+ * @type {typeof SAMPLE_VISIT[]}
+ */
+export const SAMPLE_VISITS = [SAMPLE_VISIT];
+
 export const SAMPLE_PHOTOS = [
   {
     "id": "p01",
