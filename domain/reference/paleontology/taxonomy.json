@@ -1618,6 +1618,195 @@
       "scientificName": "Mammals-other"
     },
     {
+      "id": "taxon:mammalia",
+      "label": "哺乳綱",
+      "labelEn": "Mammalia",
+      "axis": "taxonomy",
+      "rank": "class",
+      "parentId": "taxon:mammals-other",
+      "startMa": null,
+      "endMa": null,
+      "order": 1,
+      "internalOnly": false,
+      "ui": {
+        "visible": true
+      },
+      "sourceType": "curated",
+      "status": "verified",
+      "quizEligible": true,
+      "externalIds": {
+        "wikidata": null,
+        "ncbiTaxonomy": "40674"
+      },
+      "sourceRef": {
+        "name": "NCBI Taxonomy",
+        "url": "https://www.ncbi.nlm.nih.gov/Taxonomy/Browser/wwwtax.cgi?id=40674&mode=Info"
+      },
+      "scientificName": "Mammalia"
+    },
+    {
+      "id": "taxon:theria",
+      "label": "獣類",
+      "labelEn": "Theria",
+      "axis": "taxonomy",
+      "rank": "clade",
+      "parentId": "taxon:mammalia",
+      "startMa": null,
+      "endMa": null,
+      "order": 1,
+      "internalOnly": false,
+      "ui": {
+        "visible": true
+      },
+      "sourceType": "curated",
+      "status": "verified",
+      "quizEligible": true,
+      "externalIds": {
+        "wikidata": null,
+        "ncbiTaxonomy": "32525"
+      },
+      "sourceRef": {
+        "name": "NCBI Taxonomy",
+        "url": "https://www.ncbi.nlm.nih.gov/Taxonomy/Browser/wwwtax.cgi?id=32525&mode=Info"
+      },
+      "scientificName": "Theria"
+    },
+    {
+      "id": "taxon:eutheria",
+      "label": "真獣類",
+      "labelEn": "Eutheria",
+      "axis": "taxonomy",
+      "rank": "clade",
+      "parentId": "taxon:theria",
+      "startMa": null,
+      "endMa": null,
+      "order": 1,
+      "internalOnly": false,
+      "ui": {
+        "visible": true
+      },
+      "sourceType": "curated",
+      "status": "verified",
+      "quizEligible": true,
+      "externalIds": {
+        "wikidata": null,
+        "ncbiTaxonomy": "9347"
+      },
+      "sourceRef": {
+        "name": "NCBI Taxonomy",
+        "url": "https://www.ncbi.nlm.nih.gov/Taxonomy/Browser/wwwtax.cgi?id=9347&mode=Info"
+      },
+      "scientificName": "Eutheria"
+    },
+    {
+      "id": "taxon:metatheria",
+      "label": "後獣類",
+      "labelEn": "Metatheria",
+      "axis": "taxonomy",
+      "rank": "clade",
+      "parentId": "taxon:theria",
+      "startMa": null,
+      "endMa": null,
+      "order": 2,
+      "internalOnly": false,
+      "ui": {
+        "visible": true
+      },
+      "sourceType": "curated",
+      "status": "verified",
+      "quizEligible": true,
+      "externalIds": {
+        "wikidata": null,
+        "ncbiTaxonomy": "9263"
+      },
+      "sourceRef": {
+        "name": "NCBI Taxonomy",
+        "url": "https://www.ncbi.nlm.nih.gov/Taxonomy/Browser/wwwtax.cgi?id=9263&mode=Info"
+      },
+      "scientificName": "Metatheria"
+    },
+    {
+      "id": "taxon:primates",
+      "label": "霊長目",
+      "labelEn": "Primates",
+      "axis": "taxonomy",
+      "rank": "order",
+      "parentId": "taxon:eutheria",
+      "startMa": null,
+      "endMa": null,
+      "order": 1,
+      "internalOnly": false,
+      "ui": {
+        "visible": true
+      },
+      "sourceType": "curated",
+      "status": "verified",
+      "quizEligible": true,
+      "externalIds": {
+        "wikidata": null,
+        "ncbiTaxonomy": "9443"
+      },
+      "sourceRef": {
+        "name": "NCBI Taxonomy",
+        "url": "https://www.ncbi.nlm.nih.gov/Taxonomy/Browser/wwwtax.cgi?id=9443&mode=Info"
+      },
+      "scientificName": "Primates"
+    },
+    {
+      "id": "taxon:cetacea",
+      "label": "クジラ類",
+      "labelEn": "Cetacea",
+      "axis": "taxonomy",
+      "rank": "infraorder",
+      "parentId": "taxon:eutheria",
+      "startMa": null,
+      "endMa": null,
+      "order": 2,
+      "internalOnly": false,
+      "ui": {
+        "visible": true
+      },
+      "sourceType": "curated",
+      "status": "verified",
+      "quizEligible": true,
+      "externalIds": {
+        "wikidata": null,
+        "ncbiTaxonomy": "9721"
+      },
+      "sourceRef": {
+        "name": "NCBI Taxonomy",
+        "url": "https://www.ncbi.nlm.nih.gov/Taxonomy/Browser/wwwtax.cgi?id=9721&mode=Info"
+      },
+      "scientificName": "Cetacea"
+    },
+    {
+      "id": "taxon:proboscidea",
+      "label": "長鼻目",
+      "labelEn": "Proboscidea",
+      "axis": "taxonomy",
+      "rank": "order",
+      "parentId": "taxon:eutheria",
+      "startMa": null,
+      "endMa": null,
+      "order": 3,
+      "internalOnly": false,
+      "ui": {
+        "visible": true
+      },
+      "sourceType": "curated",
+      "status": "verified",
+      "quizEligible": true,
+      "externalIds": {
+        "wikidata": null,
+        "ncbiTaxonomy": "9779"
+      },
+      "sourceRef": {
+        "name": "NCBI Taxonomy",
+        "url": "https://www.ncbi.nlm.nih.gov/Taxonomy/Browser/wwwtax.cgi?id=9779&mode=Info"
+      },
+      "scientificName": "Proboscidea"
+    },
+    {
       "id": "taxon:reptilia",
       "label": "爬虫類",
       "labelEn": "Reptilia",
@@ -4063,6 +4252,69 @@
       "status": "verified",
       "sourceType": "drawio",
       "evidence": "drawio-edge"
+    },
+    {
+      "id": "rel:is_a:fe03f68860fb22d5",
+      "type": "IS_A",
+      "sourceId": "taxon:mammalia",
+      "targetId": "taxon:mammals-other",
+      "status": "verified",
+      "sourceType": "curated",
+      "evidence": "curated-bridge-to-existing-display-group"
+    },
+    {
+      "id": "rel:is_a:10dd6d36c5d42001",
+      "type": "IS_A",
+      "sourceId": "taxon:theria",
+      "targetId": "taxon:mammalia",
+      "status": "verified",
+      "sourceType": "curated",
+      "evidence": "ncbi-taxonomy"
+    },
+    {
+      "id": "rel:is_a:06c2656db9a08749",
+      "type": "IS_A",
+      "sourceId": "taxon:eutheria",
+      "targetId": "taxon:theria",
+      "status": "verified",
+      "sourceType": "curated",
+      "evidence": "ncbi-taxonomy"
+    },
+    {
+      "id": "rel:is_a:996758db7f4381c5",
+      "type": "IS_A",
+      "sourceId": "taxon:metatheria",
+      "targetId": "taxon:theria",
+      "status": "verified",
+      "sourceType": "curated",
+      "evidence": "ncbi-taxonomy"
+    },
+    {
+      "id": "rel:is_a:7c3dea42fbe96122",
+      "type": "IS_A",
+      "sourceId": "taxon:primates",
+      "targetId": "taxon:eutheria",
+      "status": "verified",
+      "sourceType": "curated",
+      "evidence": "ncbi-taxonomy"
+    },
+    {
+      "id": "rel:is_a:9bfe76619565d6dd",
+      "type": "IS_A",
+      "sourceId": "taxon:cetacea",
+      "targetId": "taxon:eutheria",
+      "status": "verified",
+      "sourceType": "curated",
+      "evidence": "ncbi-taxonomy"
+    },
+    {
+      "id": "rel:is_a:f46f00e2d83363f3",
+      "type": "IS_A",
+      "sourceId": "taxon:proboscidea",
+      "targetId": "taxon:eutheria",
+      "status": "verified",
+      "sourceType": "curated",
+      "evidence": "ncbi-taxonomy"
     },
     {
       "id": "rel:is_a:1c92d3ccab32ae31",
