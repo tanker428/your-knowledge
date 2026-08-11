@@ -100,6 +100,7 @@ function normalisePhoto(photo, visitId) {
  * @param {any[]} context.demoRelations
  * @param {any[]} context.demoFacts
  * @param {any[]} [context.demoReferenceFacts]
+ * @param {string[]} [context.demoRetiredReferenceFactIds] 保存項目ではなく、同梱デモ更新時だけ使う廃止ID一覧
  * @param {string} [context.demoKnowledgeVersion]
  * @param {{title?: string, placeName?: string, domainPackIds?: string[]}} [context.demoVisitSeed]
  * @returns {MigrationResult}
@@ -151,8 +152,11 @@ export function migrateProjectDocument(stored, context) {
     if (Array.isArray(stored.visits) && stored.visits.length) {
       const hasDemoVisit = stored.visits.some((visit) => visit.id === DEMO_VISIT_ID);
       const shouldSeedDemo = hasDemoVisit && stored.demoKnowledgeVersion !== context.demoKnowledgeVersion;
+      const retiredDemoReferenceFactIds = shouldSeedDemo ? new Set(context.demoRetiredReferenceFactIds || []) : new Set();
       const storedReferenceFacts = Array.isArray(stored.referenceFacts)
-        ? stored.referenceFacts.map((fact) => ({ ...fact }))
+        ? stored.referenceFacts
+            .filter((fact) => !retiredDemoReferenceFactIds.has(fact.id) || fact.sourceType !== "curated")
+            .map((fact) => ({ ...fact }))
         : [];
       const knownReferenceFactIds = new Set(storedReferenceFacts.map((fact) => fact.id));
       const storedRelations = Array.isArray(stored.relations)

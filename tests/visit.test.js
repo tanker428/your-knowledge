@@ -55,7 +55,7 @@ describe("Visit-scoped learning state", () => {
     expect(visitFacts({ photos, facts }, "user")).toEqual([facts[1]]);
   });
 
-  it("ユーザーVisitではSAMPLE_QUIZZESを表示しない", () => {
+  it("クイズはVisitの種類に応じて出し分ける", () => {
     const quizzes = [{ id: "sample-q" }];
     expect(quizzesForVisit(createVisit({ title: "ユーザー訪問" }), quizzes)).toEqual([]);
     expect(quizzesForVisit(createDemoVisit(), quizzes)).toEqual(quizzes);
