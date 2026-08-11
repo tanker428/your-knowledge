@@ -119,6 +119,89 @@ export function validateRelationInput(
   return null;
 }
 
+/**
+ * Apply the relation types selected in the editor without changing the stored
+ * Relation shape. New types are saved independently, so one existing duplicate
+ * cannot prevent the remaining types from being created.
+ *
+ * @param {{relations:any[], draft:any, relationTypes:any[], editingId?:string|null, createId?:(type:string,index:number)=>string}} input
+ */
+export function applyRelationTypeSelection(input) {
+  const {
+    relations = [],
+    draft,
+    relationTypes = [],
+    editingId = null,
+    createId,
+  } = input;
+  const types = [...new Set((draft?.types || []).filter(Boolean))];
+  if (!types.length) {
+    return { relations, savedRelations: [], skippedTypes: [], error: "関係種別を選択してください" };
+  }
+  if (editingId && types.length !== 1) {
+    return { relations, savedRelations: [], skippedTypes: [], error: "編集中のRelationは関係種別を1つだけ選択してください" };
+  }
+
+  const candidates = types.map((type) => ({
+    sourceId: draft?.sourceId || "",
+    targetId: draft?.targetId || "",
+    type,
+  }));
+  for (const candidate of candidates) {
+    const error = validateRelationInput([], candidate, relationTypes);
+    if (error) return { relations, savedRelations: [], skippedTypes: [], error };
+  }
+
+  if (editingId) {
+    const candidate = candidates[0];
+    const error = validateRelationInput(relations, candidate, relationTypes, editingId);
+    if (error) return { relations, savedRelations: [], skippedTypes: [], error };
+    const index = relations.findIndex((relation) => relation.id === editingId);
+    if (index < 0) {
+      return { relations, savedRelations: [], skippedTypes: [], error: "編集するRelationが見つかりません" };
+    }
+    const updated = updateRelation(relations[index], candidate);
+    const next = [...relations];
+    next[index] = updated;
+    return { relations: next, savedRelations: [updated], skippedTypes: [], error: null };
+  }
+
+  const next = [...relations];
+  const savedRelations = [];
+  const skippedTypes = [];
+  for (const [index, candidate] of candidates.entries()) {
+    if (relationDuplicate(next, candidate, relationTypes)) {
+      skippedTypes.push(candidate.type);
+      continue;
+    }
+    if (typeof createId !== "function") {
+      return { relations, savedRelations: [], skippedTypes: [], error: "Relation IDを作成できません" };
+    }
+    const relation = createRelation({ ...candidate, id: createId(candidate.type, index) });
+    next.push(relation);
+    savedRelations.push(relation);
+  }
+  return { relations: next, savedRelations, skippedTypes, error: null };
+}
+
+/**
+ * Relations rendered for one photo in step 4, constrained to the active Visit.
+ */
+export function relationsForPhotoInVisit(relations, photos, activeVisitId, photoId) {
+  const visitPhotos = (photos || []).filter((photo) => photo.visitId === activeVisitId);
+  const photo = visitPhotos.find((item) => item.id === photoId);
+  if (!photo) return [];
+  const photoObservationIds = new Set((photo.observations || []).map((observation) => observation.id));
+  const visitObservationIds = new Set(
+    visitPhotos.flatMap((item) => (item.observations || []).map((observation) => observation.id)),
+  );
+  return (relations || []).filter((relation) =>
+    visitObservationIds.has(relation.sourceId) &&
+    visitObservationIds.has(relation.targetId) &&
+    (photoObservationIds.has(relation.sourceId) || photoObservationIds.has(relation.targetId)),
+  );
+}
+
 export function createRelation(input) {
   return {
     id: input.id,

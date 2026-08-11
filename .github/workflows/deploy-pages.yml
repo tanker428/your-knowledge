@@ -42,7 +42,11 @@ jobs:
             git -C "$publish" init
             git -C "$publish" remote add origin "https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY.git"
           fi
-          rsync -a --delete --exclude='pr/' dist/ "$publish/"
+          # --delete removes anything missing from dist/, so the clone's own .git
+          # needs the same protection as the PR previews. Without it the working
+          # copy is wiped and the git commands below fail with
+          # "fatal: not in a git directory".
+          rsync -a --delete --exclude='pr/' --exclude='.git/' dist/ "$publish/"
           touch "$publish/.nojekyll"
           git -C "$publish" config user.name "github-actions[bot]"
           git -C "$publish" config user.email "41898282+github-actions[bot]@users.noreply.github.com"

@@ -100,6 +100,7 @@ describe("quiz generation from the visit knowledge graph", () => {
     expect(first).toEqual(buildObservationChoiceOptions(observations, "o3"));
     expect(first).toHaveLength(4);
     expect(first[0].id).toBe("o3");
+    expect(first.map((option) => option.photoId)).toEqual(["p3", "p1", "p2", "p4"]);
     expect(new Set(first.map((option) => option.id)).size).toBe(4);
   });
 
