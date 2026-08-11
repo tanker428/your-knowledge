@@ -1882,13 +1882,6 @@ export async function initApp(deps) {
         deleteRelation(button.dataset.deleteRelation),
       ),
     );
-    $("#redrawObservationRegionButton")?.addEventListener("click", () => {
-      if (state.observationDraft) {
-        state.observationDraft.regionMode = "region";
-      }
-      state.pendingObservationRegion = null;
-      startRegionDrawing();
-    });
   }
 
   function completeOrganizePhoto() {
@@ -3313,6 +3306,13 @@ export async function initApp(deps) {
       if (state.organizePhotoId) rotatePhotoById(state.organizePhotoId);
     });
     $("#saveObservationButton").addEventListener("click", saveObservation);
+    $("#redrawObservationRegionButton")?.addEventListener("click", () => {
+      if (state.observationDraft) {
+        state.observationDraft.regionMode = "region";
+      }
+      state.pendingObservationRegion = null;
+      startRegionDrawing();
+    });
     $("#saveRelationButton")?.addEventListener("click", saveRelation);
     $("#chooseRelationSourceButton")?.addEventListener("click", () => showRelationPicker("source"));
     $("#chooseRelationTargetButton")?.addEventListener("click", () => showRelationPicker("target"));
