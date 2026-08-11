@@ -1192,6 +1192,14 @@ export async function initApp(deps) {
     showToast(wasEditing ? "観察対象を更新しました" : "観察対象を保存しました");
   }
 
+  function redrawObservationRegion() {
+    if (state.observationDraft) {
+      state.observationDraft.regionMode = "region";
+    }
+    state.pendingObservationRegion = null;
+    startRegionDrawing();
+  }
+
   function deleteObservation(/** @type {string} */ observationId) {
     const photo = currentOrganizePhoto();
     const observation = photo?.observations.find((item) => item.id === observationId);
@@ -1882,13 +1890,6 @@ export async function initApp(deps) {
         deleteRelation(button.dataset.deleteRelation),
       ),
     );
-    $("#redrawObservationRegionButton")?.addEventListener("click", () => {
-      if (state.observationDraft) {
-        state.observationDraft.regionMode = "region";
-      }
-      state.pendingObservationRegion = null;
-      startRegionDrawing();
-    });
   }
 
   function completeOrganizePhoto() {
@@ -3313,6 +3314,7 @@ export async function initApp(deps) {
       if (state.organizePhotoId) rotatePhotoById(state.organizePhotoId);
     });
     $("#saveObservationButton").addEventListener("click", saveObservation);
+    $("#redrawObservationRegionButton")?.addEventListener("click", redrawObservationRegion);
     $("#saveRelationButton")?.addEventListener("click", saveRelation);
     $("#chooseRelationSourceButton")?.addEventListener("click", () => showRelationPicker("source"));
     $("#chooseRelationTargetButton")?.addEventListener("click", () => showRelationPicker("target"));
