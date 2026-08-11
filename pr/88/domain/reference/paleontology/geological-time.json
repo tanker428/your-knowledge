@@ -1,0 +1,1001 @@
+{
+  "schemaVersion": "1.0.0",
+  "meta": {
+    "id": "reference-data:geological-time:paleontology",
+    "label": "地質時代（古生物）",
+    "axis": "geological-time",
+    "domainPackId": "paleontology",
+    "units": "Ma",
+    "timeDirection": "old-to-young",
+    "source": {
+      "name": "International Commission on Stratigraphy (ICS)",
+      "version": "2024-12",
+      "language": "ja",
+      "status": "verified"
+    },
+    "conventions": {
+      "startMa": "古い側の境界。値が大きい。",
+      "endMa": "新しい側の境界。値が小さい。",
+      "uiHiddenNodes": "internalOnly=true または ui.visible=false のノードは通常表示しない。"
+    }
+  },
+  "display": {
+    "rootIds": [
+      "geo:group:precambrian",
+      "geo:era:paleozoic",
+      "geo:era:mesozoic",
+      "geo:era:cenozoic"
+    ],
+    "hiddenNodeIds": [
+      "geo:eon:phanerozoic"
+    ],
+    "skipHiddenParentsInDisplayTree": true
+  },
+  "nodes": [
+    {
+      "id": "geo:group:precambrian",
+      "label": "先カンブリア時代",
+      "labelEn": "Precambrian",
+      "axis": "geological-time",
+      "rank": "informal-group",
+      "parentId": null,
+      "startMa": 4567.0,
+      "endMa": 538.8,
+      "order": 1,
+      "internalOnly": false,
+      "ui": {
+        "visible": true
+      },
+      "sourceType": "curated",
+      "status": "verified",
+      "externalIds": {
+        "wikidata": null
+      },
+      "note": "非公式の包括区分。冥王代・太古代・原生代を含む。"
+    },
+    {
+      "id": "geo:eon:phanerozoic",
+      "label": "顕生代",
+      "labelEn": "Phanerozoic",
+      "axis": "geological-time",
+      "rank": "eon",
+      "parentId": null,
+      "startMa": 538.8,
+      "endMa": 0.0,
+      "order": 2,
+      "internalOnly": true,
+      "ui": {
+        "visible": false
+      },
+      "sourceType": "curated",
+      "status": "verified",
+      "externalIds": {
+        "wikidata": null
+      },
+      "note": "内部の親ノードとしてのみ使用し、通常のUIには表示しない。"
+    },
+    {
+      "id": "geo:era:paleozoic",
+      "label": "古生代",
+      "labelEn": "Paleozoic",
+      "axis": "geological-time",
+      "rank": "era",
+      "parentId": "geo:eon:phanerozoic",
+      "startMa": 538.8,
+      "endMa": 251.902,
+      "order": 1,
+      "internalOnly": false,
+      "ui": {
+        "visible": true
+      },
+      "sourceType": "curated",
+      "status": "verified",
+      "externalIds": {
+        "wikidata": null
+      }
+    },
+    {
+      "id": "geo:period:cambrian",
+      "label": "カンブリア紀",
+      "labelEn": "Cambrian",
+      "axis": "geological-time",
+      "rank": "period",
+      "parentId": "geo:era:paleozoic",
+      "startMa": 538.8,
+      "endMa": 485.4,
+      "order": 1,
+      "internalOnly": false,
+      "ui": {
+        "visible": true
+      },
+      "sourceType": "curated",
+      "status": "verified",
+      "externalIds": {
+        "wikidata": null
+      }
+    },
+    {
+      "id": "geo:period:ordovician",
+      "label": "オルドビス紀",
+      "labelEn": "Ordovician",
+      "axis": "geological-time",
+      "rank": "period",
+      "parentId": "geo:era:paleozoic",
+      "startMa": 485.4,
+      "endMa": 443.8,
+      "order": 2,
+      "internalOnly": false,
+      "ui": {
+        "visible": true
+      },
+      "sourceType": "curated",
+      "status": "verified",
+      "externalIds": {
+        "wikidata": null
+      }
+    },
+    {
+      "id": "geo:period:silurian",
+      "label": "シルル紀",
+      "labelEn": "Silurian",
+      "axis": "geological-time",
+      "rank": "period",
+      "parentId": "geo:era:paleozoic",
+      "startMa": 443.8,
+      "endMa": 419.2,
+      "order": 3,
+      "internalOnly": false,
+      "ui": {
+        "visible": true
+      },
+      "sourceType": "curated",
+      "status": "verified",
+      "externalIds": {
+        "wikidata": null
+      }
+    },
+    {
+      "id": "geo:period:devonian",
+      "label": "デボン紀",
+      "labelEn": "Devonian",
+      "axis": "geological-time",
+      "rank": "period",
+      "parentId": "geo:era:paleozoic",
+      "startMa": 419.2,
+      "endMa": 358.86,
+      "order": 4,
+      "internalOnly": false,
+      "ui": {
+        "visible": true
+      },
+      "sourceType": "curated",
+      "status": "verified",
+      "externalIds": {
+        "wikidata": null
+      }
+    },
+    {
+      "id": "geo:period:carboniferous",
+      "label": "石炭紀",
+      "labelEn": "Carboniferous",
+      "axis": "geological-time",
+      "rank": "period",
+      "parentId": "geo:era:paleozoic",
+      "startMa": 358.86,
+      "endMa": 298.9,
+      "order": 5,
+      "internalOnly": false,
+      "ui": {
+        "visible": true
+      },
+      "sourceType": "curated",
+      "status": "verified",
+      "externalIds": {
+        "wikidata": null
+      }
+    },
+    {
+      "id": "geo:period:permian",
+      "label": "ペルム紀",
+      "labelEn": "Permian",
+      "axis": "geological-time",
+      "rank": "period",
+      "parentId": "geo:era:paleozoic",
+      "startMa": 298.9,
+      "endMa": 251.902,
+      "order": 6,
+      "internalOnly": false,
+      "ui": {
+        "visible": true
+      },
+      "sourceType": "curated",
+      "status": "verified",
+      "externalIds": {
+        "wikidata": null
+      }
+    },
+    {
+      "id": "geo:era:mesozoic",
+      "label": "中生代",
+      "labelEn": "Mesozoic",
+      "axis": "geological-time",
+      "rank": "era",
+      "parentId": "geo:eon:phanerozoic",
+      "startMa": 251.902,
+      "endMa": 66.0,
+      "order": 2,
+      "internalOnly": false,
+      "ui": {
+        "visible": true
+      },
+      "sourceType": "curated",
+      "status": "verified",
+      "externalIds": {
+        "wikidata": null
+      }
+    },
+    {
+      "id": "geo:period:triassic",
+      "label": "三畳紀",
+      "labelEn": "Triassic",
+      "axis": "geological-time",
+      "rank": "period",
+      "parentId": "geo:era:mesozoic",
+      "startMa": 251.902,
+      "endMa": 201.4,
+      "order": 1,
+      "internalOnly": false,
+      "ui": {
+        "visible": true
+      },
+      "sourceType": "curated",
+      "status": "verified",
+      "externalIds": {
+        "wikidata": null
+      }
+    },
+    {
+      "id": "geo:epoch:triassic:early",
+      "label": "前期",
+      "qualifiedLabel": "三畳紀前期",
+      "labelEn": "Early Triassic",
+      "axis": "geological-time",
+      "rank": "epoch",
+      "parentId": "geo:period:triassic",
+      "startMa": 251.902,
+      "endMa": 246.7,
+      "order": 1,
+      "internalOnly": false,
+      "ui": {
+        "visible": true
+      },
+      "sourceType": "curated",
+      "status": "verified",
+      "externalIds": {
+        "wikidata": null
+      }
+    },
+    {
+      "id": "geo:epoch:triassic:middle",
+      "label": "中期",
+      "qualifiedLabel": "三畳紀中期",
+      "labelEn": "Middle Triassic",
+      "axis": "geological-time",
+      "rank": "epoch",
+      "parentId": "geo:period:triassic",
+      "startMa": 246.7,
+      "endMa": 237.0,
+      "order": 2,
+      "internalOnly": false,
+      "ui": {
+        "visible": true
+      },
+      "sourceType": "curated",
+      "status": "verified",
+      "externalIds": {
+        "wikidata": null
+      }
+    },
+    {
+      "id": "geo:epoch:triassic:late",
+      "label": "後期",
+      "qualifiedLabel": "三畳紀後期",
+      "labelEn": "Late Triassic",
+      "axis": "geological-time",
+      "rank": "epoch",
+      "parentId": "geo:period:triassic",
+      "startMa": 237.0,
+      "endMa": 201.4,
+      "order": 3,
+      "internalOnly": false,
+      "ui": {
+        "visible": true
+      },
+      "sourceType": "curated",
+      "status": "verified",
+      "externalIds": {
+        "wikidata": null
+      }
+    },
+    {
+      "id": "geo:period:jurassic",
+      "label": "ジュラ紀",
+      "labelEn": "Jurassic",
+      "axis": "geological-time",
+      "rank": "period",
+      "parentId": "geo:era:mesozoic",
+      "startMa": 201.4,
+      "endMa": 143.1,
+      "order": 2,
+      "internalOnly": false,
+      "ui": {
+        "visible": true
+      },
+      "sourceType": "curated",
+      "status": "verified",
+      "externalIds": {
+        "wikidata": null
+      }
+    },
+    {
+      "id": "geo:epoch:jurassic:early",
+      "label": "前期",
+      "qualifiedLabel": "ジュラ紀前期",
+      "labelEn": "Early Jurassic",
+      "axis": "geological-time",
+      "rank": "epoch",
+      "parentId": "geo:period:jurassic",
+      "startMa": 201.4,
+      "endMa": 174.7,
+      "order": 1,
+      "internalOnly": false,
+      "ui": {
+        "visible": true
+      },
+      "sourceType": "curated",
+      "status": "verified",
+      "externalIds": {
+        "wikidata": null
+      }
+    },
+    {
+      "id": "geo:epoch:jurassic:middle",
+      "label": "中期",
+      "qualifiedLabel": "ジュラ紀中期",
+      "labelEn": "Middle Jurassic",
+      "axis": "geological-time",
+      "rank": "epoch",
+      "parentId": "geo:period:jurassic",
+      "startMa": 174.7,
+      "endMa": 161.5,
+      "order": 2,
+      "internalOnly": false,
+      "ui": {
+        "visible": true
+      },
+      "sourceType": "curated",
+      "status": "verified",
+      "externalIds": {
+        "wikidata": null
+      }
+    },
+    {
+      "id": "geo:epoch:jurassic:late",
+      "label": "後期",
+      "qualifiedLabel": "ジュラ紀後期",
+      "labelEn": "Late Jurassic",
+      "axis": "geological-time",
+      "rank": "epoch",
+      "parentId": "geo:period:jurassic",
+      "startMa": 161.5,
+      "endMa": 143.1,
+      "order": 3,
+      "internalOnly": false,
+      "ui": {
+        "visible": true
+      },
+      "sourceType": "curated",
+      "status": "verified",
+      "externalIds": {
+        "wikidata": null
+      }
+    },
+    {
+      "id": "geo:period:cretaceous",
+      "label": "白亜紀",
+      "labelEn": "Cretaceous",
+      "axis": "geological-time",
+      "rank": "period",
+      "parentId": "geo:era:mesozoic",
+      "startMa": 143.1,
+      "endMa": 66.0,
+      "order": 3,
+      "internalOnly": false,
+      "ui": {
+        "visible": true
+      },
+      "sourceType": "curated",
+      "status": "verified",
+      "externalIds": {
+        "wikidata": null
+      }
+    },
+    {
+      "id": "geo:epoch:cretaceous:early",
+      "label": "前期",
+      "qualifiedLabel": "白亜紀前期",
+      "labelEn": "Early Cretaceous",
+      "axis": "geological-time",
+      "rank": "epoch",
+      "parentId": "geo:period:cretaceous",
+      "startMa": 143.1,
+      "endMa": 100.5,
+      "order": 1,
+      "internalOnly": false,
+      "ui": {
+        "visible": true
+      },
+      "sourceType": "curated",
+      "status": "verified",
+      "externalIds": {
+        "wikidata": null
+      }
+    },
+    {
+      "id": "geo:epoch:cretaceous:late",
+      "label": "後期",
+      "qualifiedLabel": "白亜紀後期",
+      "labelEn": "Late Cretaceous",
+      "axis": "geological-time",
+      "rank": "epoch",
+      "parentId": "geo:period:cretaceous",
+      "startMa": 100.5,
+      "endMa": 66.0,
+      "order": 2,
+      "internalOnly": false,
+      "ui": {
+        "visible": true
+      },
+      "sourceType": "curated",
+      "status": "verified",
+      "externalIds": {
+        "wikidata": null
+      }
+    },
+    {
+      "id": "geo:era:cenozoic",
+      "label": "新生代",
+      "labelEn": "Cenozoic",
+      "axis": "geological-time",
+      "rank": "era",
+      "parentId": "geo:eon:phanerozoic",
+      "startMa": 66.0,
+      "endMa": 0.0,
+      "order": 3,
+      "internalOnly": false,
+      "ui": {
+        "visible": true
+      },
+      "sourceType": "curated",
+      "status": "verified",
+      "externalIds": {
+        "wikidata": null
+      }
+    },
+    {
+      "id": "geo:period:paleogene",
+      "label": "古第三紀",
+      "labelEn": "Paleogene",
+      "axis": "geological-time",
+      "rank": "period",
+      "parentId": "geo:era:cenozoic",
+      "startMa": 66.0,
+      "endMa": 23.04,
+      "order": 1,
+      "internalOnly": false,
+      "ui": {
+        "visible": true
+      },
+      "sourceType": "curated",
+      "status": "verified",
+      "externalIds": {
+        "wikidata": null
+      }
+    },
+    {
+      "id": "geo:epoch:paleocene",
+      "label": "暁新世",
+      "labelEn": "Paleocene",
+      "axis": "geological-time",
+      "rank": "epoch",
+      "parentId": "geo:period:paleogene",
+      "startMa": 66.0,
+      "endMa": 56.0,
+      "order": 1,
+      "internalOnly": false,
+      "ui": {
+        "visible": true
+      },
+      "sourceType": "curated",
+      "status": "verified",
+      "externalIds": {
+        "wikidata": null
+      }
+    },
+    {
+      "id": "geo:epoch:eocene",
+      "label": "始新世",
+      "labelEn": "Eocene",
+      "axis": "geological-time",
+      "rank": "epoch",
+      "parentId": "geo:period:paleogene",
+      "startMa": 56.0,
+      "endMa": 33.9,
+      "order": 2,
+      "internalOnly": false,
+      "ui": {
+        "visible": true
+      },
+      "sourceType": "curated",
+      "status": "verified",
+      "externalIds": {
+        "wikidata": null
+      }
+    },
+    {
+      "id": "geo:epoch:oligocene",
+      "label": "漸新世",
+      "labelEn": "Oligocene",
+      "axis": "geological-time",
+      "rank": "epoch",
+      "parentId": "geo:period:paleogene",
+      "startMa": 33.9,
+      "endMa": 23.04,
+      "order": 3,
+      "internalOnly": false,
+      "ui": {
+        "visible": true
+      },
+      "sourceType": "curated",
+      "status": "verified",
+      "externalIds": {
+        "wikidata": null
+      }
+    },
+    {
+      "id": "geo:period:neogene",
+      "label": "新第三紀",
+      "labelEn": "Neogene",
+      "axis": "geological-time",
+      "rank": "period",
+      "parentId": "geo:era:cenozoic",
+      "startMa": 23.04,
+      "endMa": 2.58,
+      "order": 2,
+      "internalOnly": false,
+      "ui": {
+        "visible": true
+      },
+      "sourceType": "curated",
+      "status": "verified",
+      "externalIds": {
+        "wikidata": null
+      }
+    },
+    {
+      "id": "geo:epoch:miocene",
+      "label": "中新世",
+      "labelEn": "Miocene",
+      "axis": "geological-time",
+      "rank": "epoch",
+      "parentId": "geo:period:neogene",
+      "startMa": 23.04,
+      "endMa": 5.333,
+      "order": 1,
+      "internalOnly": false,
+      "ui": {
+        "visible": true
+      },
+      "sourceType": "curated",
+      "status": "verified",
+      "externalIds": {
+        "wikidata": null
+      }
+    },
+    {
+      "id": "geo:epoch:pliocene",
+      "label": "鮮新世",
+      "labelEn": "Pliocene",
+      "axis": "geological-time",
+      "rank": "epoch",
+      "parentId": "geo:period:neogene",
+      "startMa": 5.333,
+      "endMa": 2.58,
+      "order": 2,
+      "internalOnly": false,
+      "ui": {
+        "visible": true
+      },
+      "sourceType": "curated",
+      "status": "verified",
+      "externalIds": {
+        "wikidata": null
+      }
+    },
+    {
+      "id": "geo:period:quaternary",
+      "label": "第四紀",
+      "labelEn": "Quaternary",
+      "axis": "geological-time",
+      "rank": "period",
+      "parentId": "geo:era:cenozoic",
+      "startMa": 2.58,
+      "endMa": 0.0,
+      "order": 3,
+      "internalOnly": false,
+      "ui": {
+        "visible": true
+      },
+      "sourceType": "curated",
+      "status": "verified",
+      "externalIds": {
+        "wikidata": null
+      }
+    },
+    {
+      "id": "geo:epoch:pleistocene",
+      "label": "更新世",
+      "labelEn": "Pleistocene",
+      "axis": "geological-time",
+      "rank": "epoch",
+      "parentId": "geo:period:quaternary",
+      "startMa": 2.58,
+      "endMa": 0.0117,
+      "order": 1,
+      "internalOnly": false,
+      "ui": {
+        "visible": true
+      },
+      "sourceType": "curated",
+      "status": "verified",
+      "externalIds": {
+        "wikidata": null
+      }
+    },
+    {
+      "id": "geo:epoch:holocene",
+      "label": "完新世",
+      "labelEn": "Holocene",
+      "axis": "geological-time",
+      "rank": "epoch",
+      "parentId": "geo:period:quaternary",
+      "startMa": 0.0117,
+      "endMa": 0.0,
+      "order": 2,
+      "internalOnly": false,
+      "ui": {
+        "visible": true
+      },
+      "sourceType": "curated",
+      "status": "verified",
+      "externalIds": {
+        "wikidata": null
+      }
+    }
+  ],
+  "relations": [
+    {
+      "id": "rel:part-of:geo:era:paleozoic",
+      "type": "PART_OF",
+      "sourceId": "geo:era:paleozoic",
+      "targetId": "geo:eon:phanerozoic"
+    },
+    {
+      "id": "rel:part-of:geo:period:cambrian",
+      "type": "PART_OF",
+      "sourceId": "geo:period:cambrian",
+      "targetId": "geo:era:paleozoic"
+    },
+    {
+      "id": "rel:part-of:geo:period:ordovician",
+      "type": "PART_OF",
+      "sourceId": "geo:period:ordovician",
+      "targetId": "geo:era:paleozoic"
+    },
+    {
+      "id": "rel:part-of:geo:period:silurian",
+      "type": "PART_OF",
+      "sourceId": "geo:period:silurian",
+      "targetId": "geo:era:paleozoic"
+    },
+    {
+      "id": "rel:part-of:geo:period:devonian",
+      "type": "PART_OF",
+      "sourceId": "geo:period:devonian",
+      "targetId": "geo:era:paleozoic"
+    },
+    {
+      "id": "rel:part-of:geo:period:carboniferous",
+      "type": "PART_OF",
+      "sourceId": "geo:period:carboniferous",
+      "targetId": "geo:era:paleozoic"
+    },
+    {
+      "id": "rel:part-of:geo:period:permian",
+      "type": "PART_OF",
+      "sourceId": "geo:period:permian",
+      "targetId": "geo:era:paleozoic"
+    },
+    {
+      "id": "rel:part-of:geo:era:mesozoic",
+      "type": "PART_OF",
+      "sourceId": "geo:era:mesozoic",
+      "targetId": "geo:eon:phanerozoic"
+    },
+    {
+      "id": "rel:part-of:geo:period:triassic",
+      "type": "PART_OF",
+      "sourceId": "geo:period:triassic",
+      "targetId": "geo:era:mesozoic"
+    },
+    {
+      "id": "rel:part-of:geo:epoch:triassic:early",
+      "type": "PART_OF",
+      "sourceId": "geo:epoch:triassic:early",
+      "targetId": "geo:period:triassic"
+    },
+    {
+      "id": "rel:part-of:geo:epoch:triassic:middle",
+      "type": "PART_OF",
+      "sourceId": "geo:epoch:triassic:middle",
+      "targetId": "geo:period:triassic"
+    },
+    {
+      "id": "rel:part-of:geo:epoch:triassic:late",
+      "type": "PART_OF",
+      "sourceId": "geo:epoch:triassic:late",
+      "targetId": "geo:period:triassic"
+    },
+    {
+      "id": "rel:part-of:geo:period:jurassic",
+      "type": "PART_OF",
+      "sourceId": "geo:period:jurassic",
+      "targetId": "geo:era:mesozoic"
+    },
+    {
+      "id": "rel:part-of:geo:epoch:jurassic:early",
+      "type": "PART_OF",
+      "sourceId": "geo:epoch:jurassic:early",
+      "targetId": "geo:period:jurassic"
+    },
+    {
+      "id": "rel:part-of:geo:epoch:jurassic:middle",
+      "type": "PART_OF",
+      "sourceId": "geo:epoch:jurassic:middle",
+      "targetId": "geo:period:jurassic"
+    },
+    {
+      "id": "rel:part-of:geo:epoch:jurassic:late",
+      "type": "PART_OF",
+      "sourceId": "geo:epoch:jurassic:late",
+      "targetId": "geo:period:jurassic"
+    },
+    {
+      "id": "rel:part-of:geo:period:cretaceous",
+      "type": "PART_OF",
+      "sourceId": "geo:period:cretaceous",
+      "targetId": "geo:era:mesozoic"
+    },
+    {
+      "id": "rel:part-of:geo:epoch:cretaceous:early",
+      "type": "PART_OF",
+      "sourceId": "geo:epoch:cretaceous:early",
+      "targetId": "geo:period:cretaceous"
+    },
+    {
+      "id": "rel:part-of:geo:epoch:cretaceous:late",
+      "type": "PART_OF",
+      "sourceId": "geo:epoch:cretaceous:late",
+      "targetId": "geo:period:cretaceous"
+    },
+    {
+      "id": "rel:part-of:geo:era:cenozoic",
+      "type": "PART_OF",
+      "sourceId": "geo:era:cenozoic",
+      "targetId": "geo:eon:phanerozoic"
+    },
+    {
+      "id": "rel:part-of:geo:period:paleogene",
+      "type": "PART_OF",
+      "sourceId": "geo:period:paleogene",
+      "targetId": "geo:era:cenozoic"
+    },
+    {
+      "id": "rel:part-of:geo:epoch:paleocene",
+      "type": "PART_OF",
+      "sourceId": "geo:epoch:paleocene",
+      "targetId": "geo:period:paleogene"
+    },
+    {
+      "id": "rel:part-of:geo:epoch:eocene",
+      "type": "PART_OF",
+      "sourceId": "geo:epoch:eocene",
+      "targetId": "geo:period:paleogene"
+    },
+    {
+      "id": "rel:part-of:geo:epoch:oligocene",
+      "type": "PART_OF",
+      "sourceId": "geo:epoch:oligocene",
+      "targetId": "geo:period:paleogene"
+    },
+    {
+      "id": "rel:part-of:geo:period:neogene",
+      "type": "PART_OF",
+      "sourceId": "geo:period:neogene",
+      "targetId": "geo:era:cenozoic"
+    },
+    {
+      "id": "rel:part-of:geo:epoch:miocene",
+      "type": "PART_OF",
+      "sourceId": "geo:epoch:miocene",
+      "targetId": "geo:period:neogene"
+    },
+    {
+      "id": "rel:part-of:geo:epoch:pliocene",
+      "type": "PART_OF",
+      "sourceId": "geo:epoch:pliocene",
+      "targetId": "geo:period:neogene"
+    },
+    {
+      "id": "rel:part-of:geo:period:quaternary",
+      "type": "PART_OF",
+      "sourceId": "geo:period:quaternary",
+      "targetId": "geo:era:cenozoic"
+    },
+    {
+      "id": "rel:part-of:geo:epoch:pleistocene",
+      "type": "PART_OF",
+      "sourceId": "geo:epoch:pleistocene",
+      "targetId": "geo:period:quaternary"
+    },
+    {
+      "id": "rel:part-of:geo:epoch:holocene",
+      "type": "PART_OF",
+      "sourceId": "geo:epoch:holocene",
+      "targetId": "geo:period:quaternary"
+    },
+    {
+      "id": "rel:precedes:geo:group:precambrian:geo:era:paleozoic",
+      "type": "PRECEDES",
+      "sourceId": "geo:group:precambrian",
+      "targetId": "geo:era:paleozoic"
+    },
+    {
+      "id": "rel:precedes:geo:era:paleozoic:geo:era:mesozoic",
+      "type": "PRECEDES",
+      "sourceId": "geo:era:paleozoic",
+      "targetId": "geo:era:mesozoic"
+    },
+    {
+      "id": "rel:precedes:geo:era:mesozoic:geo:era:cenozoic",
+      "type": "PRECEDES",
+      "sourceId": "geo:era:mesozoic",
+      "targetId": "geo:era:cenozoic"
+    },
+    {
+      "id": "rel:precedes:geo:period:cambrian:geo:period:ordovician",
+      "type": "PRECEDES",
+      "sourceId": "geo:period:cambrian",
+      "targetId": "geo:period:ordovician"
+    },
+    {
+      "id": "rel:precedes:geo:period:ordovician:geo:period:silurian",
+      "type": "PRECEDES",
+      "sourceId": "geo:period:ordovician",
+      "targetId": "geo:period:silurian"
+    },
+    {
+      "id": "rel:precedes:geo:period:silurian:geo:period:devonian",
+      "type": "PRECEDES",
+      "sourceId": "geo:period:silurian",
+      "targetId": "geo:period:devonian"
+    },
+    {
+      "id": "rel:precedes:geo:period:devonian:geo:period:carboniferous",
+      "type": "PRECEDES",
+      "sourceId": "geo:period:devonian",
+      "targetId": "geo:period:carboniferous"
+    },
+    {
+      "id": "rel:precedes:geo:period:carboniferous:geo:period:permian",
+      "type": "PRECEDES",
+      "sourceId": "geo:period:carboniferous",
+      "targetId": "geo:period:permian"
+    },
+    {
+      "id": "rel:precedes:geo:period:triassic:geo:period:jurassic",
+      "type": "PRECEDES",
+      "sourceId": "geo:period:triassic",
+      "targetId": "geo:period:jurassic"
+    },
+    {
+      "id": "rel:precedes:geo:period:jurassic:geo:period:cretaceous",
+      "type": "PRECEDES",
+      "sourceId": "geo:period:jurassic",
+      "targetId": "geo:period:cretaceous"
+    },
+    {
+      "id": "rel:precedes:geo:epoch:triassic:early:geo:epoch:triassic:middle",
+      "type": "PRECEDES",
+      "sourceId": "geo:epoch:triassic:early",
+      "targetId": "geo:epoch:triassic:middle"
+    },
+    {
+      "id": "rel:precedes:geo:epoch:triassic:middle:geo:epoch:triassic:late",
+      "type": "PRECEDES",
+      "sourceId": "geo:epoch:triassic:middle",
+      "targetId": "geo:epoch:triassic:late"
+    },
+    {
+      "id": "rel:precedes:geo:epoch:jurassic:early:geo:epoch:jurassic:middle",
+      "type": "PRECEDES",
+      "sourceId": "geo:epoch:jurassic:early",
+      "targetId": "geo:epoch:jurassic:middle"
+    },
+    {
+      "id": "rel:precedes:geo:epoch:jurassic:middle:geo:epoch:jurassic:late",
+      "type": "PRECEDES",
+      "sourceId": "geo:epoch:jurassic:middle",
+      "targetId": "geo:epoch:jurassic:late"
+    },
+    {
+      "id": "rel:precedes:geo:epoch:cretaceous:early:geo:epoch:cretaceous:late",
+      "type": "PRECEDES",
+      "sourceId": "geo:epoch:cretaceous:early",
+      "targetId": "geo:epoch:cretaceous:late"
+    },
+    {
+      "id": "rel:precedes:geo:period:paleogene:geo:period:neogene",
+      "type": "PRECEDES",
+      "sourceId": "geo:period:paleogene",
+      "targetId": "geo:period:neogene"
+    },
+    {
+      "id": "rel:precedes:geo:period:neogene:geo:period:quaternary",
+      "type": "PRECEDES",
+      "sourceId": "geo:period:neogene",
+      "targetId": "geo:period:quaternary"
+    },
+    {
+      "id": "rel:precedes:geo:epoch:paleocene:geo:epoch:eocene",
+      "type": "PRECEDES",
+      "sourceId": "geo:epoch:paleocene",
+      "targetId": "geo:epoch:eocene"
+    },
+    {
+      "id": "rel:precedes:geo:epoch:eocene:geo:epoch:oligocene",
+      "type": "PRECEDES",
+      "sourceId": "geo:epoch:eocene",
+      "targetId": "geo:epoch:oligocene"
+    },
+    {
+      "id": "rel:precedes:geo:epoch:miocene:geo:epoch:pliocene",
+      "type": "PRECEDES",
+      "sourceId": "geo:epoch:miocene",
+      "targetId": "geo:epoch:pliocene"
+    },
+    {
+      "id": "rel:precedes:geo:epoch:pleistocene:geo:epoch:holocene",
+      "type": "PRECEDES",
+      "sourceId": "geo:epoch:pleistocene",
+      "targetId": "geo:epoch:holocene"
+    }
+  ],
+  "validationRules": [
+    "startMa >= endMa",
+    "子ノードの期間は親ノードの期間内に含まれる",
+    "同一親のorderは重複しない",
+    "同一idは重複しない",
+    "status=verified のノードだけをクイズ生成へ使用する"
+  ]
+}
