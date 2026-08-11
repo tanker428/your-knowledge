@@ -185,6 +185,26 @@ describe("demo knowledge and quiz generation", () => {
     expect(migrated.referenceFacts.find((fact) => fact.id === userFact.id && fact.sourceType === "user")).toEqual(userFact);
   });
 
+  it("refreshes changed bundled facts during a demo upgrade", () => {
+    const saved = demoProject();
+    const oldFact = saved.referenceFacts.find((fact) => fact.id === "demo-rf-o08a-eocene");
+    oldFact.predicate = "livedDuring";
+    oldFact.sourceNote = "old bundled wording";
+    saved.demoKnowledgeVersion = "2026-08-10.2";
+    const migrated = migrateProjectDocument(saved, {
+      demoPhotos: SAMPLE_PHOTOS,
+      demoRelations: SAMPLE_RELATIONS,
+      demoFacts: LEARNING_FACTS,
+      demoReferenceFacts: [...DEMO_REFERENCE_FACTS],
+      demoRetiredReferenceFactIds: [...DEMO_RETIRED_REFERENCE_FACT_IDS],
+      demoKnowledgeVersion: DEMO_KNOWLEDGE_VERSION,
+      demoVisitSeed: {},
+    }).project;
+    const current = DEMO_REFERENCE_FACTS.find((fact) => fact.id === "demo-rf-o08a-eocene");
+    expect(migrated.referenceFacts.find((fact) => fact.id === current.id && fact.sourceType === "curated"))
+      .toMatchObject({ predicate: current.predicate, sourceNote: current.sourceNote });
+  });
+
   it("補充したデモRelationから既存v2プロジェクトにもpart-of問題を生成する", async () => {
     const saved = demoProject();
     saved.relations = saved.relations.filter((relation) => relation.id !== "r19");
