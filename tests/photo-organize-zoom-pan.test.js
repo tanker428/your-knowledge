@@ -69,6 +69,10 @@ describe("Photo organize zoom and pan UI", () => {
     const organizeHost = document.querySelector("#annotatedPhoto");
     organizeHost.classList.add("magnifier-host");
     expect(clippingAncestors(organizeHost)).toEqual([]);
+    const lensZIndex = Number(dom.window.getComputedStyle(document.querySelector("#imageMagnifierLens")).zIndex);
+    const memo = document.querySelector(".experience-memo");
+    expect(dom.window.getComputedStyle(memo).position).toBe("relative");
+    expect(Number(dom.window.getComputedStyle(memo).zIndex)).toBeGreaterThan(lensZIndex);
 
     const quizStage = document.querySelector("#quizStage");
     quizStage.innerHTML = `<article class="quiz-card"><div class="quiz-content">
@@ -222,6 +226,69 @@ describe("Photo organize zoom and pan UI", () => {
     expect(bindObservationAddButton(document, onAdd)).toBe(true);
     document.querySelector("#stepAddObservation")?.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
     expect(onAdd).toHaveBeenCalledOnce();
+  });
+
+  it("does not activate the organize magnifier from the memo textarea", () => {
+    vi.useFakeTimers();
+    const dom = new JSDOM(`
+      <section class="organize-image-panel">
+        <div id="annotatedPhoto">
+          <div id="organizeImageStage"></div>
+          <div id="imageMagnifierControls"><button id="in"></button><button id="out"></button></div>
+        </div>
+        <div class="experience-memo"><textarea id="experienceMemoInput"></textarea></div>
+      </section>`);
+    const document = dom.window.document;
+    const container = document.querySelector("#annotatedPhoto");
+    const imageStage = document.querySelector("#organizeImageStage");
+    const memoInput = document.querySelector("#experienceMemoInput");
+    container.setPointerCapture = vi.fn();
+    const activated = vi.fn();
+    const binding = bindMagnifierInteractions({
+      container,
+      windowTarget: dom.window,
+      zoomInButton: document.querySelector("#in"),
+      zoomOutButton: document.querySelector("#out"),
+      getBaseRect: () => ({ left: 10, top: 20, width: 200, height: 100 }),
+      isBlocked: () => false,
+      activate: activated,
+      move: vi.fn(),
+      deactivate: vi.fn(),
+      changeZoom: vi.fn(),
+      longPressDelay: 350,
+    });
+
+    const memoTouch = pointerEvent(dom.window, "pointerdown", {
+      pointerType: "touch",
+      clientX: 50,
+      clientY: 50,
+      pointerId: 11,
+    });
+    memoInput.dispatchEvent(memoTouch);
+    vi.advanceTimersByTime(350);
+    expect(activated).not.toHaveBeenCalled();
+    expect(memoTouch.defaultPrevented).toBe(false);
+
+    const memoContextMenu = new dom.window.MouseEvent("contextmenu", {
+      bubbles: true,
+      cancelable: true,
+      clientX: 50,
+      clientY: 50,
+    });
+    memoInput.dispatchEvent(memoContextMenu);
+    expect(memoContextMenu.defaultPrevented).toBe(false);
+
+    const imageRightDown = pointerEvent(dom.window, "pointerdown", {
+      button: 2,
+      clientX: 50,
+      clientY: 50,
+      pointerId: 12,
+    });
+    imageStage.dispatchEvent(imageRightDown);
+    expect(imageRightDown.defaultPrevented).toBe(true);
+    expect(activated).toHaveBeenLastCalledWith({ x: 50, y: 50 }, 12);
+
+    binding.destroy();
   });
 
   it("persists a normalized region through the Observation update behavior without mutating input", () => {
