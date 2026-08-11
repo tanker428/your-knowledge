@@ -57,13 +57,14 @@ import {
   renderTutorialStep as renderTutorialStepContent,
 } from "./tutorial.js";
 import {
-  createRelation,
+  applyRelationTypeSelection,
   isApprovableRelation,
   isDirectedRelation,
   isSelectableObservation,
   relationCandidates,
   RELATION_SCOPES,
   relationReviewActions,
+  relationsForPhotoInVisit,
   removeRelation,
   endpointPresentation,
   endpointSelectionLabel,
@@ -71,8 +72,6 @@ import {
   scopeForRelationEndpoints,
   searchRelationEntries,
   swapRelationEndpoints,
-  updateRelation,
-  validateRelationInput,
 } from "../domain/relation.js";
 import {
   migrateProjectDocument,
@@ -101,7 +100,15 @@ import { getLearnedReferenceFacts } from "../domain/learned-reference-facts.js";
 import { buildCollectionProgressForView } from "../features/collections/collection-progress.js";
 import { displayedPointToStoredPoint, normalizePhotoRotation, rotatePhoto } from "../domain/photo-rotation.js";
 import { bindObservationAddButton, observationNumberAnchorClass, renderObservationCandidateStep } from "./organize-view.js";
-import { applyMagnifierGeometry, bindMagnifierInteractions, calculateMagnifierGeometry } from "./organize-magnifier.js";
+import {
+  applyMagnifierGeometry,
+  bindMagnifierInteractions,
+  calculateMagnifierGeometry,
+  clampMagnifierZoom,
+  MAGNIFIER_MIN_ZOOM,
+  MAGNIFIER_ZOOM_STEP,
+  mountMagnifier,
+} from "./organize-magnifier.js";
 import { renderKnowledgeDisplayAttributes } from "./knowledge-display.js";
 import { knowledgeEdgeLabel, knowledgeNodeLabel, knowledgeNodeText } from "./knowledge-labels.js";
 import { renderQuizPhotoMedia } from "./quiz-photo.js";
@@ -221,6 +228,7 @@ export async function initApp(deps) {
     selectedFileRotations: [],
     /** @type {string|null} */
     modalPhotoId: null,
+    relationPreviewObservationId: null,
     organizePhotoId: "p03",
     organizeStep: 1,
     /** @type {string|null} */
@@ -278,11 +286,7 @@ export async function initApp(deps) {
   let organizeMagnifierActive = false;
   let organizeLensPoint = null;
   let organizeMagnifierBinding = null;
-  let organizeLensZoom = 2;
-  const ORGANIZE_LENS_MIN_ZOOM = 2;
-  const ORGANIZE_LENS_MAX_ZOOM = 6;
-  const ORGANIZE_LENS_STEP = 0.5;
-  const ORGANIZE_LENS_SIZE = 200;
+  let organizeLensZoom = MAGNIFIER_MIN_ZOOM;
 
   /**
    * The bundled demo photos, as records. The migration layers saved state on
@@ -575,6 +579,23 @@ export async function initApp(deps) {
     return state.photos.find((photo) => photo.id === id);
   }
 
+  function originalPhotoSource(/** @type {any} */ photo) {
+    return photo?.src || photo?.originalSrc || MISSING_PHOTO_SRC;
+  }
+
+  function mountPhotoMagnifier(
+    /** @type {any} */ container,
+    /** @type {any} */ image,
+    /** @type {any} */ photo,
+    { showControls = true } = {},
+  ) {
+    return mountMagnifier(container, image, {
+      showControls,
+      rotation: normalizePhotoRotation(photo?.rotation),
+      source: originalPhotoSource(photo),
+    });
+  }
+
   function observationById(/** @type {string|null} */ id) {
     for (const photo of state.photos) {
       const observation = photo.observations.find(
@@ -850,9 +871,14 @@ export async function initApp(deps) {
     return { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
   }
 
-  function rotationStyle(rotation) {
+  function rotationTransform(rotation) {
     const value = normalizePhotoRotation(rotation);
-    return value ? `transform:rotate(${value}deg) scale(.82)` : "";
+    return value ? `rotate(${value}deg) scale(.82)` : "";
+  }
+
+  function rotationStyle(rotation) {
+    const transform = rotationTransform(rotation);
+    return transform ? `transform:${transform}` : "";
   }
 
   function rotatedPhotoFrame(/** @type {any} */ photo, content) {
@@ -889,7 +915,13 @@ export async function initApp(deps) {
     if (!baseRect || !container || !lens || !lensImage) return;
     const containerRect = container.getBoundingClientRect();
     const rotation = normalizePhotoRotation(currentOrganizePhoto()?.rotation);
-    const geometry = calculateMagnifierGeometry(baseRect, containerRect, point, rotation, organizeLensZoom, ORGANIZE_LENS_SIZE);
+    const geometry = calculateMagnifierGeometry(
+      baseRect,
+      containerRect,
+      point,
+      rotation,
+      organizeLensZoom,
+    );
     applyMagnifierGeometry({
       lens,
       image: lensImage,
@@ -911,9 +943,8 @@ export async function initApp(deps) {
   }
 
   function setOrganizeLensZoom(direction) {
-    organizeLensZoom = Math.min(
-      ORGANIZE_LENS_MAX_ZOOM,
-      Math.max(ORGANIZE_LENS_MIN_ZOOM, Math.round((organizeLensZoom + direction * ORGANIZE_LENS_STEP) * 10) / 10),
+    organizeLensZoom = clampMagnifierZoom(
+      organizeLensZoom + direction * MAGNIFIER_ZOOM_STEP,
     );
     if (organizeLensPoint) updateOrganizeLens(organizeLensPoint);
   }
@@ -1180,8 +1211,8 @@ export async function initApp(deps) {
     state.modalPhotoId = photoId;
     $("#modalImage").src = photo.src;
     $("#modalImage").alt = photo.title;
-    $("#modalImage").style.transform = rotationStyle(photo.rotation);
-    $("#modalOverlay").style.transform = rotationStyle(photo.rotation);
+    $("#modalImage").style.transform = rotationTransform(photo.rotation);
+    $("#modalOverlay").style.transform = rotationTransform(photo.rotation);
     $("#modalRotationLabel").textContent = `向き ${normalizePhotoRotation(photo.rotation)}度`;
     $("#modalStatus").textContent = STATUS_LABELS[photo.status] || "未整理";
     const observations = photo.observations.filter(
@@ -1198,15 +1229,34 @@ export async function initApp(deps) {
     $("#modalObservations").innerHTML = observations
       .map(
         (/** @type {any} */ observation, /** @type {number} */ index) => `
-      <article><span class="observation-number">${index + 1}</span><div><strong>${escapeHtml(observation.label)}</strong><small>${escapeHtml(OBSERVATION_TYPE_LABELS[observation.observationType] || "")}</small><div class="mini-tag-list">${observation.genericCategories.map((/** @type {string} */ id) => `<span>${escapeHtml(genericLabel(id))}</span>`).join("")}</div></div></article>`,
+      <article class="${observation.id === state.relationPreviewObservationId ? "relation-preview-target" : ""}" ${observation.id === state.relationPreviewObservationId ? 'aria-current="true"' : ""}><span class="observation-number">${index + 1}</span><div><strong>${escapeHtml(observation.label)}</strong>${observation.id === state.relationPreviewObservationId ? '<b class="relation-preview-badge">選択候補</b>' : ""}<small>${escapeHtml(OBSERVATION_TYPE_LABELS[observation.observationType] || "")}</small><div class="mini-tag-list">${observation.genericCategories.map((/** @type {string} */ id) => `<span>${escapeHtml(genericLabel(id))}</span>`).join("")}</div></div></article>`,
       )
       .join("");
-    openModal("photoModal");
+    const chooseButton = $("#choosePreviewRelationButton");
+    chooseButton?.classList.toggle("hidden", !state.relationPreviewObservationId);
+    if (chooseButton) chooseButton.textContent = state.relationPicker === "source" ? "この対象を関係元に選ぶ" : "この対象を関係先に選ぶ";
+    openModal("photoModal", { aboveModal: Boolean(state.relationPreviewObservationId) });
   }
 
-  function openModal(/** @type {string} */ id) {
+  function openRelationPreview(/** @type {string} */ observationId) {
+    const entry = relationEntryById(observationId);
+    if (!entry) return;
+    state.relationPreviewObservationId = observationId;
+    openPhotoModal(entry.photo.id);
+  }
+
+  function chooseRelationPreview() {
+    const id = state.relationPreviewObservationId;
+    if (!id || !state.relationPicker) return;
+    chooseRelationEndpoint(state.relationPicker, id);
+    state.relationPreviewObservationId = null;
+    closeModal("photoModal");
+  }
+
+  function openModal(/** @type {string} */ id, { aboveModal = false } = {}) {
     const modal = document.getElementById(id);
     if (!modal) return;
+    modal.classList.toggle("modal-layer-preview", aboveModal);
     modal.classList.add("open");
     modal.setAttribute("aria-hidden", "false");
   }
@@ -1214,6 +1264,8 @@ export async function initApp(deps) {
   function closeModal(/** @type {string} */ id) {
     const modal = document.getElementById(id);
     if (!modal) return;
+    if (id === "photoModal") state.relationPreviewObservationId = null;
+    modal.classList.remove("modal-layer-preview");
     modal.classList.remove("open");
     modal.setAttribute("aria-hidden", "true");
   }
@@ -1226,7 +1278,7 @@ export async function initApp(deps) {
     organizeMagnifierActive = false;
     organizeMagnifierBinding?.reset();
     organizeLensPoint = null;
-    organizeLensZoom = ORGANIZE_LENS_MIN_ZOOM;
+    organizeLensZoom = MAGNIFIER_MIN_ZOOM;
     state.organizeStep = 1;
     state.activeObservationId =
       photo.observations.find(
@@ -1333,15 +1385,11 @@ export async function initApp(deps) {
   }
 
   function relevantRelations(/** @type {any} */ photo) {
-    const ids = new Set(
-      photo.observations.map((/** @type {any} */ item) => item.id),
-    );
-    const visitIds = activeVisitObservationIds();
-    return state.relations.filter(
-      (/** @type {any} */ relation) =>
-        visitIds.has(relation.sourceId) &&
-        visitIds.has(relation.targetId) &&
-        (ids.has(relation.sourceId) || ids.has(relation.targetId)),
+    return relationsForPhotoInVisit(
+      state.relations,
+      state.photos,
+      state.activeVisitId,
+      photo.id,
     );
   }
 
@@ -1411,12 +1459,13 @@ export async function initApp(deps) {
     return `<button type="button" class="endpoint-card" data-endpoint-id="${escapeHtml(entry.observation.id)}"><span class="endpoint-card-inner"><span class="endpoint-image">${rotatedPhotoFrame(entry.photo, `<img src="${escapeHtml(entry.photo.thumbSrc || entry.photo.src)}" alt="" />${presentation.region ? `<i class="endpoint-region" style="${regionStyle}"></i>` : '<em class="endpoint-whole-label">写真全体</em>'}`)}</span><span><strong>${escapeHtml(entry.observation.label)}</strong><small>${escapeHtml(OBSERVATION_TYPE_LABELS[entry.observation.observationType] || "観察対象")}・#${escapeHtml(entry.photo.order)} ${escapeHtml(entry.photo.title)}</small></span></span></button>`;
   }
 
-  function optionMarkup(entry) {
+  function optionMarkup(entry, /** @type {"source"|"target"} */ kind) {
     const presentation = endpointPresentation(entry);
     const regionStyle = presentation.region
       ? `left:${presentation.region.x}%;top:${presentation.region.y}%;width:${presentation.region.w}%;height:${presentation.region.h}%;`
       : "";
-    return `<button type="button" class="endpoint-option" data-endpoint-option="${escapeHtml(entry.observation.id)}"><span class="endpoint-image">${rotatedPhotoFrame(entry.photo, `<img src="${escapeHtml(entry.photo.thumbSrc || entry.photo.src)}" alt="" />${presentation.region ? `<i class="endpoint-region" style="${regionStyle}"></i>` : '<em class="endpoint-whole-label">写真全体</em>'}`)}</span><span><strong>${escapeHtml(entry.observation.label)}</strong><small>${escapeHtml(entry.photo.title)}・#${escapeHtml(entry.photo.order)}・${escapeHtml(OBSERVATION_TYPE_LABELS[entry.observation.observationType] || "観察対象")}</small></span></button>`;
+    const label = kind === "source" ? "関係元に選ぶ" : "関係先に選ぶ";
+    return `<div class="endpoint-option"><button type="button" class="endpoint-preview-button" data-endpoint-preview="${escapeHtml(entry.observation.id)}" aria-label="${escapeHtml(entry.observation.label)}の写真を拡大"><span class="endpoint-image">${rotatedPhotoFrame(entry.photo, `<img src="${escapeHtml(entry.photo.thumbSrc || entry.photo.src)}" alt="" />${presentation.region ? `<i class="endpoint-region" style="${regionStyle}"></i>` : '<em class="endpoint-whole-label">写真全体</em>'}`)}</span><span><strong>${escapeHtml(entry.observation.label)}</strong><small>${escapeHtml(entry.photo.title)}・#${escapeHtml(entry.photo.order)}・${escapeHtml(OBSERVATION_TYPE_LABELS[entry.observation.observationType] || "観察対象")}</small></span></button><button type="button" class="endpoint-select-button" data-endpoint-select="${escapeHtml(entry.observation.id)}">${label}</button></div>`;
   }
 
   function renderRelationOptions(/** @type {"source"|"target"} */ kind) {
@@ -1427,36 +1476,62 @@ export async function initApp(deps) {
       ? relationEntriesForVisit()
       : relationCandidates({ photos: state.photos, activeVisitId: state.activeVisitId, sourceId: state.relationDraft.sourceId, scope: state.relationScope });
     const filtered = searchRelationEntries(entries, query);
-    options.innerHTML = `<input class="endpoint-search" type="search" placeholder="写真名・Observation名で検索" value="${escapeHtml(query)}" data-endpoint-search="${kind}" />${filtered.length ? filtered.map(optionMarkup).join("") : '<p class="muted-copy">該当する候補はありません。</p>'}`;
+    options.innerHTML = `<input class="endpoint-search" type="search" placeholder="写真名・Observation名で検索" value="${escapeHtml(query)}" data-endpoint-search="${kind}" />${filtered.length ? filtered.map((entry) => optionMarkup(entry, kind)).join("") : '<p class="muted-copy">該当する候補はありません。</p>'}`;
     options.classList.toggle("hidden", state.relationPicker !== kind);
+    options.querySelectorAll(".endpoint-option").forEach((card) => {
+      const entry = relationEntryById(card.dataset.endpointOption);
+      mountPhotoMagnifier(
+        card.querySelector(".endpoint-image"),
+        card.querySelector("img"),
+        entry?.photo,
+        { showControls: false },
+      );
+    });
   }
 
   function renderRelationEditor() {
     const draft = state.relationDraft;
     if (!draft) return;
+    const selectedTypes = draft.types || [];
+    const editing = Boolean(state.editingRelationId);
     const sourceEntry = relationEntryById(draft.sourceId);
     const targetEntry = relationEntryById(draft.targetId);
     $("#relationSourceCard").innerHTML = endpointMarkup(sourceEntry);
     $("#relationTargetCard").innerHTML = endpointMarkup(targetEntry);
+    const sourceImageHost = $("#relationSourceCard .endpoint-image");
+    const targetImageHost = $("#relationTargetCard .endpoint-image");
+    mountPhotoMagnifier(
+      sourceImageHost,
+      sourceImageHost?.querySelector("img"),
+      sourceEntry?.photo,
+      { showControls: false },
+    );
+    mountPhotoMagnifier(
+      targetImageHost,
+      targetImageHost?.querySelector("img"),
+      targetEntry?.photo,
+      { showControls: false },
+    );
     $("#chooseRelationSourceButton").textContent = endpointSelectionLabel("source", Boolean(sourceEntry));
     $("#chooseRelationTargetButton").textContent = endpointSelectionLabel("target", Boolean(targetEntry));
-    $("#relationTypeSelect").innerHTML = registry.relationTypes
-      .map((type) => `<option value="${escapeHtml(type.id)}">${escapeHtml(relationTypeDisplay(type).optionLabel)}</option>`)
-      .join("");
-    $("#relationTypeSelect").value = draft.type;
-    const selectedType = relationType(draft.type);
-    const selectedTypeDisplay = relationTypeDisplay(selectedType);
-    $("#relationTypeDirectionHint").textContent = selectedType
-      ? `${selectedTypeDisplay.label}・${selectedTypeDisplay.directionLabel}`
-      : "";
+    $("#relationTypeLegend").textContent = editing ? "関係種別" : "まとめて登録する種類";
+    $("#relationTypeChoices").innerHTML = registry.relationTypes.map((type) => `<label class="relation-type-choice"><span class="relation-type-check"><input type="${editing ? "radio" : "checkbox"}" name="relation-type-choice" data-relation-type-choice="${escapeHtml(type.id)}" ${selectedTypes.includes(type.id) ? "checked" : ""} /></span><span class="relation-type-name">${escapeHtml(relationTypeDisplay(type).optionLabel)}</span></label>`).join("");
+    $("#relationTypeHelp").textContent = editing
+      ? "編集中は1種類だけ変更できます。別の種類も必要な場合は新しいRelationとして追加してください。"
+      : "選択した種類を、既存形式のRelationとして1件ずつ保存します。";
+    const selectedTypeEntries = selectedTypes.map(relationType).filter(Boolean);
+    const directedTypes = selectedTypeEntries.filter((type) => type.directed);
+    $("#relationTypeDirectionHint").textContent = selectedTypeEntries.length
+      ? `${selectedTypeEntries.length}種類を選択中・方向あり ${directedTypes.length}種類 / 方向なし ${selectedTypeEntries.length - directedTypes.length}種類`
+      : "関係種別を1つ以上選択してください";
     renderRelationOptions("source");
     renderRelationOptions("target");
     const swapButton = $("#swapRelationEndpointsButton");
-    swapButton.classList.toggle("hidden", !selectedType?.directed);
-    $("#relationDirectionNote").textContent = selectedType
-      ? selectedType.directed
-        ? "有向Relation：関係元が関係先へ向かう方向で保存します。"
-        : "無向Relation：関係元と関係先を入れ替えても同じ関係として扱います。"
+    swapButton.classList.toggle("hidden", directedTypes.length === 0);
+    $("#relationDirectionNote").textContent = selectedTypeEntries.length
+      ? directedTypes.length
+        ? "方向ありのRelationは関係元から関係先へ保存します。方向なしのRelationは入れ替えても同じ関係として扱います。"
+        : "選択中のRelationはすべて方向なしです。関係元と関係先を入れ替えても同じ関係として扱います。"
       : "";
     $$("[data-relation-scope]").forEach((button) =>
       button.classList.toggle("active", button.dataset.relationScope === state.relationScope),
@@ -1497,7 +1572,7 @@ export async function initApp(deps) {
     state.relationDraft = {
       sourceId,
       targetId: existing?.targetId || "",
-      type: existing?.type || registry.relationTypes[0]?.id || "",
+      types: existing ? [existing.type] : [registry.relationTypes[0]?.id || ""],
     };
     if (existing)
       state.relationScope = scopeForRelationEndpoints(
@@ -1512,7 +1587,7 @@ export async function initApp(deps) {
   }
 
   function swapRelationEditorEndpoints() {
-    if (!state.relationDraft || !isDirectedRelation(registry.relationTypes, state.relationDraft.type)) return;
+    if (!state.relationDraft || !state.relationDraft.types.some((type) => isDirectedRelation(registry.relationTypes, type))) return;
     state.relationDraft = swapRelationEndpoints(state.relationDraft);
     state.relationScope = scopeForRelationEndpoints(
       state.photos,
@@ -1525,26 +1600,19 @@ export async function initApp(deps) {
 
   function saveRelation() {
     const wasEditing = Boolean(state.editingRelationId);
-    const candidate = { ...state.relationDraft, type: $("#relationTypeSelect").value };
-    const reason = validateRelationInput(
-      state.relations,
-      candidate,
-      registry.relationTypes,
-      state.editingRelationId,
-    );
-    if (reason) {
-      showToast(reason);
+    const result = applyRelationTypeSelection({
+      relations: state.relations,
+      draft: state.relationDraft,
+      relationTypes: registry.relationTypes,
+      editingId: state.editingRelationId,
+      createId: () => uid("relation"),
+    });
+    if (result.error) { showToast(result.error); return; }
+    if (!result.savedRelations.length) {
+      showToast("選択した関係はすべて保存済みです");
       return;
     }
-    if (state.editingRelationId) {
-      const index = state.relations.findIndex(
-        (relation) => relation.id === state.editingRelationId,
-      );
-      if (index >= 0)
-        state.relations[index] = updateRelation(state.relations[index], candidate);
-    } else {
-      state.relations.push({ ...createRelation({ ...candidate, id: uid("relation") }) });
-    }
+    state.relations = result.relations;
     closeModal("relationEditorModal");
     state.editingRelationId = null;
     state.relationDraft = null;
@@ -1552,7 +1620,13 @@ export async function initApp(deps) {
     renderOrganize();
     renderKnowledge();
     renderCollections();
-    showToast(wasEditing ? "関係を更新しました" : "関係を保存しました");
+    showToast(
+      wasEditing
+        ? "関係を更新しました"
+        : result.skippedTypes.length
+          ? `${result.savedRelations.length}件を保存し、保存済みの${result.skippedTypes.length}件をスキップしました`
+          : `${result.savedRelations.length}件の関係を保存しました`,
+    );
   }
 
   function deleteRelation(/** @type {string} */ relationId) {
@@ -2058,12 +2132,29 @@ export async function initApp(deps) {
     const displayGraph = graph;
     const layout = buildRadialLayout(displayGraph, centerId);
     const positionMap = new Map(layout.nodes.map((node) => /** @type {[string, any]} */ ([node.id, node])));
-    const edgeMarkup = layout.edges.map((edge) => {
+    const relationGroups = new Map();
+    for (const edge of layout.edges.filter((item) => item.type === "RELATES_TO")) {
+      const key = [edge.sourceId, edge.targetId].sort().join("\u0000");
+      const group = relationGroups.get(key) || [];
+      group.push(edge);
+      relationGroups.set(key, group);
+    }
+    const edgeMarkup = layout.edges.map((edge, edgeIndex) => {
       const source = positionMap.get(edge.sourceId);
       const target = positionMap.get(edge.targetId);
       if (!source || !target) return "";
       const arrow = edge.type === "RELATES_TO" && (edge.directed === true || (edge.directed == null && isDirectedRelation(registry.relationTypes, edge.relationType))) ? " marker-end=\"url(#kg-arrow)\"" : "";
-      return `<line class="kg-svg-edge ${edge.type === "RELATES_TO" ? "relation" : "reference"}" x1="${source.x}" y1="${source.y}" x2="${target.x}" y2="${target.y}"${arrow} />`;
+      if (edge.type === "RELATES_TO") {
+        const key = [edge.sourceId, edge.targetId].sort().join("\u0000");
+        const group = relationGroups.get(key) || [edge];
+        const parallelIndex = group.indexOf(edge);
+        const canonicalDirection = edge.sourceId === key.split("\u0000")[0] ? 1 : -1;
+        const path = radialRelationPath(source, target, parallelIndex, group.length, canonicalDirection);
+        const pathId = `kg-relation-edge-${edgeIndex}`;
+        const label = knowledgeEdgeLabel(edge.type, edge.relationType, registry.relationTypes);
+        return `<path id="${pathId}" class="kg-svg-edge relation" d="${path}"${arrow} /><text class="kg-svg-edge-label"><textPath href="#${pathId}" startOffset="50%" text-anchor="middle">${escapeHtml(label)}</textPath></text>`;
+      }
+      return `<line class="kg-svg-edge reference" x1="${source.x}" y1="${source.y}" x2="${target.x}" y2="${target.y}" />`;
     }).join("");
     const nodeMarkup = layout.nodes.map((position) => {
       const node = getKnowledgeGraphNodeDetail(displayGraph, position.id)?.node;
@@ -2083,6 +2174,16 @@ export async function initApp(deps) {
     const zoom = state.knowledgeZoom;
     const backButton = state.knowledgeViewMode === "focus" ? '<button class="text-button" data-kg-overview>← 訪問全体へ戻る</button>' : "";
     return `<div class="kg-canvas-header"><span>RADIAL GRAPH</span><strong>${state.knowledgeViewMode === "focus" ? "Observation詳細・1ホップ" : "訪問全体"}</strong><span class="kg-header-actions">${backButton}</span></div><div class="kg-zoom-controls"><button data-kg-zoom="out" aria-label="縮小">−</button><button data-kg-zoom="reset" aria-label="中央へ戻す">100%</button><button data-kg-zoom="in" aria-label="拡大">＋</button></div><svg class="kg-radial-svg" viewBox="0 0 ${layout.width} ${layout.height}" role="img" aria-label="知識グラフ"><defs><marker id="kg-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" /></marker></defs><g transform="translate(${layout.centerX} ${layout.centerY}) scale(${zoom}) translate(-${layout.centerX} -${layout.centerY})">${edgeMarkup}${nodeMarkup}</g></svg>`;
+  }
+
+  function radialRelationPath(source, target, parallelIndex, parallelCount, direction) {
+    const dx = target.x - source.x;
+    const dy = target.y - source.y;
+    const length = Math.hypot(dx, dy) || 1;
+    const offset = (parallelIndex - (parallelCount - 1) / 2) * 42 * direction;
+    const controlX = (source.x + target.x) / 2 - (dy / length) * offset;
+    const controlY = (source.y + target.y) / 2 + (dx / length) * offset;
+    return `M ${source.x} ${source.y} Q ${Math.round(controlX * 100) / 100} ${Math.round(controlY * 100) / 100} ${target.x} ${target.y}`;
   }
 
   function renderRadialNodeShape(node, position, selected) {
@@ -2279,6 +2380,16 @@ export async function initApp(deps) {
     }).join("");
     const allPlaced = cards.every((card) => placements.some((placement) => placement.cardId === card.cardId));
     $("#quizStage").innerHTML = `<article class="quiz-card"><div class="quiz-content"><span class="quiz-counter">${quiz.questionType === "hierarchy" ? "CLASSIFICATION" : quiz.questionType === "timeline-map" ? "GEOLOGICAL TIME" : quiz.questionType === "matching" ? "RELATION" : "OBSERVATION"} ${String(state.quizIndex + 1).padStart(2, "0")} / ${String(total).padStart(2, "0")}</span><h2>${escapeHtml(quiz.prompt)}</h2><p class="quiz-placement-help">カードを選んで位置をクリックするか、カードを位置へドラッグしてください。全件を配置してから採点します。</p><div class="quiz-placement-layout"><div class="observation-quiz-card-list">${cardMarkup}</div>${renderQuizPlacementBoard(quiz, placements, scored, state.quizAnswered)}</div><div id="quizFeedback">${scored ? renderQuizFeedback(quiz, scored) : ""}</div><div class="quiz-next-row"><small>${cards.length}件中 ${placements.length}件配置</small>${state.quizAnswered ? `<button class="ghost-button" id="retryQuizButton">もう一度回答</button>` : `<button class="primary-button" id="submitQuizButton" ${allPlaced ? "" : "disabled"}>まとめて採点</button>`}<button class="primary-button" id="nextQuizButton" ${state.quizAnswered ? "" : "disabled"}>${state.quizIndex === total - 1 ? "結果を見る" : "次の問題 →"}</button></div></div></article>`;
+    // #69: keep the shared circular magnifier on matching-quiz option photos.
+    // Structure-quiz observation cards render as SVG region cutouts (no <img>),
+    // so they are intentionally excluded from the magnifier here.
+    $$("#quizStage .quiz-choice-option").forEach((card) => {
+      const option = quiz.options.find((item) => item.id === card.dataset.quizDrop);
+      const optionPhoto = option?.photoId ? photoById(option.photoId) : null;
+      mountPhotoMagnifier(card, card.querySelector("img"), optionPhoto, {
+        showControls: false,
+      });
+    });
     $$('[data-quiz-drop]').forEach((button) => {
       button.addEventListener("click", () => placeQuizCard(quiz, state.quizActiveCardId, button.dataset.quizDrop));
       button.addEventListener("dragover", (event) => event.preventDefault());
@@ -3146,6 +3257,7 @@ export async function initApp(deps) {
       if (photoId) setOrganizePhoto(photoId);
       switchView("organize");
     });
+    $("#choosePreviewRelationButton")?.addEventListener("click", chooseRelationPreview);
     $("#rotateModalPhotoButton")?.addEventListener("click", () => {
       if (state.modalPhotoId) rotatePhotoById(state.modalPhotoId);
     });
@@ -3165,12 +3277,16 @@ export async function initApp(deps) {
       if (id) showRelationPicker("target");
     });
     $("#relationSourceOptions")?.addEventListener("click", (event) => {
-      const id = event.target.closest("[data-endpoint-option]")?.dataset.endpointOption;
-      if (id) chooseRelationEndpoint("source", id);
+      const selectId = event.target.closest("[data-endpoint-select]")?.dataset.endpointSelect;
+      if (selectId) { chooseRelationEndpoint("source", selectId); return; }
+      const previewId = event.target.closest("[data-endpoint-preview]")?.dataset.endpointPreview;
+      if (previewId) openRelationPreview(previewId);
     });
     $("#relationTargetOptions")?.addEventListener("click", (event) => {
-      const id = event.target.closest("[data-endpoint-option]")?.dataset.endpointOption;
-      if (id) chooseRelationEndpoint("target", id);
+      const selectId = event.target.closest("[data-endpoint-select]")?.dataset.endpointSelect;
+      if (selectId) { chooseRelationEndpoint("target", selectId); return; }
+      const previewId = event.target.closest("[data-endpoint-preview]")?.dataset.endpointPreview;
+      if (previewId) openRelationPreview(previewId);
     });
     $("#relationSourceOptions")?.addEventListener("input", (event) => {
       if (event.target.dataset.endpointSearch !== "source") return;
@@ -3185,8 +3301,10 @@ export async function initApp(deps) {
       $("#relationTargetOptions input")?.focus();
     });
     $("#swapRelationEndpointsButton")?.addEventListener("click", swapRelationEditorEndpoints);
-    $("#relationTypeSelect")?.addEventListener("change", (event) => {
-      if (state.relationDraft) state.relationDraft.type = event.target.value;
+    $("#relationTypeChoices")?.addEventListener("change", () => {
+      if (!state.relationDraft) return;
+      const selected = [...document.querySelectorAll("[data-relation-type-choice]:checked")].map((input) => /** @type {any} */ (input)).map((input) => input.dataset.relationTypeChoice).filter(Boolean);
+      state.relationDraft.types = selected;
       renderRelationEditor();
     });
     $$("[data-relation-scope]").forEach((button) =>
