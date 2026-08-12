@@ -3,7 +3,7 @@
  * These records use the same ReferenceFact contract as user data; they are
  * not a second quiz-only graph.
  */
-export const DEMO_KNOWLEDGE_VERSION = "2026-08-12.1";
+export const DEMO_KNOWLEDGE_VERSION = "2026-08-13.1";
 export const DEMO_RETIRED_REFERENCE_FACT_IDS = Object.freeze([
   "demo-rf-o18c-archosauria",
   "demo-rf-o19a-pterosauria",

@@ -67,7 +67,87 @@ export const SAMPLE_VISIT = {
  *
  * @type {typeof SAMPLE_VISIT[]}
  */
-export const SAMPLE_VISITS = [SAMPLE_VISIT];
+export const SAMPLE_VISITS = [
+  SAMPLE_VISIT,
+  {
+    "id": "visit-taiwan",
+    "title": "台湾旅行2026",
+    "place": "故宮博物院",
+    "domainHints": [
+      "cultural"
+    ],
+    "photoIds": [
+      "photo-1786563825718-kwy2uw",
+      "photo-1786563825765-aosipp",
+      "photo-1786563825799-vm1rxh",
+      "photo-1786563825833-b88lz2",
+      "photo-1786563825870-hyrvt0",
+      "photo-1786563825915-r3wzy9",
+      "photo-1786563825948-9p98po",
+      "photo-1786563825983-wbhd0a",
+      "photo-1786563826016-nmt91a",
+      "photo-1786563826049-fy64fh",
+      "photo-1786563826084-ojro6q",
+      "photo-1786563826117-hak60i",
+      "photo-1786563826150-2qt7qu",
+      "photo-1786563826198-ljkytb",
+      "photo-1786563826231-2oyogn",
+      "photo-1786563826265-3w33h2",
+      "photo-1786563826300-m2qsdd",
+      "photo-1786563826333-z00wzw",
+      "photo-1786563826382-y2j9pi",
+      "photo-1786563826415-y4g2pt"
+    ]
+  },
+  {
+    "id": "visit-yakushima",
+    "title": "屋久島",
+    "place": "屋久島",
+    "domainHints": [
+      "nature"
+    ],
+    "photoIds": [
+      "photo-1786569670545-r77dms",
+      "photo-1786569670592-s9ferj",
+      "photo-1786569670625-is7gbh",
+      "photo-1786569670727-xdxwpq",
+      "photo-1786569670816-uqp737",
+      "photo-1786569670916-wnkc85",
+      "photo-1786569671010-0pev7v",
+      "photo-1786569671093-gkqo5j"
+    ]
+  },
+  {
+    "id": "visit-inochi",
+    "title": "いのちの旅",
+    "place": "いのちの旅博物館",
+    "domainHints": [
+      "paleontology"
+    ],
+    "photoIds": [
+      "photo-1786570912835-r2bwzf",
+      "photo-1786570912946-r4ngig",
+      "photo-1786570913058-luetkz",
+      "photo-1786570913156-jjlkci",
+      "photo-1786570913251-hxbkwo",
+      "photo-1786570913368-kl4i6o",
+      "photo-1786570913468-39xojq",
+      "photo-1786570913584-pbykbi",
+      "photo-1786570913684-aez11p",
+      "photo-1786570913784-xxc29f",
+      "photo-1786570913884-tyo4mu",
+      "photo-1786570914001-vq23zr",
+      "photo-1786570914101-jiw7cm",
+      "photo-1786570914218-grhq5k",
+      "photo-1786570914318-d4196o",
+      "photo-1786570914435-345ztg",
+      "photo-1786570914536-plg0if",
+      "photo-1786570914636-fevgq8",
+      "photo-1786570914734-smb5uc",
+      "photo-1786570914844-mtmdi1"
+    ]
+  },
+];
 
 export const SAMPLE_PHOTOS = [
   {
@@ -2441,7 +2521,2537 @@ export const SAMPLE_PHOTOS = [
       }
     ],
     "visitId": "visit-fukui"
-  }
+  },
+  {
+    "id": "photo-1786563825718-kwy2uw",
+    "file": "42749_0.jpg",
+    "order": 1,
+    "title": "42749_0",
+    "status": "in-progress",
+    "experienceMemo": "とり",
+    "observations": [
+      {
+        "id": "observation-1786564693705-rnmtz7",
+        "label": "鳥の陶器",
+        "observationType": "physical",
+        "region": {
+          "x": 16.12,
+          "y": 39.36,
+          "w": 63.48,
+          "h": 45.74
+        },
+        "genericCategories": [
+          "exhibit-object"
+        ],
+        "learningRoles": [
+          "direct",
+          "evidence"
+        ],
+        "domainPacks": [
+          "cultural"
+        ],
+        "domainCategories": [],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786563825718-kwy2uw"
+      }
+    ],
+    "visitId": "visit-taiwan"
+  },
+  {
+    "id": "photo-1786563825765-aosipp",
+    "file": "42750_0.jpg",
+    "order": 2,
+    "title": "42750_0",
+    "status": "in-progress",
+    "experienceMemo": "サンゴ？",
+    "observations": [
+      {
+        "id": "observation-1786564768477-0pqezu",
+        "label": "桃紅瑠璃",
+        "observationType": "physical",
+        "region": {
+          "x": 12.56,
+          "y": 0.64,
+          "w": 75.83,
+          "h": 68.91
+        },
+        "genericCategories": [
+          "exhibit-object"
+        ],
+        "learningRoles": [
+          "direct"
+        ],
+        "domainPacks": [
+          "cultural"
+        ],
+        "domainCategories": [
+          "material"
+        ],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786563825765-aosipp"
+      },
+      {
+        "id": "observation-1786564786996-3slyq6",
+        "label": "説明パネル",
+        "observationType": "information",
+        "region": {
+          "x": 40.72,
+          "y": 83.03,
+          "w": 18.41,
+          "h": 16.97
+        },
+        "genericCategories": [
+          "explanation-panel"
+        ],
+        "learningRoles": [
+          "direct",
+          "explains"
+        ],
+        "domainPacks": [
+          "cultural"
+        ],
+        "domainCategories": [],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786563825765-aosipp"
+      }
+    ],
+    "visitId": "visit-taiwan"
+  },
+  {
+    "id": "photo-1786563825799-vm1rxh",
+    "file": "42751_0.jpg",
+    "order": 3,
+    "title": "42751_0",
+    "status": "in-progress",
+    "experienceMemo": "目玉の一つ",
+    "observations": [
+      {
+        "id": "observation-1786564952706-pilbao",
+        "label": "展示紹介",
+        "observationType": "information",
+        "region": {
+          "x": 7.92,
+          "y": 21.12,
+          "w": 77.29,
+          "h": 78.88
+        },
+        "genericCategories": [
+          "explanation-panel"
+        ],
+        "learningRoles": [
+          "direct"
+        ],
+        "domainPacks": [
+          "cultural"
+        ],
+        "domainCategories": [],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786563825799-vm1rxh"
+      }
+    ],
+    "visitId": "visit-taiwan"
+  },
+  {
+    "id": "photo-1786563825833-b88lz2",
+    "file": "42752_0.jpg",
+    "order": 4,
+    "title": "42752_0",
+    "status": "in-progress",
+    "experienceMemo": "釈迦と般若？",
+    "observations": [
+      {
+        "id": "observation-1786565092794-kut56p",
+        "label": "何らかの作品",
+        "observationType": "physical",
+        "region": {
+          "x": 13.78,
+          "y": 26.64,
+          "w": 66.08,
+          "h": 26.81
+        },
+        "genericCategories": [
+          "exhibit-object"
+        ],
+        "learningRoles": [
+          "direct"
+        ],
+        "domainPacks": [
+          "cultural"
+        ],
+        "domainCategories": [
+          "document"
+        ],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786563825833-b88lz2"
+      },
+      {
+        "id": "observation-1786565116766-65pxr8",
+        "label": "作品内の人物紹介",
+        "observationType": "information",
+        "region": {
+          "x": 56.2,
+          "y": 54.27,
+          "w": 26.7,
+          "h": 8.13
+        },
+        "genericCategories": [
+          "explanation-panel"
+        ],
+        "learningRoles": [
+          "direct",
+          "explains"
+        ],
+        "domainPacks": [
+          "cultural"
+        ],
+        "domainCategories": [],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786563825833-b88lz2"
+      }
+    ],
+    "visitId": "visit-taiwan"
+  },
+  {
+    "id": "photo-1786563825870-hyrvt0",
+    "file": "42753_0.jpg",
+    "order": 5,
+    "title": "42753_0",
+    "status": "in-progress",
+    "experienceMemo": "曼荼羅を守る入れ物？",
+    "observations": [
+      {
+        "id": "observation-1786565376370-iqrjdt",
+        "label": "説明パネル",
+        "observationType": "information",
+        "region": {
+          "x": 33.04,
+          "y": 0.15,
+          "w": 37.55,
+          "h": 44.53
+        },
+        "genericCategories": [
+          "explanation-panel"
+        ],
+        "learningRoles": [
+          "direct",
+          "explains"
+        ],
+        "domainPacks": [
+          "cultural"
+        ],
+        "domainCategories": [],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786563825870-hyrvt0"
+      },
+      {
+        "id": "observation-1786565445648-eott8i",
+        "label": "作品",
+        "observationType": "physical",
+        "region": {
+          "x": 19.87,
+          "y": 49.72,
+          "w": 55.1,
+          "h": 17.71
+        },
+        "genericCategories": [
+          "exhibit-object"
+        ],
+        "learningRoles": [
+          "direct"
+        ],
+        "domainPacks": [
+          "cultural"
+        ],
+        "domainCategories": [],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786563825870-hyrvt0"
+      },
+      {
+        "id": "observation-1786565467456-gnhgyf",
+        "label": "人物紹介",
+        "observationType": "information",
+        "region": {
+          "x": 55.47,
+          "y": 68.73,
+          "w": 22.68,
+          "h": 6.18
+        },
+        "genericCategories": [
+          "explanation-panel"
+        ],
+        "learningRoles": [
+          "direct",
+          "explains"
+        ],
+        "domainPacks": [
+          "cultural"
+        ],
+        "domainCategories": [],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786563825870-hyrvt0"
+      }
+    ],
+    "visitId": "visit-taiwan"
+  },
+  {
+    "id": "photo-1786563825915-r3wzy9",
+    "file": "42754_0.jpg",
+    "order": 6,
+    "title": "42754_0",
+    "status": "in-progress",
+    "experienceMemo": "仏教の幸運のシンボル？",
+    "observations": [
+      {
+        "id": "observation-1786565700019-446ld8",
+        "label": "「八吉祥」の説明パネル",
+        "observationType": "information",
+        "region": null,
+        "genericCategories": [
+          "explanation-panel"
+        ],
+        "learningRoles": [
+          "direct",
+          "explains"
+        ],
+        "domainPacks": [
+          "cultural"
+        ],
+        "domainCategories": [],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786563825915-r3wzy9"
+      }
+    ],
+    "visitId": "visit-taiwan"
+  },
+  {
+    "id": "photo-1786563825948-9p98po",
+    "file": "42755_0.jpg",
+    "order": 7,
+    "title": "42755_0",
+    "status": "in-progress",
+    "experienceMemo": "ジムバッジみたい",
+    "observations": [
+      {
+        "id": "observation-1786565802685-d5rstd",
+        "label": "トロフィーみたいなものたち",
+        "observationType": "physical",
+        "region": {
+          "x": 0.37,
+          "y": 18.35,
+          "w": 99.63,
+          "h": 41.12
+        },
+        "genericCategories": [
+          "exhibit-object"
+        ],
+        "learningRoles": [
+          "direct"
+        ],
+        "domainPacks": [
+          "cultural"
+        ],
+        "domainCategories": [
+          "religious"
+        ],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786563825948-9p98po"
+      },
+      {
+        "id": "observation-1786565849100-y58g8h",
+        "label": "壁の説明絵？",
+        "observationType": "information",
+        "region": {
+          "x": 5.97,
+          "y": 0,
+          "w": 85.09,
+          "h": 19.17
+        },
+        "genericCategories": [
+          "explanation-panel"
+        ],
+        "learningRoles": [
+          "direct",
+          "explains"
+        ],
+        "domainPacks": [
+          "cultural"
+        ],
+        "domainCategories": [],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786563825948-9p98po"
+      }
+    ],
+    "visitId": "visit-taiwan"
+  },
+  {
+    "id": "photo-1786563825983-wbhd0a",
+    "file": "42756_0.jpg",
+    "order": 8,
+    "title": "42756_0",
+    "status": "in-progress",
+    "experienceMemo": "アンケート回答で景品もあります",
+    "observations": [
+      {
+        "id": "observation-1786566053261-ts8rqi",
+        "label": "アンケートの貼り紙",
+        "observationType": "information",
+        "region": {
+          "x": 20.35,
+          "y": 19.74,
+          "w": 60.79,
+          "h": 52.81
+        },
+        "genericCategories": [
+          "media-image"
+        ],
+        "learningRoles": [
+          "direct",
+          "memory"
+        ],
+        "domainPacks": [
+          "cultural"
+        ],
+        "domainCategories": [],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786563825983-wbhd0a"
+      }
+    ],
+    "visitId": "visit-taiwan"
+  },
+  {
+    "id": "photo-1786563826016-nmt91a",
+    "file": "42757_0.jpg",
+    "order": 9,
+    "title": "42757_0",
+    "status": "in-progress",
+    "experienceMemo": "すね？",
+    "observations": [
+      {
+        "id": "observation-1786566126178-feii3x",
+        "label": "説明パネル",
+        "observationType": "information",
+        "region": {
+          "x": 9.39,
+          "y": 9.49,
+          "w": 78.1,
+          "h": 64.36
+        },
+        "genericCategories": [
+          "explanation-panel"
+        ],
+        "learningRoles": [
+          "direct",
+          "explains",
+          "context"
+        ],
+        "domainPacks": [
+          "cultural"
+        ],
+        "domainCategories": [],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786563826016-nmt91a"
+      }
+    ],
+    "visitId": "visit-taiwan"
+  },
+  {
+    "id": "photo-1786563826049-fy64fh",
+    "file": "42758_0.jpg",
+    "order": 10,
+    "title": "42758_0",
+    "status": "in-progress",
+    "experienceMemo": "なんだろうこれ",
+    "observations": [
+      {
+        "id": "observation-1786567737471-n8abwc",
+        "label": "赤い何か",
+        "observationType": "physical",
+        "region": {
+          "x": 5,
+          "y": 15.43,
+          "w": 88.39,
+          "h": 43.88
+        },
+        "genericCategories": [
+          "exhibit-object"
+        ],
+        "learningRoles": [
+          "direct"
+        ],
+        "domainPacks": [
+          "cultural"
+        ],
+        "domainCategories": [],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786563826049-fy64fh"
+      }
+    ],
+    "visitId": "visit-taiwan"
+  },
+  {
+    "id": "photo-1786563826084-ojro6q",
+    "file": "42759_0.jpg",
+    "order": 11,
+    "title": "42759_0",
+    "status": "in-progress",
+    "experienceMemo": "金の埋め込みかた？",
+    "observations": [
+      {
+        "id": "observation-1786567797655-5n37mq",
+        "label": "説明パネル",
+        "observationType": "information",
+        "region": null,
+        "genericCategories": [
+          "explanation-panel"
+        ],
+        "learningRoles": [
+          "direct",
+          "explains"
+        ],
+        "domainPacks": [
+          "cultural"
+        ],
+        "domainCategories": [],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786563826084-ojro6q"
+      }
+    ],
+    "visitId": "visit-taiwan"
+  },
+  {
+    "id": "photo-1786563826117-hak60i",
+    "file": "42760_0.jpg",
+    "order": 12,
+    "title": "42760_0",
+    "status": "in-progress",
+    "experienceMemo": "アート性が高い",
+    "observations": [
+      {
+        "id": "observation-1786567883721-y5bvc4",
+        "label": "黒い文章",
+        "observationType": "physical",
+        "region": {
+          "x": 0.12,
+          "y": 25.18,
+          "w": 99.88,
+          "h": 26.98
+        },
+        "genericCategories": [
+          "exhibit-object"
+        ],
+        "learningRoles": [
+          "direct"
+        ],
+        "domainPacks": [
+          "cultural"
+        ],
+        "domainCategories": [
+          "document"
+        ],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786563826117-hak60i"
+      },
+      {
+        "id": "observation-1786568033267-pes6pa",
+        "label": "展示ラベル",
+        "observationType": "information",
+        "region": {
+          "x": 28.16,
+          "y": 65.32,
+          "w": 31.45,
+          "h": 10.56
+        },
+        "genericCategories": [
+          "explanation-panel"
+        ],
+        "learningRoles": [
+          "direct",
+          "explains"
+        ],
+        "domainPacks": [
+          "cultural"
+        ],
+        "domainCategories": [],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786563826117-hak60i"
+      }
+    ],
+    "visitId": "visit-taiwan"
+  },
+  {
+    "id": "photo-1786563826150-2qt7qu",
+    "file": "42761_0.jpg",
+    "order": 13,
+    "title": "42761_0",
+    "status": "in-progress",
+    "experienceMemo": "何文字？",
+    "observations": [
+      {
+        "id": "observation-1786568001777-p99mi1",
+        "label": "文章",
+        "observationType": "physical",
+        "region": {
+          "x": 5.49,
+          "y": 23.88,
+          "w": 85.46,
+          "h": 43.07
+        },
+        "genericCategories": [
+          "exhibit-object"
+        ],
+        "learningRoles": [
+          "direct"
+        ],
+        "domainPacks": [
+          "cultural"
+        ],
+        "domainCategories": [
+          "calligraphy"
+        ],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786563826150-2qt7qu"
+      },
+      {
+        "id": "observation-1786568062989-00bjqv",
+        "label": "展示ラベル",
+        "observationType": "physical",
+        "region": {
+          "x": 22.07,
+          "y": 81.08,
+          "w": 41.21,
+          "h": 18.92
+        },
+        "genericCategories": [
+          "explanation-panel"
+        ],
+        "learningRoles": [
+          "direct",
+          "explains"
+        ],
+        "domainPacks": [
+          "cultural"
+        ],
+        "domainCategories": [],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786563826150-2qt7qu"
+      }
+    ],
+    "visitId": "visit-taiwan"
+  },
+  {
+    "id": "photo-1786563826198-ljkytb",
+    "file": "42762_0.jpg",
+    "order": 14,
+    "title": "42762_0",
+    "status": "in-progress",
+    "observations": [
+      {
+        "id": "observation-1786568202084-geat5n",
+        "label": "龍蔵経の説明",
+        "observationType": "information",
+        "region": null,
+        "genericCategories": [
+          "explanation-panel"
+        ],
+        "learningRoles": [
+          "direct",
+          "explains",
+          "context"
+        ],
+        "domainPacks": [
+          "cultural"
+        ],
+        "domainCategories": [],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786563826198-ljkytb"
+      }
+    ],
+    "visitId": "visit-taiwan"
+  },
+  {
+    "id": "photo-1786563826231-2oyogn",
+    "file": "42763_0.jpg",
+    "order": 15,
+    "title": "42763_0",
+    "status": "in-progress",
+    "experienceMemo": "結構でかい　5mくらい？",
+    "observations": [
+      {
+        "id": "observation-1786568350664-jzttne",
+        "label": "展示",
+        "observationType": "physical",
+        "region": {
+          "x": 0.93,
+          "y": 18.58,
+          "w": 98.3,
+          "h": 65.8
+        },
+        "genericCategories": [
+          "exhibit-object"
+        ],
+        "learningRoles": [
+          "direct"
+        ],
+        "domainPacks": [
+          "cultural"
+        ],
+        "domainCategories": [],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786563826231-2oyogn"
+      }
+    ],
+    "visitId": "visit-taiwan"
+  },
+  {
+    "id": "photo-1786563826265-3w33h2",
+    "file": "42764_0.jpg",
+    "order": 16,
+    "title": "42764_0",
+    "status": "in-progress",
+    "experienceMemo": "日本を感じた",
+    "observations": [
+      {
+        "id": "observation-1786568403149-l3jwbd",
+        "label": "展示ラベル",
+        "observationType": "information",
+        "region": {
+          "x": 0.16,
+          "y": 75.72,
+          "w": 35.59,
+          "h": 23.81
+        },
+        "genericCategories": [
+          "explanation-panel"
+        ],
+        "learningRoles": [
+          "direct",
+          "explains"
+        ],
+        "domainPacks": [
+          "cultural"
+        ],
+        "domainCategories": [],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786563826265-3w33h2"
+      },
+      {
+        "id": "observation-1786568435355-b91dtx",
+        "label": "左の仏像",
+        "observationType": "physical",
+        "region": {
+          "x": 8.04,
+          "y": 11.22,
+          "w": 44.63,
+          "h": 62.77
+        },
+        "genericCategories": [
+          "exhibit-object"
+        ],
+        "learningRoles": [
+          "direct"
+        ],
+        "domainPacks": [
+          "cultural"
+        ],
+        "domainCategories": [],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786563826265-3w33h2"
+      },
+      {
+        "id": "observation-1786568475772-xzmr9a",
+        "label": "中央の仏像",
+        "observationType": "physical",
+        "region": {
+          "x": 42.09,
+          "y": 15.98,
+          "w": 35.78,
+          "h": 51.23
+        },
+        "genericCategories": [
+          "exhibit-object"
+        ],
+        "learningRoles": [
+          "direct"
+        ],
+        "domainPacks": [
+          "cultural"
+        ],
+        "domainCategories": [],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786563826265-3w33h2"
+      },
+      {
+        "id": "observation-1786568488393-hojvk3",
+        "label": "右の仏像",
+        "observationType": "physical",
+        "region": {
+          "x": 67.87,
+          "y": 31.28,
+          "w": 16.54,
+          "h": 28.57
+        },
+        "genericCategories": [
+          "exhibit-object"
+        ],
+        "learningRoles": [
+          "direct"
+        ],
+        "domainPacks": [
+          "cultural"
+        ],
+        "domainCategories": [],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786563826265-3w33h2"
+      },
+      {
+        "id": "observation-1786568537836-dlx1yi",
+        "label": "三尊像",
+        "observationType": "physical",
+        "region": null,
+        "genericCategories": [
+          "unknown"
+        ],
+        "learningRoles": [
+          "direct"
+        ],
+        "domainPacks": [
+          "cultural"
+        ],
+        "domainCategories": [],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786563826265-3w33h2"
+      }
+    ],
+    "visitId": "visit-taiwan"
+  },
+  {
+    "id": "photo-1786563826300-m2qsdd",
+    "file": "42765_0.jpg",
+    "order": 17,
+    "title": "42765_0",
+    "status": "in-progress",
+    "observations": [
+      {
+        "id": "observation-1786568694679-wgs49q",
+        "label": "作品収集家についての説明",
+        "observationType": "information",
+        "region": null,
+        "genericCategories": [
+          "explanation-panel"
+        ],
+        "learningRoles": [
+          "direct",
+          "explains"
+        ],
+        "domainPacks": [
+          "cultural"
+        ],
+        "domainCategories": [],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786563826300-m2qsdd"
+      }
+    ],
+    "visitId": "visit-taiwan"
+  },
+  {
+    "id": "photo-1786563826333-z00wzw",
+    "file": "42766_0.jpg",
+    "order": 18,
+    "title": "42766_0",
+    "status": "in-progress",
+    "observations": [
+      {
+        "id": "observation-1786568835696-eem8ys",
+        "label": "仏教の彫像について",
+        "observationType": "information",
+        "region": {
+          "x": 5.16,
+          "y": 10.36,
+          "w": 74.25,
+          "h": 75.32
+        },
+        "genericCategories": [
+          "explanation-panel"
+        ],
+        "learningRoles": [
+          "direct",
+          "explains",
+          "context"
+        ],
+        "domainPacks": [
+          "cultural"
+        ],
+        "domainCategories": [],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786563826333-z00wzw"
+      }
+    ],
+    "visitId": "visit-taiwan"
+  },
+  {
+    "id": "photo-1786563826382-y2j9pi",
+    "file": "42767_0.jpg",
+    "order": 19,
+    "title": "42767_0",
+    "status": "in-progress",
+    "experienceMemo": "大黒天らしい",
+    "observations": [
+      {
+        "id": "observation-1786568868307-lx2ues",
+        "label": "展示",
+        "observationType": "physical",
+        "region": {
+          "x": 17.47,
+          "y": 11.08,
+          "w": 62.9,
+          "h": 68.83
+        },
+        "genericCategories": [
+          "exhibit-object"
+        ],
+        "learningRoles": [
+          "direct"
+        ],
+        "domainPacks": [
+          "cultural"
+        ],
+        "domainCategories": [],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786563826382-y2j9pi"
+      },
+      {
+        "id": "observation-1786568890579-rq3v8t",
+        "label": "展示ラベル",
+        "observationType": "information",
+        "region": {
+          "x": 34.4,
+          "y": 82.36,
+          "w": 27.51,
+          "h": 13.42
+        },
+        "genericCategories": [
+          "explanation-panel"
+        ],
+        "learningRoles": [
+          "direct",
+          "explains"
+        ],
+        "domainPacks": [
+          "cultural"
+        ],
+        "domainCategories": [],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786563826382-y2j9pi"
+      }
+    ],
+    "visitId": "visit-taiwan"
+  },
+  {
+    "id": "photo-1786563826415-y4g2pt",
+    "file": "42768_0.jpg",
+    "order": 20,
+    "title": "42768_0",
+    "status": "organized",
+    "experienceMemo": "顔がいい",
+    "observations": [
+      {
+        "id": "observation-1786569217981-odlfs9",
+        "label": "展示",
+        "observationType": "physical",
+        "region": {
+          "x": 11.7,
+          "y": 1.7,
+          "w": 70.79,
+          "h": 80.66
+        },
+        "genericCategories": [
+          "exhibit-object"
+        ],
+        "learningRoles": [
+          "direct"
+        ],
+        "domainPacks": [
+          "cultural"
+        ],
+        "domainCategories": [],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786563826415-y4g2pt"
+      },
+      {
+        "id": "observation-1786569232947-x849dv",
+        "label": "展示ラベル",
+        "observationType": "physical",
+        "region": {
+          "x": 29.78,
+          "y": 85.68,
+          "w": 26.93,
+          "h": 13.13
+        },
+        "genericCategories": [
+          "explanation-panel"
+        ],
+        "learningRoles": [
+          "direct",
+          "explains"
+        ],
+        "domainPacks": [
+          "cultural"
+        ],
+        "domainCategories": [],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786563826415-y4g2pt"
+      }
+    ],
+    "visitId": "visit-taiwan"
+  },
+  {
+    "id": "photo-1786569670545-r77dms",
+    "file": "72360_0.jpg",
+    "order": 1,
+    "title": "72360_0",
+    "status": "in-progress",
+    "experienceMemo": "ウィルソン株",
+    "observations": [
+      {
+        "id": "observation-1786569698806-0ozfxh",
+        "label": "景色",
+        "observationType": "physical",
+        "region": null,
+        "genericCategories": [
+          "living-natural"
+        ],
+        "learningRoles": [
+          "direct",
+          "memory"
+        ],
+        "domainPacks": [
+          "nature"
+        ],
+        "domainCategories": [
+          "tree"
+        ],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786569670545-r77dms"
+      }
+    ],
+    "visitId": "visit-yakushima"
+  },
+  {
+    "id": "photo-1786569670592-s9ferj",
+    "file": "72363_0.jpg",
+    "order": 2,
+    "title": "72363_0",
+    "status": "organized",
+    "experienceMemo": "ちょっと遠くから見る縄文杉",
+    "observations": [
+      {
+        "id": "observation-1786569755804-yprf9x",
+        "label": "縄文杉",
+        "observationType": "physical",
+        "region": null,
+        "genericCategories": [
+          "living-natural"
+        ],
+        "learningRoles": [
+          "direct"
+        ],
+        "domainPacks": [
+          "nature"
+        ],
+        "domainCategories": [
+          "tree"
+        ],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786569670592-s9ferj"
+      }
+    ],
+    "visitId": "visit-yakushima"
+  },
+  {
+    "id": "photo-1786569670625-is7gbh",
+    "file": "72364_0.jpg",
+    "order": 3,
+    "title": "72364_0",
+    "status": "in-progress",
+    "observations": [
+      {
+        "id": "observation-1786569787793-vfo8gs",
+        "label": "縄文杉",
+        "observationType": "physical",
+        "region": null,
+        "genericCategories": [
+          "living-natural"
+        ],
+        "learningRoles": [
+          "direct"
+        ],
+        "domainPacks": [
+          "nature"
+        ],
+        "domainCategories": [
+          "tree"
+        ],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786569670625-is7gbh"
+      }
+    ],
+    "visitId": "visit-yakushima"
+  },
+  {
+    "id": "photo-1786569670727-xdxwpq",
+    "file": "20240505_144648.jpg",
+    "order": 4,
+    "title": "20240505_144648",
+    "status": "in-progress",
+    "experienceMemo": "南国感が好き",
+    "observations": [
+      {
+        "id": "observation-1786569850329-15a4hp",
+        "label": "屋久島の光景",
+        "observationType": "space",
+        "region": null,
+        "genericCategories": [
+          "living-natural"
+        ],
+        "learningRoles": [
+          "direct",
+          "memory"
+        ],
+        "domainPacks": [
+          "nature"
+        ],
+        "domainCategories": [],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786569670727-xdxwpq"
+      }
+    ],
+    "visitId": "visit-yakushima"
+  },
+  {
+    "id": "photo-1786569670816-uqp737",
+    "file": "20240506_092148.jpg",
+    "order": 5,
+    "title": "20240506_092148",
+    "status": "in-progress",
+    "experienceMemo": "♡",
+    "observations": [
+      {
+        "id": "observation-1786569897038-3jl6bl",
+        "label": "ウィルソン株",
+        "observationType": "physical",
+        "region": null,
+        "genericCategories": [
+          "living-natural"
+        ],
+        "learningRoles": [
+          "direct",
+          "memory"
+        ],
+        "domainPacks": [
+          "nature"
+        ],
+        "domainCategories": [
+          "tree"
+        ],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786569670816-uqp737"
+      }
+    ],
+    "visitId": "visit-yakushima"
+  },
+  {
+    "id": "photo-1786569670916-wnkc85",
+    "file": "1000001253.jpg",
+    "order": 6,
+    "title": "1000001253",
+    "status": "in-progress",
+    "observations": [
+      {
+        "id": "observation-1786569947382-c9gx29",
+        "label": "縄文杉",
+        "observationType": "physical",
+        "region": null,
+        "genericCategories": [
+          "living-natural"
+        ],
+        "learningRoles": [
+          "direct"
+        ],
+        "domainPacks": [
+          "nature"
+        ],
+        "domainCategories": [
+          "tree"
+        ],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786569670916-wnkc85"
+      }
+    ],
+    "visitId": "visit-yakushima"
+  },
+  {
+    "id": "photo-1786569671010-0pev7v",
+    "file": "1000001292.jpg",
+    "order": 7,
+    "title": "1000001292",
+    "status": "in-progress",
+    "experienceMemo": "大王もいます",
+    "observations": [
+      {
+        "id": "observation-1786570016390-mbmyjt",
+        "label": "大王杉",
+        "observationType": "physical",
+        "region": null,
+        "genericCategories": [
+          "living-natural"
+        ],
+        "learningRoles": [
+          "direct"
+        ],
+        "domainPacks": [
+          "nature"
+        ],
+        "domainCategories": [
+          "tree"
+        ],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786569671010-0pev7v"
+      },
+      {
+        "id": "observation-1786570030127-3o0veg",
+        "label": "説明パネル",
+        "observationType": "information",
+        "region": {
+          "x": 14.31,
+          "y": 60.72,
+          "w": 39.25,
+          "h": 11.83
+        },
+        "genericCategories": [
+          "explanation-panel"
+        ],
+        "learningRoles": [
+          "direct",
+          "explains"
+        ],
+        "domainPacks": [
+          "nature"
+        ],
+        "domainCategories": [],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786569671010-0pev7v"
+      }
+    ],
+    "visitId": "visit-yakushima"
+  },
+  {
+    "id": "photo-1786569671093-gkqo5j",
+    "file": "fc06c70a-ff98-4af6-b935-baa867069099-1_all_2383.jpg",
+    "order": 8,
+    "title": "fc06c70a-ff98-4af6-b935-baa867069099-1_all_2383",
+    "status": "organized",
+    "experienceMemo": "かなり大変だった見るのは",
+    "observations": [
+      {
+        "id": "observation-1786570236668-jk49bl",
+        "label": "展示ラベル",
+        "observationType": "information",
+        "region": null,
+        "genericCategories": [
+          "explanation-panel"
+        ],
+        "learningRoles": [
+          "direct",
+          "explains"
+        ],
+        "domainPacks": [
+          "nature"
+        ],
+        "domainCategories": [],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786569671093-gkqo5j"
+      }
+    ],
+    "visitId": "visit-yakushima"
+  },
+  {
+    "id": "photo-1786570912835-r2bwzf",
+    "file": "20240915_160730.jpg",
+    "order": 1,
+    "title": "20240915_160730",
+    "status": "in-progress",
+    "experienceMemo": "いい角度",
+    "observations": [
+      {
+        "id": "observation-1786570955562-shxhg5",
+        "label": "右の恐竜",
+        "observationType": "physical",
+        "region": {
+          "x": 39.45,
+          "y": 33.3,
+          "w": 60.55,
+          "h": 65.22
+        },
+        "genericCategories": [
+          "exhibit-object"
+        ],
+        "learningRoles": [
+          "direct"
+        ],
+        "domainPacks": [
+          "paleontology"
+        ],
+        "domainCategories": [
+          "skeleton"
+        ],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786570912835-r2bwzf"
+      },
+      {
+        "id": "observation-1786570980885-psztnv",
+        "label": "左の恐竜",
+        "observationType": "physical",
+        "region": {
+          "x": 0,
+          "y": 30.27,
+          "w": 27.65,
+          "h": 69.73
+        },
+        "genericCategories": [
+          "exhibit-object"
+        ],
+        "learningRoles": [
+          "direct"
+        ],
+        "domainPacks": [
+          "paleontology"
+        ],
+        "domainCategories": [
+          "skeleton"
+        ],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786570912835-r2bwzf"
+      }
+    ],
+    "visitId": "visit-inochi"
+  },
+  {
+    "id": "photo-1786570912946-r4ngig",
+    "file": "20240915_160740.jpg",
+    "order": 2,
+    "title": "20240915_160740",
+    "status": "in-progress",
+    "experienceMemo": "恐竜大行列",
+    "observations": [
+      {
+        "id": "observation-1786571225488-rywvor",
+        "label": "たくさんの恐竜骨格",
+        "observationType": "physical",
+        "region": null,
+        "genericCategories": [
+          "exhibit-object"
+        ],
+        "learningRoles": [
+          "direct",
+          "memory"
+        ],
+        "domainPacks": [
+          "paleontology"
+        ],
+        "domainCategories": [
+          "skeleton",
+          "fossil"
+        ],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786570912946-r4ngig"
+      }
+    ],
+    "visitId": "visit-inochi"
+  },
+  {
+    "id": "photo-1786570913058-luetkz",
+    "file": "20240915_160818.jpg",
+    "order": 3,
+    "title": "20240915_160818",
+    "status": "in-progress",
+    "observations": [
+      {
+        "id": "observation-1786571674559-x6652v",
+        "label": "メガニューラ",
+        "observationType": "physical",
+        "region": {
+          "x": 14.57,
+          "y": 17.43,
+          "w": 85.43,
+          "h": 35.5
+        },
+        "genericCategories": [
+          "replica-model"
+        ],
+        "learningRoles": [
+          "direct"
+        ],
+        "domainPacks": [
+          "paleontology"
+        ],
+        "domainCategories": [
+          "restoration"
+        ],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786570913058-luetkz"
+      },
+      {
+        "id": "observation-1786571692908-2v9tg8",
+        "label": "メガニューラの説明",
+        "observationType": "information",
+        "region": {
+          "x": 12,
+          "y": 35.46,
+          "w": 38.74,
+          "h": 18.47
+        },
+        "genericCategories": [
+          "explanation-panel"
+        ],
+        "learningRoles": [
+          "direct",
+          "explains"
+        ],
+        "domainPacks": [
+          "paleontology"
+        ],
+        "domainCategories": [],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786570913058-luetkz"
+      },
+      {
+        "id": "observation-1786571713465-9yirh7",
+        "label": "メガニューラ？",
+        "observationType": "physical",
+        "region": {
+          "x": 1.74,
+          "y": 59.27,
+          "w": 58.23,
+          "h": 13.56
+        },
+        "genericCategories": [
+          "replica-model"
+        ],
+        "learningRoles": [
+          "direct"
+        ],
+        "domainPacks": [
+          "paleontology"
+        ],
+        "domainCategories": [
+          "restoration"
+        ],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786570913058-luetkz"
+      },
+      {
+        "id": "observation-1786571735651-nzsbub",
+        "label": "シダ植物の化石",
+        "observationType": "physical",
+        "region": {
+          "x": 43.81,
+          "y": 63.46,
+          "w": 19.75,
+          "h": 22.22
+        },
+        "genericCategories": [
+          "exhibit-object"
+        ],
+        "learningRoles": [
+          "direct"
+        ],
+        "domainPacks": [
+          "paleontology"
+        ],
+        "domainCategories": [
+          "fossil"
+        ],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786570913058-luetkz"
+      },
+      {
+        "id": "observation-1786571763895-h4ftr9",
+        "label": "リンボラ？の説明",
+        "observationType": "information",
+        "region": {
+          "x": 31.75,
+          "y": 85.39,
+          "w": 22.32,
+          "h": 13.13
+        },
+        "genericCategories": [
+          "explanation-panel"
+        ],
+        "learningRoles": [
+          "direct",
+          "explains"
+        ],
+        "domainPacks": [
+          "paleontology"
+        ],
+        "domainCategories": [],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786570913058-luetkz"
+      }
+    ],
+    "visitId": "visit-inochi"
+  },
+  {
+    "id": "photo-1786570913156-jjlkci",
+    "file": "20240915_160902.jpg",
+    "order": 4,
+    "title": "20240915_160902",
+    "status": "in-progress",
+    "experienceMemo": "恐竜行列第２弾",
+    "observations": [
+      {
+        "id": "observation-1786571927012-i19rvx",
+        "label": "たくさんの恐竜骨格",
+        "observationType": "physical",
+        "region": null,
+        "genericCategories": [
+          "exhibit-object"
+        ],
+        "learningRoles": [
+          "direct",
+          "memory"
+        ],
+        "domainPacks": [
+          "paleontology"
+        ],
+        "domainCategories": [
+          "skeleton",
+          "fossil"
+        ],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786570913156-jjlkci"
+      }
+    ],
+    "visitId": "visit-inochi"
+  },
+  {
+    "id": "photo-1786570913251-hxbkwo",
+    "file": "20240915_160905.jpg",
+    "order": 5,
+    "title": "20240915_160905",
+    "status": "in-progress",
+    "observations": [
+      {
+        "id": "observation-1786572856875-o5wdyq",
+        "label": "恐竜骨格",
+        "observationType": "physical",
+        "region": null,
+        "genericCategories": [
+          "exhibit-object"
+        ],
+        "learningRoles": [
+          "direct"
+        ],
+        "domainPacks": [
+          "paleontology"
+        ],
+        "domainCategories": [
+          "skeleton",
+          "fossil"
+        ],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786570913251-hxbkwo"
+      }
+    ],
+    "visitId": "visit-inochi"
+  },
+  {
+    "id": "photo-1786570913368-kl4i6o",
+    "file": "20240915_161042.jpg",
+    "order": 6,
+    "title": "20240915_161042",
+    "status": "in-progress",
+    "experienceMemo": "角度が好き",
+    "observations": [
+      {
+        "id": "observation-1786572935381-1kds0t",
+        "label": "海竜？",
+        "observationType": "physical",
+        "region": {
+          "x": 3.9,
+          "y": 9.31,
+          "w": 59.61,
+          "h": 76.51
+        },
+        "genericCategories": [
+          "exhibit-object"
+        ],
+        "learningRoles": [
+          "direct"
+        ],
+        "domainPacks": [
+          "paleontology"
+        ],
+        "domainCategories": [
+          "skeleton",
+          "fossil"
+        ],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786570913368-kl4i6o"
+      },
+      {
+        "id": "observation-1786572953304-xshnw5",
+        "label": "翼竜",
+        "observationType": "physical",
+        "region": {
+          "x": 35.96,
+          "y": 23.18,
+          "w": 47.67,
+          "h": 62.42
+        },
+        "genericCategories": [
+          "exhibit-object"
+        ],
+        "learningRoles": [
+          "direct"
+        ],
+        "domainPacks": [
+          "paleontology"
+        ],
+        "domainCategories": [
+          "skeleton",
+          "fossil"
+        ],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786570913368-kl4i6o"
+      }
+    ],
+    "visitId": "visit-inochi"
+  },
+  {
+    "id": "photo-1786570913468-39xojq",
+    "file": "20240915_161100.jpg",
+    "order": 7,
+    "title": "20240915_161100",
+    "status": "in-progress",
+    "experienceMemo": "有名恐竜たち",
+    "observations": [
+      {
+        "id": "observation-1786573078833-zf0g01",
+        "label": "複数の恐竜骨格",
+        "observationType": "physical",
+        "region": null,
+        "genericCategories": [
+          "exhibit-object"
+        ],
+        "learningRoles": [
+          "direct"
+        ],
+        "domainPacks": [
+          "paleontology"
+        ],
+        "domainCategories": [
+          "skeleton",
+          "fossil"
+        ],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786570913468-39xojq"
+      }
+    ],
+    "visitId": "visit-inochi"
+  },
+  {
+    "id": "photo-1786570913584-pbykbi",
+    "file": "20240915_161103.jpg",
+    "order": 8,
+    "title": "20240915_161103",
+    "status": "unorganized",
+    "experienceMemo": "同じ写真",
+    "observations": [],
+    "visitId": "visit-inochi"
+  },
+  {
+    "id": "photo-1786570913684-aez11p",
+    "file": "20240915_161200.jpg",
+    "order": 9,
+    "title": "20240915_161200",
+    "status": "in-progress",
+    "experienceMemo": "世界初！！",
+    "observations": [
+      {
+        "id": "observation-1786573239038-i3yoa0",
+        "label": "マウソニアの化石",
+        "observationType": "physical",
+        "region": {
+          "x": 9.27,
+          "y": 35.97,
+          "w": 74.85,
+          "h": 31.43
+        },
+        "genericCategories": [
+          "exhibit-object"
+        ],
+        "learningRoles": [
+          "direct"
+        ],
+        "domainPacks": [
+          "paleontology"
+        ],
+        "domainCategories": [
+          "fossil"
+        ],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786570913684-aez11p"
+      },
+      {
+        "id": "observation-1786573278359-4dq133",
+        "label": "説明パネル",
+        "observationType": "information",
+        "region": {
+          "x": 6.58,
+          "y": 53.09,
+          "w": 11.7,
+          "h": 17.77
+        },
+        "genericCategories": [
+          "explanation-panel"
+        ],
+        "learningRoles": [
+          "direct",
+          "explains"
+        ],
+        "domainPacks": [
+          "paleontology"
+        ],
+        "domainCategories": [],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786570913684-aez11p"
+      },
+      {
+        "id": "observation-1786573291582-y6m5o7",
+        "label": "展示ラベル",
+        "observationType": "information",
+        "region": {
+          "x": 72.17,
+          "y": 64.15,
+          "w": 10.12,
+          "h": 6.07
+        },
+        "genericCategories": [
+          "explanation-panel"
+        ],
+        "learningRoles": [
+          "direct",
+          "explains"
+        ],
+        "domainPacks": [
+          "paleontology"
+        ],
+        "domainCategories": [],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786570913684-aez11p"
+      }
+    ],
+    "visitId": "visit-inochi"
+  },
+  {
+    "id": "photo-1786570913784-xxc29f",
+    "file": "20240915_161257.jpg",
+    "order": 10,
+    "title": "20240915_161257",
+    "status": "in-progress",
+    "observations": [
+      {
+        "id": "observation-1786573456367-1fg7fe",
+        "label": "最近の哺乳類たち",
+        "observationType": "physical",
+        "region": null,
+        "genericCategories": [
+          "exhibit-object"
+        ],
+        "learningRoles": [
+          "direct"
+        ],
+        "domainPacks": [
+          "paleontology"
+        ],
+        "domainCategories": [
+          "skeleton",
+          "fossil"
+        ],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786570913784-xxc29f"
+      }
+    ],
+    "visitId": "visit-inochi"
+  },
+  {
+    "id": "photo-1786570913884-tyo4mu",
+    "file": "20240915_161343.jpg",
+    "order": 11,
+    "title": "20240915_161343",
+    "status": "in-progress",
+    "experienceMemo": "マンモス！",
+    "observations": [
+      {
+        "id": "observation-1786573511360-uapel8",
+        "label": "哺乳類たち",
+        "observationType": "physical",
+        "region": {
+          "x": 5.24,
+          "y": 23.4,
+          "w": 66.81,
+          "h": 76.6
+        },
+        "genericCategories": [
+          "exhibit-object"
+        ],
+        "learningRoles": [
+          "direct"
+        ],
+        "domainPacks": [
+          "paleontology"
+        ],
+        "domainCategories": [
+          "skeleton",
+          "fossil"
+        ],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786570913884-tyo4mu"
+      },
+      {
+        "id": "observation-1786573547658-vvg8o4",
+        "label": "メガテリウム？",
+        "observationType": "physical",
+        "region": {
+          "x": 61.93,
+          "y": 23.4,
+          "w": 21.33,
+          "h": 39.66
+        },
+        "genericCategories": [
+          "exhibit-object"
+        ],
+        "learningRoles": [
+          "direct"
+        ],
+        "domainPacks": [
+          "paleontology"
+        ],
+        "domainCategories": [
+          "skeleton",
+          "fossil"
+        ],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786570913884-tyo4mu"
+      }
+    ],
+    "visitId": "visit-inochi"
+  },
+  {
+    "id": "photo-1786570914001-vq23zr",
+    "file": "20240915_161440.jpg",
+    "order": 12,
+    "title": "20240915_161440",
+    "status": "in-progress",
+    "experienceMemo": "猛者感",
+    "observations": [
+      {
+        "id": "observation-1786573633516-krgyu3",
+        "label": "メガテリウム",
+        "observationType": "physical",
+        "region": {
+          "x": 0.2,
+          "y": 14.97,
+          "w": 99.8,
+          "h": 70.42
+        },
+        "genericCategories": [
+          "exhibit-object"
+        ],
+        "learningRoles": [
+          "direct"
+        ],
+        "domainPacks": [
+          "paleontology"
+        ],
+        "domainCategories": [
+          "skeleton",
+          "fossil"
+        ],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786570914001-vq23zr"
+      }
+    ],
+    "visitId": "visit-inochi"
+  },
+  {
+    "id": "photo-1786570914101-jiw7cm",
+    "file": "20240915_161505(0).jpg",
+    "order": 13,
+    "title": "20240915_161505(0)",
+    "status": "in-progress",
+    "experienceMemo": "エレモテリウムと僕",
+    "observations": [
+      {
+        "id": "observation-1786573694816-loxtea",
+        "label": "エレモテリウムの全身骨格",
+        "observationType": "physical",
+        "region": {
+          "x": 1.48,
+          "y": 0.69,
+          "w": 93.89,
+          "h": 76.33
+        },
+        "genericCategories": [
+          "exhibit-object"
+        ],
+        "learningRoles": [
+          "direct"
+        ],
+        "domainPacks": [
+          "paleontology"
+        ],
+        "domainCategories": [
+          "skeleton",
+          "fossil"
+        ],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786570914101-jiw7cm"
+      },
+      {
+        "id": "observation-1786573731738-c16l1z",
+        "label": "展示ラベル",
+        "observationType": "information",
+        "region": {
+          "x": 50.74,
+          "y": 70.53,
+          "w": 17.7,
+          "h": 6.49
+        },
+        "genericCategories": [
+          "explanation-panel"
+        ],
+        "learningRoles": [
+          "direct",
+          "explains"
+        ],
+        "domainPacks": [
+          "paleontology"
+        ],
+        "domainCategories": [],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786570914101-jiw7cm"
+      }
+    ],
+    "visitId": "visit-inochi"
+  },
+  {
+    "id": "photo-1786570914218-grhq5k",
+    "file": "20240915_161505.jpg",
+    "order": 14,
+    "title": "20240915_161505",
+    "status": "unorganized",
+    "experienceMemo": "同じ写真",
+    "observations": [],
+    "visitId": "visit-inochi"
+  },
+  {
+    "id": "photo-1786570914318-d4196o",
+    "file": "20240915_161653.jpg",
+    "order": 15,
+    "title": "20240915_161653",
+    "status": "in-progress",
+    "experienceMemo": "わにでかくね",
+    "observations": [
+      {
+        "id": "observation-1786574240149-1eo66o",
+        "label": "ワニ？",
+        "observationType": "physical",
+        "region": {
+          "x": 1.58,
+          "y": 46.37,
+          "w": 98.42,
+          "h": 52.02
+        },
+        "genericCategories": [
+          "exhibit-object"
+        ],
+        "learningRoles": [
+          "direct"
+        ],
+        "domainPacks": [
+          "paleontology"
+        ],
+        "domainCategories": [
+          "skeleton",
+          "fossil"
+        ],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786570914318-d4196o"
+      },
+      {
+        "id": "observation-1786574264311-ibz9at",
+        "label": "カバ？",
+        "observationType": "physical",
+        "region": {
+          "x": 3.41,
+          "y": 21.67,
+          "w": 37.06,
+          "h": 25.36
+        },
+        "genericCategories": [
+          "exhibit-object"
+        ],
+        "learningRoles": [
+          "direct"
+        ],
+        "domainPacks": [
+          "paleontology"
+        ],
+        "domainCategories": [
+          "skeleton",
+          "fossil"
+        ],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786570914318-d4196o"
+      }
+    ],
+    "visitId": "visit-inochi"
+  },
+  {
+    "id": "photo-1786570914435-345ztg",
+    "file": "20240915_161718.jpg",
+    "order": 16,
+    "title": "20240915_161718",
+    "status": "in-progress",
+    "experienceMemo": "ロマンの塊　サーベルちゃん",
+    "observations": [
+      {
+        "id": "observation-1786574325668-wayeed",
+        "label": "全身骨格",
+        "observationType": "physical",
+        "region": {
+          "x": 0.12,
+          "y": 12.13,
+          "w": 91.56,
+          "h": 71.96
+        },
+        "genericCategories": [
+          "exhibit-object"
+        ],
+        "learningRoles": [
+          "direct"
+        ],
+        "domainPacks": [
+          "paleontology"
+        ],
+        "domainCategories": [
+          "skeleton",
+          "fossil"
+        ],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786570914435-345ztg"
+      },
+      {
+        "id": "observation-1786574340189-pydnij",
+        "label": "展示ラベル",
+        "observationType": "information",
+        "region": {
+          "x": 43.52,
+          "y": 79.75,
+          "w": 17.92,
+          "h": 17.99
+        },
+        "genericCategories": [
+          "explanation-panel"
+        ],
+        "learningRoles": [
+          "direct",
+          "explains"
+        ],
+        "domainPacks": [
+          "paleontology"
+        ],
+        "domainCategories": [],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786570914435-345ztg"
+      }
+    ],
+    "visitId": "visit-inochi"
+  },
+  {
+    "id": "photo-1786570914536-plg0if",
+    "file": "20240915_161753.jpg",
+    "order": 17,
+    "title": "20240915_161753",
+    "status": "in-progress",
+    "experienceMemo": "最近のクジラかも",
+    "observations": [
+      {
+        "id": "observation-1786574499584-kgt416",
+        "label": "クジラ？の全身骨格",
+        "observationType": "physical",
+        "region": {
+          "x": 9.51,
+          "y": 13.86,
+          "w": 79.12,
+          "h": 75.86
+        },
+        "genericCategories": [
+          "exhibit-object"
+        ],
+        "learningRoles": [
+          "direct"
+        ],
+        "domainPacks": [
+          "paleontology"
+        ],
+        "domainCategories": [
+          "skeleton",
+          "fossil"
+        ],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786570914536-plg0if"
+      },
+      {
+        "id": "observation-1786574527465-wr3qlb",
+        "label": "マンボウ？",
+        "observationType": "physical",
+        "region": {
+          "x": 0.61,
+          "y": 0.64,
+          "w": 21.33,
+          "h": 54.62
+        },
+        "genericCategories": [
+          "replica-model"
+        ],
+        "learningRoles": [
+          "direct"
+        ],
+        "domainPacks": [
+          "paleontology"
+        ],
+        "domainCategories": [
+          "restoration"
+        ],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786570914536-plg0if"
+      },
+      {
+        "id": "observation-1786574552462-xo76hy",
+        "label": "後ろの全身骨格",
+        "observationType": "physical",
+        "region": {
+          "x": 28.16,
+          "y": 69.78,
+          "w": 71.84,
+          "h": 30.22
+        },
+        "genericCategories": [
+          "exhibit-object"
+        ],
+        "learningRoles": [
+          "direct"
+        ],
+        "domainPacks": [
+          "paleontology"
+        ],
+        "domainCategories": [
+          "skeleton",
+          "fossil"
+        ],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786570914536-plg0if"
+      }
+    ],
+    "visitId": "visit-inochi"
+  },
+  {
+    "id": "photo-1786570914636-fevgq8",
+    "file": "20240915_161917.jpg",
+    "order": 18,
+    "title": "20240915_161917",
+    "status": "in-progress",
+    "experienceMemo": "結構でかいよな、これ",
+    "observations": [
+      {
+        "id": "observation-1786574622326-c3u1sy",
+        "label": "アメリカンロブスターの複製",
+        "observationType": "physical",
+        "region": {
+          "x": 1.83,
+          "y": 0,
+          "w": 82.29,
+          "h": 94.92
+        },
+        "genericCategories": [
+          "replica-model"
+        ],
+        "learningRoles": [
+          "direct"
+        ],
+        "domainPacks": [
+          "paleontology"
+        ],
+        "domainCategories": [
+          "restoration"
+        ],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786570914636-fevgq8"
+      },
+      {
+        "id": "observation-1786574636843-hmfth8",
+        "label": "展示ラベル",
+        "observationType": "information",
+        "region": {
+          "x": 68.39,
+          "y": 37.49,
+          "w": 10.97,
+          "h": 52.45
+        },
+        "genericCategories": [
+          "explanation-panel"
+        ],
+        "learningRoles": [
+          "direct",
+          "explains"
+        ],
+        "domainPacks": [
+          "paleontology"
+        ],
+        "domainCategories": [],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786570914636-fevgq8"
+      }
+    ],
+    "visitId": "visit-inochi"
+  },
+  {
+    "id": "photo-1786570914734-smb5uc",
+    "file": "20240915_162029.jpg",
+    "order": 19,
+    "title": "20240915_162029",
+    "status": "in-progress",
+    "experienceMemo": "オットセイ",
+    "observations": [
+      {
+        "id": "observation-1786574793704-i6kzs0",
+        "label": "頭の複製",
+        "observationType": "physical",
+        "region": {
+          "x": 2.51,
+          "y": 26.95,
+          "w": 82.09,
+          "h": 51.08
+        },
+        "genericCategories": [
+          "replica-model"
+        ],
+        "learningRoles": [
+          "direct"
+        ],
+        "domainPacks": [
+          "paleontology"
+        ],
+        "domainCategories": [
+          "restoration"
+        ],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786570914734-smb5uc"
+      },
+      {
+        "id": "observation-1786574813754-cazeaa",
+        "label": "展示ラベル",
+        "observationType": "information",
+        "region": {
+          "x": 0,
+          "y": 82.07,
+          "w": 28.93,
+          "h": 17.93
+        },
+        "genericCategories": [
+          "explanation-panel"
+        ],
+        "learningRoles": [
+          "direct"
+        ],
+        "domainPacks": [
+          "paleontology"
+        ],
+        "domainCategories": [],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786570914734-smb5uc"
+      }
+    ],
+    "visitId": "visit-inochi"
+  },
+  {
+    "id": "photo-1786570914844-mtmdi1",
+    "file": "20240915_162033.jpg",
+    "order": 20,
+    "title": "20240915_162033",
+    "status": "organized",
+    "experienceMemo": "シュール",
+    "observations": [
+      {
+        "id": "observation-1786574929546-h51mot",
+        "label": "正面からみるオットセイの模型",
+        "observationType": "physical",
+        "region": {
+          "x": 7.38,
+          "y": 22.91,
+          "w": 90.56,
+          "h": 53.39
+        },
+        "genericCategories": [
+          "replica-model"
+        ],
+        "learningRoles": [
+          "direct"
+        ],
+        "domainPacks": [
+          "paleontology"
+        ],
+        "domainCategories": [
+          "skeleton",
+          "fossil"
+        ],
+        "confidence": 1,
+        "status": "confirmed",
+        "visibleText": [],
+        "entityId": null,
+        "photoId": "photo-1786570914844-mtmdi1"
+      }
+    ],
+    "visitId": "visit-inochi"
+  },
 ];
 
 export const SAMPLE_RELATIONS = [
@@ -2921,7 +5531,412 @@ export const SAMPLE_RELATIONS = [
     "status": "confirmed",
     "confidence": 1,
     "origin": "user"
-  }
+  },
+  {
+    "id": "relation-1786564884091-ze1tv1",
+    "sourceId": "observation-1786564786996-3slyq6",
+    "targetId": "observation-1786564768477-0pqezu",
+    "type": "explains",
+    "status": "confirmed",
+    "confidence": 1,
+    "origin": "user"
+  },
+  {
+    "id": "relation-1786565228867-zzefi2",
+    "sourceId": "observation-1786565116766-65pxr8",
+    "targetId": "observation-1786565092794-kut56p",
+    "type": "explains",
+    "status": "confirmed",
+    "confidence": 1,
+    "origin": "user"
+  },
+  {
+    "id": "relation-1786565539888-qaomeh",
+    "sourceId": "observation-1786565376370-iqrjdt",
+    "targetId": "observation-1786565445648-eott8i",
+    "type": "explains",
+    "status": "confirmed",
+    "confidence": 1,
+    "origin": "user"
+  },
+  {
+    "id": "relation-1786565564251-wohikr",
+    "sourceId": "observation-1786565445648-eott8i",
+    "targetId": "observation-1786565092794-kut56p",
+    "type": "different-angle",
+    "status": "confirmed",
+    "confidence": 1,
+    "origin": "user"
+  },
+  {
+    "id": "relation-1786565593598-4zzxvx",
+    "sourceId": "observation-1786565467456-gnhgyf",
+    "targetId": "observation-1786565116766-65pxr8",
+    "type": "different-angle",
+    "status": "confirmed",
+    "confidence": 1,
+    "origin": "user"
+  },
+  {
+    "id": "relation-1786565902906-am2kk8",
+    "sourceId": "observation-1786565849100-y58g8h",
+    "targetId": "observation-1786565802685-d5rstd",
+    "type": "explains",
+    "status": "confirmed",
+    "confidence": 1,
+    "origin": "user"
+  },
+  {
+    "id": "relation-1786565902906-qlp3yg",
+    "sourceId": "observation-1786565849100-y58g8h",
+    "targetId": "observation-1786565802685-d5rstd",
+    "type": "same-theme",
+    "status": "confirmed",
+    "confidence": 1,
+    "origin": "user"
+  },
+  {
+    "id": "relation-1786567835906-w3zcet",
+    "sourceId": "observation-1786567797655-5n37mq",
+    "targetId": "observation-1786567737471-n8abwc",
+    "type": "explains",
+    "status": "confirmed",
+    "confidence": 1,
+    "origin": "user"
+  },
+  {
+    "id": "relation-1786568094172-m114dn",
+    "sourceId": "observation-1786568033267-pes6pa",
+    "targetId": "observation-1786567883721-y5bvc4",
+    "type": "explains",
+    "status": "confirmed",
+    "confidence": 1,
+    "origin": "user"
+  },
+  {
+    "id": "relation-1786568142912-zt9h5u",
+    "sourceId": "observation-1786568062989-00bjqv",
+    "targetId": "observation-1786568001777-p99mi1",
+    "type": "explains",
+    "status": "confirmed",
+    "confidence": 1,
+    "origin": "user"
+  },
+  {
+    "id": "relation-1786568301052-ji5va2",
+    "sourceId": "observation-1786568202084-geat5n",
+    "targetId": "observation-1786566126178-feii3x",
+    "type": "same-place",
+    "status": "confirmed",
+    "confidence": 1,
+    "origin": "user"
+  },
+  {
+    "id": "relation-1786568560364-fql5hh",
+    "sourceId": "observation-1786568403149-l3jwbd",
+    "targetId": "observation-1786568537836-dlx1yi",
+    "type": "part-of",
+    "status": "confirmed",
+    "confidence": 1,
+    "origin": "user"
+  },
+  {
+    "id": "relation-1786568586196-nfkw0p",
+    "sourceId": "observation-1786568435355-b91dtx",
+    "targetId": "observation-1786568537836-dlx1yi",
+    "type": "part-of",
+    "status": "confirmed",
+    "confidence": 1,
+    "origin": "user"
+  },
+  {
+    "id": "relation-1786568586196-nl3juk",
+    "sourceId": "observation-1786568435355-b91dtx",
+    "targetId": "observation-1786568537836-dlx1yi",
+    "type": "same-exhibit",
+    "status": "confirmed",
+    "confidence": 1,
+    "origin": "user"
+  },
+  {
+    "id": "relation-1786568623090-p9a5ii",
+    "sourceId": "observation-1786568475772-xzmr9a",
+    "targetId": "observation-1786568537836-dlx1yi",
+    "type": "part-of",
+    "status": "confirmed",
+    "confidence": 1,
+    "origin": "user"
+  },
+  {
+    "id": "relation-1786568623090-izl63n",
+    "sourceId": "observation-1786568475772-xzmr9a",
+    "targetId": "observation-1786568537836-dlx1yi",
+    "type": "same-exhibit",
+    "status": "confirmed",
+    "confidence": 1,
+    "origin": "user"
+  },
+  {
+    "id": "relation-1786568638551-t3f4kl",
+    "sourceId": "observation-1786568488393-hojvk3",
+    "targetId": "observation-1786568537836-dlx1yi",
+    "type": "part-of",
+    "status": "confirmed",
+    "confidence": 1,
+    "origin": "user"
+  },
+  {
+    "id": "relation-1786568638552-r03uae",
+    "sourceId": "observation-1786568488393-hojvk3",
+    "targetId": "observation-1786568537836-dlx1yi",
+    "type": "same-exhibit",
+    "status": "confirmed",
+    "confidence": 1,
+    "origin": "user"
+  },
+  {
+    "id": "relation-1786568657008-styih8",
+    "sourceId": "observation-1786568475772-xzmr9a",
+    "targetId": "observation-1786568350664-jzttne",
+    "type": "different-angle",
+    "status": "confirmed",
+    "confidence": 1,
+    "origin": "user"
+  },
+  {
+    "id": "relation-1786569175501-4jmni7",
+    "sourceId": "observation-1786568890579-rq3v8t",
+    "targetId": "observation-1786568868307-lx2ues",
+    "type": "explains",
+    "status": "confirmed",
+    "confidence": 1,
+    "origin": "user"
+  },
+  {
+    "id": "relation-1786569266543-cy7w1i",
+    "sourceId": "observation-1786569232947-x849dv",
+    "targetId": "observation-1786569217981-odlfs9",
+    "type": "explains",
+    "status": "confirmed",
+    "confidence": 1,
+    "origin": "user"
+  },
+  {
+    "id": "relation-1786569810433-unbbdn",
+    "sourceId": "observation-1786569787793-vfo8gs",
+    "targetId": "observation-1786569755804-yprf9x",
+    "type": "different-angle",
+    "status": "confirmed",
+    "confidence": 1,
+    "origin": "user"
+  },
+  {
+    "id": "relation-1786569929197-t4vouc",
+    "sourceId": "observation-1786569897038-3jl6bl",
+    "targetId": "observation-1786569698806-0ozfxh",
+    "type": "different-angle",
+    "status": "confirmed",
+    "confidence": 1,
+    "origin": "user"
+  },
+  {
+    "id": "relation-1786569992053-9pjvss",
+    "sourceId": "observation-1786569947382-c9gx29",
+    "targetId": "observation-1786569755804-yprf9x",
+    "type": "different-angle",
+    "status": "confirmed",
+    "confidence": 1,
+    "origin": "user"
+  },
+  {
+    "id": "relation-1786570178673-8rfe38",
+    "sourceId": "observation-1786570030127-3o0veg",
+    "targetId": "observation-1786570016390-mbmyjt",
+    "type": "explains",
+    "status": "confirmed",
+    "confidence": 1,
+    "origin": "user"
+  },
+  {
+    "id": "relation-1786570252924-5svqf5",
+    "sourceId": "observation-1786570236668-jk49bl",
+    "targetId": "observation-1786569755804-yprf9x",
+    "type": "explains",
+    "status": "confirmed",
+    "confidence": 1,
+    "origin": "user"
+  },
+  {
+    "id": "relation-1786571271291-fq3gkx",
+    "sourceId": "observation-1786570955562-shxhg5",
+    "targetId": "observation-1786571225488-rywvor",
+    "type": "part-of",
+    "status": "confirmed",
+    "confidence": 1,
+    "origin": "user"
+  },
+  {
+    "id": "relation-1786571271291-e03yjv",
+    "sourceId": "observation-1786570955562-shxhg5",
+    "targetId": "observation-1786571225488-rywvor",
+    "type": "different-angle",
+    "status": "confirmed",
+    "confidence": 1,
+    "origin": "user"
+  },
+  {
+    "id": "relation-1786571288315-egao2q",
+    "sourceId": "observation-1786570980885-psztnv",
+    "targetId": "observation-1786571225488-rywvor",
+    "type": "part-of",
+    "status": "confirmed",
+    "confidence": 1,
+    "origin": "user"
+  },
+  {
+    "id": "relation-1786571288315-ntosjc",
+    "sourceId": "observation-1786570980885-psztnv",
+    "targetId": "observation-1786571225488-rywvor",
+    "type": "different-angle",
+    "status": "confirmed",
+    "confidence": 1,
+    "origin": "user"
+  },
+  {
+    "id": "relation-1786571847302-ntj3ec",
+    "sourceId": "observation-1786571763895-h4ftr9",
+    "targetId": "observation-1786571735651-nzsbub",
+    "type": "explains",
+    "status": "confirmed",
+    "confidence": 1,
+    "origin": "user"
+  },
+  {
+    "id": "relation-1786571862917-dxyzw9",
+    "sourceId": "observation-1786571692908-2v9tg8",
+    "targetId": "observation-1786571674559-x6652v",
+    "type": "explains",
+    "status": "confirmed",
+    "confidence": 1,
+    "origin": "user"
+  },
+  {
+    "id": "relation-1786571875195-5d11d3",
+    "sourceId": "observation-1786571692908-2v9tg8",
+    "targetId": "observation-1786571713465-9yirh7",
+    "type": "explains",
+    "status": "confirmed",
+    "confidence": 1,
+    "origin": "user"
+  },
+  {
+    "id": "relation-1786572800742-b3b7rg",
+    "sourceId": "observation-1786571927012-i19rvx",
+    "targetId": "observation-1786571225488-rywvor",
+    "type": "different-angle",
+    "status": "confirmed",
+    "confidence": 1,
+    "origin": "user"
+  },
+  {
+    "id": "relation-1786572879222-r65d8r",
+    "sourceId": "observation-1786572856875-o5wdyq",
+    "targetId": "observation-1786571927012-i19rvx",
+    "type": "different-angle",
+    "status": "confirmed",
+    "confidence": 1,
+    "origin": "user"
+  },
+  {
+    "id": "relation-1786573338627-9k1yd4",
+    "sourceId": "observation-1786573278359-4dq133",
+    "targetId": "observation-1786573239038-i3yoa0",
+    "type": "explains",
+    "status": "confirmed",
+    "confidence": 1,
+    "origin": "user"
+  },
+  {
+    "id": "relation-1786573352383-juoo7d",
+    "sourceId": "observation-1786573291582-y6m5o7",
+    "targetId": "observation-1786573239038-i3yoa0",
+    "type": "explains",
+    "status": "confirmed",
+    "confidence": 1,
+    "origin": "user"
+  },
+  {
+    "id": "relation-1786573574691-ohvkpn",
+    "sourceId": "observation-1786573511360-uapel8",
+    "targetId": "observation-1786573456367-1fg7fe",
+    "type": "different-angle",
+    "status": "confirmed",
+    "confidence": 1,
+    "origin": "user"
+  },
+  {
+    "id": "relation-1786573650690-4jmucz",
+    "sourceId": "observation-1786573633516-krgyu3",
+    "targetId": "observation-1786573547658-vvg8o4",
+    "type": "different-angle",
+    "status": "confirmed",
+    "confidence": 1,
+    "origin": "user"
+  },
+  {
+    "id": "relation-1786573764290-3fx42v",
+    "sourceId": "observation-1786573731738-c16l1z",
+    "targetId": "observation-1786573694816-loxtea",
+    "type": "explains",
+    "status": "confirmed",
+    "confidence": 1,
+    "origin": "user"
+  },
+  {
+    "id": "relation-1786573792863-whjpmw",
+    "sourceId": "observation-1786573694816-loxtea",
+    "targetId": "observation-1786573633516-krgyu3",
+    "type": "different-angle",
+    "status": "confirmed",
+    "confidence": 1,
+    "origin": "user"
+  },
+  {
+    "id": "relation-1786574415317-y0ceav",
+    "sourceId": "observation-1786574340189-pydnij",
+    "targetId": "observation-1786574325668-wayeed",
+    "type": "explains",
+    "status": "confirmed",
+    "confidence": 1,
+    "origin": "user"
+  },
+  {
+    "id": "relation-1786574743187-i06q7b",
+    "sourceId": "observation-1786574636843-hmfth8",
+    "targetId": "observation-1786574622326-c3u1sy",
+    "type": "explains",
+    "status": "confirmed",
+    "confidence": 1,
+    "origin": "user"
+  },
+  {
+    "id": "relation-1786574884480-dek31z",
+    "sourceId": "observation-1786574813754-cazeaa",
+    "targetId": "observation-1786574793704-i6kzs0",
+    "type": "explains",
+    "status": "confirmed",
+    "confidence": 1,
+    "origin": "user"
+  },
+  {
+    "id": "relation-1786574953575-o49r6t",
+    "sourceId": "observation-1786574929546-h51mot",
+    "targetId": "observation-1786574793704-i6kzs0",
+    "type": "different-angle",
+    "status": "confirmed",
+    "confidence": 1,
+    "origin": "user"
+  },
 ];
 
 export const SAMPLE_ENTITIES = [

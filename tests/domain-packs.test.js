@@ -75,10 +75,9 @@ describe("domain configuration files", () => {
 
   it("declares directed state for every relation type", () => {
     expect(core.relationTypes).toHaveLength(9);
-    expect(core.relationTypes.filter((term) => term.directed).map((term) => term.id)).toEqual([
-      "explains",
-      "part-of",
-    ]);
+    expect(
+      core.relationTypes.filter((term) => term.directed).map((term) => term.id),
+    ).toEqual(["explains", "part-of"]);
     expect(core.relationTypes.filter((term) => !term.directed)).toHaveLength(7);
   });
 
@@ -149,7 +148,7 @@ describe("demo data against the domain configuration", () => {
 
   it("keeps Photo and Observation as separate records", () => {
     // A photo holds many observations; an observation is never a photo.
-    expect(SAMPLE_PHOTOS.length).toBe(20);
+    expect(SAMPLE_PHOTOS.length).toBe(68);
     expect(SAMPLE_OBSERVATIONS.length).toBeGreaterThan(SAMPLE_PHOTOS.length);
     expect(SAMPLE_PHOTOS.some((photo) => photo.observations.length > 1)).toBe(
       true,
