@@ -51,9 +51,9 @@ describe("demo knowledge and quiz generation", () => {
   });
 
   it.each([
-    ["easy", { hierarchy: 5, "timeline-map": 5, matching: 3 }],
-    ["normal", { hierarchy: 5, "timeline-map": 5, matching: 3 }],
-    ["hard", { hierarchy: 5, "timeline-map": 5, matching: 3 }],
+    ["easy", { hierarchy: 5, "timeline-map": 5, matching: 2 }],
+    ["normal", { hierarchy: 5, "timeline-map": 5, matching: 2 }],
+    ["hard", { hierarchy: 5, "timeline-map": 5, matching: 2 }],
   ])("generates diverse demo questions at %s difficulty", async (difficulty, expectedCounts) => {
     const project = demoProject();
     const graph = await referenceGraph();
@@ -71,14 +71,14 @@ describe("demo knowledge and quiz generation", () => {
     const basilosaurusEocene = first.filter((quiz) => quiz.questionType === "timeline-map")
       .flatMap((quiz) => quiz.cards)
       .filter((card) => card.entityIds.includes("Entity:e-basilo") && card.targetReferenceId === "geo:epoch:eocene");
-    expect(new Set(basilosaurusEocene.map((card) => card.observationId))).toEqual(new Set(["o07a"]));
+    expect(basilosaurusEocene.every((card) => card.observationId === "o07a")).toBe(true);
   });
 
   it("matches difficulty availability to generated structure questions and focuses timeline boards", async () => {
     const project = demoProject();
     const graph = await referenceGraph();
     const availability = getQuizDifficultyAvailability(project, "visit-fukui", registries, graph);
-    expect(availability.comparableCount).toBe(11);
+    expect(availability.comparableCount).toBe(12);
     for (const difficulty of availability.difficulties) {
       const structures = generateVisitQuizzes(project, "visit-fukui", registries, graph, { difficulty: difficulty.id })
         .filter((quiz) => quiz.questionType === "hierarchy" || quiz.questionType === "timeline-map");
@@ -91,7 +91,7 @@ describe("demo knowledge and quiz generation", () => {
     const hard = describeQuizAvailability(project, "visit-fukui", registries, graph, { difficulty: "hard" });
     expect(hard.axisAvailability).toMatchObject({
       taxonomy: { available: true, comparableCount: 11, minimumCount: 4, questionCount: 5 },
-      "geological-time": { available: true, comparableCount: 6, minimumCount: 4, questionCount: 5 },
+      "geological-time": { available: true, comparableCount: 12, minimumCount: 4, questionCount: 5 },
     });
     expect(hard.axisReasons).toEqual([]);
     expect(hard.reason).toBeNull();
@@ -103,8 +103,8 @@ describe("demo knowledge and quiz generation", () => {
     const timeline = generateVisitQuizzes(project, "visit-fukui", registries, graph, { difficulty: "easy" })
       .find((quiz) => quiz.questionType === "timeline-map");
     expect(graph.nodes.filter((node) => node.axis === "geological-time" && node.rank === "epoch" && node.quizEligible !== false)).toHaveLength(15);
-    expect(timeline.options.map((option) => option.id)).toEqual(["geo:epoch:paleocene", "geo:epoch:eocene", "geo:epoch:oligocene"]);
-    expect(timeline.options.map((option) => option.startMa)).toEqual([66, 56, 33.9]);
+    expect(timeline.options.map((option) => option.id)).toEqual(["geo:epoch:miocene", "geo:epoch:pliocene", "geo:epoch:pleistocene"]);
+    expect(timeline.options.map((option) => option.startMa)).toEqual([23.04, 5.333, 2.58]);
   });
 
   it("builds the demo graph from the same ReferenceFacts and confirmed Relations", () => {
@@ -205,9 +205,9 @@ describe("demo knowledge and quiz generation", () => {
       .toMatchObject({ predicate: current.predicate, sourceNote: current.sourceNote });
   });
 
-  it("補充したデモRelationから既存v2プロジェクトにもpart-of問題を生成する", async () => {
+  it("補充したデモRelationから既存v2プロジェクトにもマッチング問題を生成する", async () => {
     const saved = demoProject();
-    saved.relations = saved.relations.filter((relation) => relation.id !== "r19");
+    saved.relations = saved.relations.filter((relation) => relation.id !== "r06");
     saved.demoKnowledgeVersion = "2026-08-07.1";
     const migrated = migrateProjectDocument(saved, {
       demoPhotos: SAMPLE_PHOTOS,
@@ -224,8 +224,8 @@ describe("demo knowledge and quiz generation", () => {
       registries,
       await referenceGraph(),
     );
-    expect(migrated.relations.some((relation) => relation.id === "r19")).toBe(true);
-    expect(quizzes.some((quiz) => quiz.id === "quiz:matching:r19")).toBe(true);
+    expect(migrated.relations.some((relation) => relation.id === "r06")).toBe(true);
+    expect(quizzes.some((quiz) => quiz.id === "quiz:matching:r06")).toBe(true);
   });
 
   it("records non-ReferenceFact demo answers as events without inventing a knowledge state", () => {

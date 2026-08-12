@@ -133,14 +133,15 @@ jobs:
               });
             }
 
+  # Keep merged PR previews available so review links remain stable after merge.
   cleanup-preview:
-    if: github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == false && github.event.pull_request.head.repo.full_name == github.repository
     concurrency:
       group: pages-preview-pr-${{ github.event.pull_request.number }}
       cancel-in-progress: false
     runs-on: ubuntu-latest
     steps:
-      - name: Remove closed PR preview from gh-pages
+      - name: Remove unmerged PR preview from gh-pages
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
