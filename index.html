@@ -168,10 +168,7 @@
                 <button type="button" id="imageMagnifierOutButton" aria-label="虫眼鏡を縮小">−</button>
                 <button type="button" id="imageMagnifierInButton" aria-label="虫眼鏡を拡大">＋</button>
               </div>
-              <div id="regionDrawingControls" class="region-drawing-controls hidden" role="status">
-                <span>範囲を指定してください</span>
-                <button type="button" id="cancelRegionDrawingButton">キャンセル</button>
-              </div>
+              <button type="button" class="region-drawing-cancel hidden" id="cancelRegionDrawingButton" aria-label="範囲指定をキャンセル">×</button>
             </div>
             <div class="image-help"><span>番号を押すと対象を選択</span><div class="photo-rotation-actions"><span id="organizeRotationLabel">向き 0度</span><button class="text-button" id="rotateOrganizePhotoButton" type="button">↻ 90度回転</button></div><small class="image-zoom-hint" id="imageZoomHint">PCは写真上で右ボタンを押している間、Androidは写真を長押ししている間、円形レンズで拡大します。</small></div>
             <div class="experience-memo">
@@ -494,8 +491,8 @@
     .annotated-photo #observationOverlay { z-index: 3; }
     #regionDrawLayer { position: absolute; inset: 0; z-index: 2; pointer-events: none; touch-action: none; cursor: crosshair; }
     #regionDraftBox { position: absolute; border: 2px dashed var(--accent-2); background: rgba(232,111,54,.2); pointer-events: none; }
-    .region-drawing-controls { position:absolute; left:12px; right:12px; bottom:12px; z-index:6; display:flex; align-items:center; justify-content:space-between; gap:10px; padding:9px 11px; border:1px solid rgba(255,255,255,.35); border-radius:10px; background:rgba(20,21,19,.86); color:white; font-size:10px; font-weight:800; pointer-events:auto; }
-    .region-drawing-controls button { border:1px solid rgba(255,255,255,.5); border-radius:7px; background:transparent; color:white; padding:6px 9px; font-size:10px; font-weight:800; }
+    .region-drawing-cancel { position:absolute; right:12px; top:12px; z-index:6; width:36px; height:36px; border:1px solid rgba(255,255,255,.5); border-radius:50%; background:rgba(20,21,19,.86); color:white; font-size:22px; line-height:1; font-weight:700; display:grid; place-items:center; pointer-events:auto; box-shadow:0 4px 12px rgba(0,0,0,.24); }
+    .region-drawing-cancel:active { transform:scale(.96); }
     .candidate-card { width: 100%; border: 1px solid var(--line); border-radius: 14px; background: white; padding: 0; display: grid; grid-template-columns: 1fr auto; gap: 5px; align-items: center; text-align: left; color: inherit; }
     .candidate-main { border: 0; background: transparent; padding: 11px; display: grid; grid-template-columns: 26px 27px 1fr; gap: 9px; align-items: center; text-align: left; color: inherit; min-width: 0; }
     .candidate-actions { display: flex; gap: 4px; padding-right: 8px; }

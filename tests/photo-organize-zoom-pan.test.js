@@ -30,10 +30,14 @@ describe("Photo organize zoom and pan UI", () => {
     const lens = document.querySelector("#imageMagnifierLens");
     const lensImage = document.querySelector("#imageMagnifierLensImage");
     const overlay = document.querySelector("#observationOverlay");
+    const regionCancelButton = document.querySelector("#cancelRegionDrawingButton");
     expect(document.querySelector("#organizeImageStage")?.contains(overlay)).toBe(true);
     expect(document.querySelector("#imageMagnifierInButton")?.getAttribute("aria-label")).toBe("虫眼鏡を拡大");
     expect(document.querySelector("#imageMagnifierOutButton")?.getAttribute("aria-label")).toBe("虫眼鏡を縮小");
     expect(document.querySelectorAll('#newObservationRegion input[type="radio"]')).toHaveLength(2);
+    expect(document.querySelector("#regionDrawingControls")).toBeNull();
+    expect(regionCancelButton?.textContent.trim()).toBe("×");
+    expect(regionCancelButton?.getAttribute("aria-label")).toBe("範囲指定をキャンセル");
     expect(document.querySelector("#rotateOrganizePhotoButton")).not.toBeNull();
     expect(document.querySelector("#rotateModalPhotoButton")).not.toBeNull();
     expect(dom.window.getComputedStyle(lens).borderRadius).toBe("50%");
@@ -73,6 +77,9 @@ describe("Photo organize zoom and pan UI", () => {
     const memo = document.querySelector(".experience-memo");
     expect(dom.window.getComputedStyle(memo).position).toBe("relative");
     expect(Number(dom.window.getComputedStyle(memo).zIndex)).toBeGreaterThan(lensZIndex);
+    // #annotatedPhoto isolates its own stacking context so the lens can never
+    // paint over the sibling memo/help, on any viewport.
+    expect(dom.window.getComputedStyle(organizeHost).isolation).toBe("isolate");
 
     const quizStage = document.querySelector("#quizStage");
     quizStage.innerHTML = `<article class="quiz-card"><div class="quiz-content">

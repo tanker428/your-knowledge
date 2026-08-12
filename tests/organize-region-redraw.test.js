@@ -179,6 +179,13 @@ describe("Organize observation region redraw", () => {
 
     expect(listenerProbe.clickInvocations).toHaveBeenCalledOnce();
     expect(document.querySelector("#addObservationModal").classList.contains("open")).toBe(false);
-    expect(document.querySelector("#regionDrawingControls").classList.contains("hidden")).toBe(false);
+    expect(document.querySelector("#regionDrawingControls")).toBeNull();
+    const cancelButton = document.querySelector("#cancelRegionDrawingButton");
+    expect(cancelButton.classList.contains("hidden")).toBe(false);
+
+    cancelButton.click();
+
+    expect(cancelButton.classList.contains("hidden")).toBe(true);
+    expect(document.querySelector("#addObservationModal").classList.contains("open")).toBe(true);
   });
 });
