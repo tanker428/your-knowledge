@@ -366,3 +366,96 @@ describe("isLegacyQuizResult", () => {
     expect(isLegacyQuizResult(null)).toBe(false);
   });
 });
+
+describe("migrateProjectDocument — 複数デモ訪問", () => {
+  /** @returns {any} */
+  const multiContext = () => ({
+    demoPhotos: [
+      {
+        id: "pa",
+        file: "a.jpg",
+        order: 1,
+        title: "A館の写真",
+        status: "organized",
+        source: "sample",
+        visitId: "visit-a",
+        observations: [{ id: "oa1", label: "A標本", status: "confirmed" }],
+      },
+      {
+        id: "pb",
+        file: "b.jpg",
+        order: 2,
+        title: "B館の写真",
+        status: "organized",
+        source: "sample",
+        visitId: "visit-b",
+        observations: [{ id: "ob1", label: "B標本", status: "confirmed" }],
+      },
+    ],
+    demoRelations: [],
+    demoFacts: [
+      { id: "fa", targetId: "oa1", label: "A解説", status: "locked" },
+      { id: "fb", targetId: "ob1", label: "B解説", status: "locked" },
+    ],
+    demoReferenceFacts: [],
+    demoKnowledgeVersion: "multi-1",
+    demoVisitSeeds: [
+      { id: "visit-a", title: "A館", placeName: "A自然史館", domainPackIds: ["paleontology"] },
+      { id: "visit-b", title: "B館", placeName: "B科学館", domainPackIds: ["paleontology"] },
+    ],
+  });
+
+  it("初回起動で複数のデモ訪問を用意し、写真を各訪問へ割り当てる", () => {
+    const { project } = migrateProjectDocument(null, multiContext());
+    expect(project.visits.map((visit) => visit.id)).toEqual(["visit-a", "visit-b"]);
+    expect(project.visits.every((visit) => visit.source === "demo")).toBe(true);
+    const byId = Object.fromEntries(project.photos.map((photo) => [photo.id, photo]));
+    expect(byId["pa"].visitId).toBe("visit-a");
+    expect(byId["pb"].visitId).toBe("visit-b");
+  });
+
+  it("版が上がると既存ユーザーへ不足しているデモ訪問を写真ごと補充する", () => {
+    const stored = {
+      schemaVersion: PROJECT_SCHEMA_VERSION,
+      visits: [{ id: "visit-a", source: "demo", title: "A館" }],
+      photos: [
+        {
+          id: "pa",
+          visitId: "visit-a",
+          source: "sample",
+          status: "organized",
+          observations: [{ id: "oa1", label: "A標本", status: "confirmed" }],
+        },
+      ],
+      relations: [],
+      facts: [{ id: "fa", targetId: "oa1", label: "A解説", status: "locked" }],
+      referenceFacts: [],
+      demoKnowledgeVersion: "old",
+    };
+    const result = migrateProjectDocument(stored, multiContext());
+
+    expect(result.changed).toBe(true);
+    expect(result.project.visits.map((visit) => visit.id)).toEqual(["visit-a", "visit-b"]);
+    const byId = Object.fromEntries(result.project.photos.map((photo) => [photo.id, photo]));
+    expect(byId["pb"].visitId).toBe("visit-b");
+    // 追加訪問の観察に紐づく Fact だけ補い、既存訪問側は重複させない。
+    expect(result.project.facts.map((fact) => fact.id).sort()).toEqual(["fa", "fb"]);
+    expect(result.notes.some((note) => note.includes("新しいデモ訪問"))).toBe(true);
+    expect(result.project.demoKnowledgeVersion).toBe("multi-1");
+  });
+
+  it("デモ訪問を全て消したユーザーには、版が上がってもデモを再追加しない", () => {
+    const stored = {
+      schemaVersion: PROJECT_SCHEMA_VERSION,
+      visits: [{ id: "mine", source: "user", title: "自分の訪問" }],
+      photos: [],
+      relations: [],
+      facts: [],
+      referenceFacts: [],
+      demoKnowledgeVersion: "old",
+    };
+    const result = migrateProjectDocument(stored, multiContext());
+    expect(result.changed).toBe(false);
+    expect(result.project.visits.map((visit) => visit.id)).toEqual(["mine"]);
+  });
+});

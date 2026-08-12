@@ -124,12 +124,12 @@ export function quizzesForVisit(visit, quizzes) {
 /**
  * 同梱デモ訪問。ID は既存デモ写真の `visitId` と揃える。
  *
- * @param {{title?: string, placeName?: string, domainPackIds?: string[]}} [seed]
+ * @param {{id?: string, title?: string, placeName?: string, domainPackIds?: string[]}} [seed]
  * @returns {Visit}
  */
 export function createDemoVisit(seed = {}) {
   return createVisit({
-    id: DEMO_VISIT_ID,
+    id: seed.id || DEMO_VISIT_ID,
     title: seed.title || "恐竜博物館の訪問",
     placeName: seed.placeName || "自然史・恐竜博物館",
     visitedAt: null,
@@ -138,6 +138,18 @@ export function createDemoVisit(seed = {}) {
       : ["paleontology"],
     source: "demo",
   });
+}
+
+/**
+ * 複数のデモ訪問をまとめて作る。同梱デモが 2 件以上の Visit を持つ場合に使う。
+ * seed が空・未指定なら既定の福井デモ 1 件にフォールバックする。
+ *
+ * @param {{id?: string, title?: string, placeName?: string, domainPackIds?: string[]}[]} [seeds]
+ * @returns {ReturnType<typeof createDemoVisit>[]}
+ */
+export function createDemoVisits(seeds = []) {
+  const list = Array.isArray(seeds) && seeds.length ? seeds : [{}];
+  return list.map((seed) => createDemoVisit(seed || {}));
 }
 
 /**
