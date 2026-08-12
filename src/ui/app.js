@@ -819,8 +819,8 @@ export async function initApp(deps) {
       zoomHint.classList.toggle("hidden", !image.src);
     }
     renderOrganizeMagnifier();
-    const controls = $("#regionDrawingControls");
-    if (controls) controls.classList.toggle("hidden", !state.regionDrawing);
+    const cancelButton = $("#cancelRegionDrawingButton");
+    if (cancelButton) cancelButton.classList.toggle("hidden", !state.regionDrawing);
   }
 
   function scheduleImageSurfaceAlignment() {
@@ -3519,6 +3519,12 @@ export async function initApp(deps) {
       if (!photo) return;
       photo.experienceMemo = event.target.value;
       persist();
+    });
+    // メモ入力を始めたら、写真ポップアップ（虫眼鏡レンズ／写真モーダル）で
+    // 入力欄が隠れないようにする。入力中に何を打っているか見えるようにするため。
+    $("#experienceMemoInput")?.addEventListener("focus", () => {
+      organizeMagnifierBinding?.reset();
+      closeModal("photoModal");
     });
 
     window.addEventListener("pagehide", () => void flushPersist());

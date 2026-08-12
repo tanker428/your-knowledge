@@ -12,7 +12,7 @@
 
 // Replaced with a content-derived value by scripts/build.mjs. The fallback is
 // useful for the local source tree and is never used by the production build.
-const VERSION = "build-8c26dc63ee5ff663";
+const VERSION = "build-e4de536d1fe85d4c";
 const SHELL_CACHE = `your-knowledge-shell-${VERSION}`;
 const SAMPLE_CACHE = `your-knowledge-samples-${VERSION}`;
 const SHARED_PHOTO_DB = "your-knowledge-shared-photos";
