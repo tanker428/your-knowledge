@@ -27,7 +27,7 @@
  * @property {number|null} [originalBytes]
  * @property {number|null} [originalWidth]   Dimensions before downscaling.
  * @property {number|null} [originalHeight]
- * @property {string} [experienceMemo] Photo-level memo, including impressions and diagnosis notes.
+ * @property {string} [experienceMemo] How the visit felt. Impressions, not knowledge.
  *
  * @typedef {object} ObservationRecord
  * @property {string} id

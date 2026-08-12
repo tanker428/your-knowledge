@@ -1670,7 +1670,7 @@ export async function initApp(deps) {
 
     renderOrganizeStrip();
     $("#organizePhotoTitle").textContent = photo.title;
-    // 診断を含むメモは写真単位で保持し、Observation の region や #59 の虫眼鏡座標には触れない。
+    // 体験メモは写真のもの。ここだけで入力する。
     const memoInput = $("#experienceMemoInput");
     if (memoInput && memoInput.dataset.photoId !== photo.id) {
       memoInput.value = photo.experienceMemo ?? "";
@@ -3519,6 +3519,12 @@ export async function initApp(deps) {
       if (!photo) return;
       photo.experienceMemo = event.target.value;
       persist();
+    });
+    // メモ入力を始めたら、写真ポップアップ（虫眼鏡レンズ／写真モーダル）で
+    // 入力欄が隠れないようにする。入力中に何を打っているか見えるようにするため。
+    $("#experienceMemoInput")?.addEventListener("focus", () => {
+      organizeMagnifierBinding?.reset();
+      closeModal("photoModal");
     });
 
     window.addEventListener("pagehide", () => void flushPersist());
