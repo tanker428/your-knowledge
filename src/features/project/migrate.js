@@ -11,7 +11,7 @@
  */
 
 import {
-  createDemoVisit,
+  createDemoVisits,
   createVisit,
   DEMO_VISIT_ID,
   MIGRATED_VISIT_ID,
@@ -102,7 +102,8 @@ function normalisePhoto(photo, visitId) {
  * @param {any[]} [context.demoReferenceFacts]
  * @param {string[]} [context.demoRetiredReferenceFactIds] 保存項目ではなく、同梱デモ更新時だけ使う廃止ID一覧
  * @param {string} [context.demoKnowledgeVersion]
- * @param {{title?: string, placeName?: string, domainPackIds?: string[]}} [context.demoVisitSeed]
+ * @param {{id?: string, title?: string, placeName?: string, domainPackIds?: string[]}} [context.demoVisitSeed] 単一デモ用（後方互換）。`demoVisitSeeds` があればそちらを優先
+ * @param {{id?: string, title?: string, placeName?: string, domainPackIds?: string[]}[]} [context.demoVisitSeeds] 複数デモ訪問の定義。各デモ写真は自分の `visitId` で訪問に割り当てられる
  * @returns {MigrationResult}
  */
 export function migrateProjectDocument(stored, context) {
@@ -110,7 +111,19 @@ export function migrateProjectDocument(stored, context) {
   const notes = [];
 
   try {
-    const demoVisit = createDemoVisit(context.demoVisitSeed);
+    // 複数デモ訪問対応。`demoVisitSeeds`（配列）を正とし、無ければ単一
+    // `demoVisitSeed`（後方互換）→ 既定の福井デモ 1 件へフォールバックする。
+    const demoVisitSeeds =
+      Array.isArray(context.demoVisitSeeds) && context.demoVisitSeeds.length
+        ? context.demoVisitSeeds
+        : context.demoVisitSeed
+          ? [context.demoVisitSeed]
+          : [{}];
+    const demoVisits = createDemoVisits(demoVisitSeeds);
+    const demoVisitIds = new Set(demoVisits.map((visit) => visit.id));
+    // デモ写真はデータ側の `visitId` に従って訪問へ割り当てる（無ければ既定デモへ）。
+    const normaliseDemoPhoto = (/** @type {any} */ photo) =>
+      normalisePhoto(photo, photo.visitId || DEMO_VISIT_ID);
 
     // ---------------------------------------------- 初回起動 ---
     if (!stored) {
@@ -122,13 +135,11 @@ export function migrateProjectDocument(stored, context) {
           id: "default",
           schemaVersion: PROJECT_SCHEMA_VERSION,
           updatedAt: Date.now(),
-          visits: [demoVisit],
+          visits: demoVisits,
           // 初回は未選択にしておき、UI で「デモを見る／自分の訪問を作る」を選ばせる。
           activeVisitId: null,
           userId: "user-local",
-          photos: context.demoPhotos.map((photo) =>
-            normalisePhoto(photo, DEMO_VISIT_ID),
-          ),
+          photos: context.demoPhotos.map(normaliseDemoPhoto),
           relations: context.demoRelations.map((relation) => ({ ...relation })),
           facts: context.demoFacts.map((fact) => ({ ...fact })),
           referenceFacts: (context.demoReferenceFacts || []).map((fact) => ({ ...fact })),
@@ -150,13 +161,40 @@ export function migrateProjectDocument(stored, context) {
 
     // -------------------------------------------- すでに v2 ---
     if (Array.isArray(stored.visits) && stored.visits.length) {
-      const hasDemoVisit = stored.visits.some((visit) => visit.id === DEMO_VISIT_ID);
+      const storedVisitIds = new Set(stored.visits.map((visit) => visit.id));
+      // ユーザーがデモ訪問を 1 つでも残しているか。すべて消していたら補充しない。
+      const hasDemoVisit = stored.visits.some(
+        (visit) => demoVisitIds.has(visit.id) || visit.source === "demo",
+      );
       const shouldSeedDemo = hasDemoVisit && stored.demoKnowledgeVersion !== context.demoKnowledgeVersion;
+
+      // 版が上がったときだけ、まだ保存されていないデモ訪問（＝今回追加されたデモ）を
+      // 写真・観察ごと足す。既存デモ訪問の整理進捗には触れない。
+      const missingDemoVisits = shouldSeedDemo
+        ? demoVisits.filter((visit) => !storedVisitIds.has(visit.id))
+        : [];
+      const missingDemoVisitIds = new Set(missingDemoVisits.map((visit) => visit.id));
+      const missingDemoPhotos = missingDemoVisits.length
+        ? (context.demoPhotos || [])
+            .filter((photo) => missingDemoVisitIds.has(photo.visitId || DEMO_VISIT_ID))
+            .map(normaliseDemoPhoto)
+        : [];
+      const missingDemoObservationIds = new Set(
+        missingDemoPhotos.flatMap((photo) =>
+          (photo.observations || []).map((observation) => observation.id),
+        ),
+      );
       const retiredDemoReferenceFactIds = shouldSeedDemo ? new Set(context.demoRetiredReferenceFactIds || []) : new Set();
+      const demoReferenceFactsById = new Map((context.demoReferenceFacts || []).map((fact) => [fact.id, fact]));
       const storedReferenceFacts = Array.isArray(stored.referenceFacts)
         ? stored.referenceFacts
             .filter((fact) => !retiredDemoReferenceFactIds.has(fact.id) || fact.sourceType !== "curated")
-            .map((fact) => ({ ...fact }))
+            .map((fact) => {
+              const replacement = shouldSeedDemo && fact.sourceType === "curated"
+                ? demoReferenceFactsById.get(fact.id)
+                : null;
+              return { ...(replacement || fact) };
+            })
         : [];
       const knownReferenceFactIds = new Set(storedReferenceFacts.map((fact) => fact.id));
       const storedRelations = Array.isArray(stored.relations)
@@ -179,7 +217,20 @@ export function migrateProjectDocument(stored, context) {
             .map((relation) => ({ ...relation }))
         : [];
       const relations = [...storedRelations, ...demoRelationsToAdd];
-      const demoDataChanged = shouldSeedDemo || demoRelationsToAdd.length > 0;
+
+      // 追加デモ訪問の LearningFact（新しい観察に紐づくものだけ）を補う。
+      const storedFacts = Array.isArray(stored.facts) ? stored.facts : [];
+      const storedFactIds = new Set(storedFacts.map((fact) => fact.id));
+      const missingDemoFacts = (context.demoFacts || []).filter(
+        (fact) =>
+          !storedFactIds.has(fact.id) &&
+          missingDemoObservationIds.has(fact.targetId ?? fact.targetObservationId),
+      );
+
+      const demoDataChanged =
+        shouldSeedDemo ||
+        demoRelationsToAdd.length > 0 ||
+        missingDemoVisits.length > 0;
       if (shouldSeedDemo) {
         storedReferenceFacts.push(
           ...(context.demoReferenceFacts || [])
@@ -187,17 +238,36 @@ export function migrateProjectDocument(stored, context) {
             .map((fact) => ({ ...fact })),
         );
       }
+
+      const seedNotes = [];
+      if (missingDemoVisits.length) {
+        seedNotes.push(`新しいデモ訪問 ${missingDemoVisits.length}件を追加しました。`);
+      }
+      if (shouldSeedDemo || demoRelationsToAdd.length > 0) {
+        seedNotes.push("保存済みデモ訪問へ不足していた初期知識を補充しました。");
+      }
+
       return {
         ok: true,
         changed: demoDataChanged,
-        notes: demoDataChanged
-          ? ["保存済みデモ訪問へ不足していた初期知識を補充しました。"]
-          : ["移行は不要でした。"],
+        notes: demoDataChanged ? seedNotes : ["移行は不要でした。"],
         project: {
           ...stored,
           schemaVersion: PROJECT_SCHEMA_VERSION,
           userId: stored.userId || "user-local",
           activeVisitId: stored.activeVisitId ?? null,
+          visits: missingDemoVisits.length
+            ? [...stored.visits, ...missingDemoVisits]
+            : stored.visits,
+          photos: missingDemoPhotos.length
+            ? [
+                ...(Array.isArray(stored.photos) ? stored.photos : []),
+                ...missingDemoPhotos,
+              ]
+            : stored.photos,
+          facts: missingDemoFacts.length
+            ? [...storedFacts, ...missingDemoFacts]
+            : stored.facts,
           quizResults: Array.isArray(stored.quizResults)
             ? stored.quizResults
             : [],
@@ -231,7 +301,7 @@ export function migrateProjectDocument(stored, context) {
               : demoPhoto.observations,
           }
         : demoPhoto;
-      return normalisePhoto(merged, DEMO_VISIT_ID);
+      return normaliseDemoPhoto(merged);
     });
 
     const demoIds = new Set(context.demoPhotos.map((photo) => photo.id));
@@ -240,8 +310,8 @@ export function migrateProjectDocument(stored, context) {
         !demoIds.has(photo.id) && photo.source !== "sample",
     );
 
-    const visits = [demoVisit];
-    let activeVisitId = DEMO_VISIT_ID;
+    const visits = [...demoVisits];
+    let activeVisitId = demoVisits[0]?.id ?? DEMO_VISIT_ID;
 
     if (uploaded.length) {
       const migratedVisit = createVisit({
