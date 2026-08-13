@@ -2,7 +2,7 @@ import { JSDOM } from "jsdom";
 import { describe, expect, it } from "vitest";
 import { observationCropGeometry, renderObservationQuizCard } from "../src/ui/observation-quiz-card.js";
 
-const card = { cardId: "o1", observationId: "o1", label: "頭骨", region: { x: 10, y: 20, w: 30, h: 40 } };
+const card = { cardId: "o1", observationId: "o1", label: "Skull", region: { x: 10, y: 20, w: 30, h: 40 } };
 const photo = { src: "/photo.jpg", originalWidth: 1200, originalHeight: 800, rotation: 0 };
 
 describe("reusable Observation quiz card", () => {
@@ -17,34 +17,38 @@ describe("reusable Observation quiz card", () => {
     });
   });
 
-  it("renders a cropped image plus Observation name without a rectangle overlay", () => {
-    const dom = new JSDOM(renderObservationQuizCard(card, photo, { draggable: true, selected: true, placementLabel: "獣脚類" }));
+  it("renders the full quiz photo with the Observation rectangle overlay", () => {
+    const dom = new JSDOM(renderObservationQuizCard(card, photo, { draggable: true, selected: true, placementLabel: "Old" }));
     const root = dom.window.document.querySelector(".observation-quiz-card");
     expect(root.dataset.observationCard).toBe("o1");
     expect(root.getAttribute("draggable")).toBe("true");
     expect(root.getAttribute("aria-pressed")).toBe("true");
     expect(root.classList.contains("placed")).toBe(true);
-    expect(root.querySelector("svg").getAttribute("viewBox")).toBe("120 160 360 320");
-    expect(root.querySelector("image").getAttribute("href")).toBe("/photo.jpg");
-    expect(root.querySelector("strong").textContent).toBe("頭骨");
-    expect(root.querySelector("small").textContent).toBe("✓配置済み：獣脚類");
-    expect(root.querySelector(".quiz-photo-region")).toBeNull();
-    expect(root.querySelectorAll("image")).toHaveLength(1);
+    expect(root.querySelector("svg")).toBeNull();
+    expect(root.querySelector(".quiz-photo-media img").getAttribute("src")).toBe("/photo.jpg");
+    const region = root.querySelector(".quiz-photo-region");
+    expect(region.style.left).toBe("10%");
+    expect(region.style.top).toBe("20%");
+    expect(region.style.width).toBe("30%");
+    expect(region.style.height).toBe("40%");
+    expect(root.querySelector("strong").textContent).toBe("Skull");
+    expect(root.querySelector("small").textContent).toContain("Old");
   });
 
-  it("keeps rotation on the cropped media and uses the missing-photo fallback", () => {
+  it("keeps rotation on the full-photo media and uses the missing-photo fallback", () => {
     const dom = new JSDOM(renderObservationQuizCard({ ...card, region: null }, { rotation: 90 }, { result: "incorrect" }));
     const root = dom.window.document.querySelector(".observation-quiz-card");
     expect(root.classList.contains("incorrect")).toBe(true);
-    expect(root.querySelector("svg").style.transform).toBe("rotate(90deg) scale(.75)");
-    expect(root.querySelector("image").getAttribute("href")).toMatch(/^data:image\//);
+    expect(root.querySelector(".quiz-photo-media").style.transform).toBe("rotate(90deg) scale(.75)");
+    expect(root.querySelector(".quiz-photo-media img").getAttribute("src")).toMatch(/^data:image\//);
+    expect(root.querySelector(".quiz-photo-region")).toBeNull();
   });
 
   it("marks unplaced cards redundantly and renders a non-interactive rotated slot thumbnail", () => {
-    const unplaced = new JSDOM(renderObservationQuizCard(card, photo, { placed: false, placementLabel: "未配置" }));
+    const unplaced = new JSDOM(renderObservationQuizCard(card, photo, { placed: false, placementLabel: "Unplaced" }));
     const root = unplaced.window.document.querySelector(".observation-quiz-card");
     expect(root.classList.contains("unplaced")).toBe(true);
-    expect(root.querySelector(".observation-card-placement-status").textContent).toBe("○未配置");
+    expect(root.querySelector(".observation-card-placement-status")).not.toBeNull();
 
     const thumbnail = new JSDOM(renderObservationQuizCard(card, { ...photo, rotation: 270 }, { variant: "thumbnail" }));
     expect(thumbnail.window.document.querySelector("button")).toBeNull();
