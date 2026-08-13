@@ -1480,16 +1480,24 @@ export async function initApp(deps) {
       ? `left:${presentation.region.x}%;top:${presentation.region.y}%;width:${presentation.region.w}%;height:${presentation.region.h}%;`
       : "";
     const label = kind === "source" ? "関係元に選ぶ" : "関係先に選ぶ";
-    return `<div class="endpoint-option"><button type="button" class="endpoint-preview-button" data-endpoint-preview="${escapeHtml(entry.observation.id)}" aria-label="${escapeHtml(entry.observation.label)}の写真を拡大"><span class="endpoint-image">${rotatedPhotoFrame(entry.photo, `<img src="${escapeHtml(entry.photo.thumbSrc || entry.photo.src)}" alt="" />${presentation.region ? `<i class="endpoint-region" style="${regionStyle}"></i>` : '<em class="endpoint-whole-label">写真全体</em>'}`)}</span><span><strong>${escapeHtml(entry.observation.label)}</strong><small>${escapeHtml(entry.photo.title)}・#${escapeHtml(entry.photo.order)}・${escapeHtml(OBSERVATION_TYPE_LABELS[entry.observation.observationType] || "観察対象")}</small></span></button><button type="button" class="endpoint-select-button" data-endpoint-select="${escapeHtml(entry.observation.id)}">${label}</button></div>`;
+    return `<div class="endpoint-option" data-endpoint-option="${escapeHtml(entry.observation.id)}"><button type="button" class="endpoint-preview-button" data-endpoint-preview="${escapeHtml(entry.observation.id)}" aria-label="${escapeHtml(entry.observation.label)}の写真を拡大"><span class="endpoint-image">${rotatedPhotoFrame(entry.photo, `<img src="${escapeHtml(entry.photo.thumbSrc || entry.photo.src)}" alt="" />${presentation.region ? `<i class="endpoint-region" style="${regionStyle}"></i>` : '<em class="endpoint-whole-label">写真全体</em>'}`)}</span><span><strong>${escapeHtml(entry.observation.label)}</strong><small>${escapeHtml(entry.photo.title)}・#${escapeHtml(entry.photo.order)}・${escapeHtml(OBSERVATION_TYPE_LABELS[entry.observation.observationType] || "観察対象")}</small></span></button><button type="button" class="endpoint-select-button" data-endpoint-select="${escapeHtml(entry.observation.id)}">${label}</button></div>`;
+  }
+
+  function relationPickerEntries(/** @type {"source"|"target"} */ kind) {
+    if (kind === "target") {
+      return relationCandidates({ photos: state.photos, activeVisitId: state.activeVisitId, sourceId: state.relationDraft.sourceId, scope: state.relationScope });
+    }
+    if (state.relationDraft.targetId) {
+      return relationCandidates({ photos: state.photos, activeVisitId: state.activeVisitId, sourceId: state.relationDraft.targetId, scope: state.relationScope });
+    }
+    return relationEntriesForVisit();
   }
 
   function renderRelationOptions(/** @type {"source"|"target"} */ kind) {
     const options = $(kind === "source" ? "#relationSourceOptions" : "#relationTargetOptions");
     if (!options) return;
     const query = state.relationSearch[kind];
-    const entries = kind === "source"
-      ? relationEntriesForVisit()
-      : relationCandidates({ photos: state.photos, activeVisitId: state.activeVisitId, sourceId: state.relationDraft.sourceId, scope: state.relationScope });
+    const entries = relationPickerEntries(kind);
     const filtered = searchRelationEntries(entries, query);
     options.innerHTML = `<input class="endpoint-search" type="search" placeholder="写真名・Observation名で検索" value="${escapeHtml(query)}" data-endpoint-search="${kind}" />${filtered.length ? filtered.map((entry) => optionMarkup(entry, kind)).join("") : '<p class="muted-copy">該当する候補はありません。</p>'}`;
     options.classList.toggle("hidden", state.relationPicker !== kind);
