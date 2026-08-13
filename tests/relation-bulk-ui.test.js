@@ -63,7 +63,7 @@ function projectFixture() {
   };
 }
 
-async function boot(project = projectFixture()) {
+async function boot(project = projectFixture(), customRegistry = registry) {
   const [html, css] = await Promise.all([
     readFile(new URL("index.html", rootUrl), "utf8"),
     readFile(new URL("styles.css", rootUrl), "utf8"),
@@ -98,8 +98,8 @@ async function boot(project = projectFixture()) {
   };
   await initApp({
     repository: /** @type {any} */ (repository),
-    registry,
-    lookups: buildLookups(registry),
+    registry: customRegistry,
+    lookups: buildLookups(customRegistry),
     analysisProvider: /** @type {any} */ ({ isConnected: () => false }),
     storageStatus: { supported: false, persisted: false, usageBytes: null, quotaBytes: null },
     serviceWorker: { supported: false, applyUpdate: async () => {} },
@@ -179,6 +179,37 @@ describe("Relation bulk UI", () => {
     expect(previewImageTransform).toContain("rotate(90deg)");
     expect(previewOverlayTransform).toContain("rotate(90deg)");
     expect(document.querySelector("#organizeChat .relation-endpoint img")?.style.transform).toContain("rotate(90deg)");
+  });
+
+  it("uses the same scoped candidate filtering when reselecting the relation source", async () => {
+    const project = projectFixture();
+    project.photos.push({
+      id: "photo-2",
+      visitId: "visit-1",
+      file: "extra.jpg",
+      order: 2,
+      title: "Extra Photo",
+      status: "organized",
+      source: "user",
+      rotation: 0,
+      observations: [
+        { ...observation("o3", "Remote Target"), photoId: "photo-2" },
+        { ...observation("o4", "Remote Peer"), photoId: "photo-2" },
+      ],
+    });
+    const { dom } = await boot(project);
+    const { document } = dom.window;
+
+    document.querySelector('[data-step="4"]').click();
+    document.querySelector("#addRelationButton").click();
+    document.querySelector('[data-relation-scope="visit"]').click();
+    document.querySelector("#chooseRelationTargetButton").click();
+    document.querySelector('#relationTargetOptions [data-endpoint-select="o3"]').click();
+    document.querySelector("#chooseRelationSourceButton").click();
+
+    const sourceOptions = [...document.querySelectorAll("#relationSourceOptions .endpoint-option")].map((node) => node.dataset.endpointOption);
+    expect(sourceOptions).toEqual(["o1", "o2", "o4"]);
+    expect(document.querySelector('#relationSourceOptions [data-endpoint-search="source"]')).not.toBeNull();
   });
 
   it("saves non-duplicate types when the bulk selection contains an existing relation", async () => {
@@ -266,6 +297,30 @@ describe("Relation bulk UI", () => {
 
     memoInput.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     expect(document.querySelector("#photoModal").classList.contains("open")).toBe(false);
+  it("renders distinct fallback explanations for theme category info buttons", async () => {
+    const customRegistry = {
+      ...registry,
+      packs: [{ id: "paleo", label: "Paleo Pack", icon: "P" }],
+      categoriesByPack: {
+        paleo: [
+          { id: "bone", label: "Bone" },
+          { id: "panel", label: "Panel" },
+        ],
+      },
+    };
+    const project = projectFixture();
+    project.visits[0].domainPackIds = ["paleo"];
+    project.photos[0].observations[0].domainPacks = ["paleo"];
+    const { dom } = await boot(project, customRegistry);
+    const { document } = dom.window;
+
+    document.querySelector('[data-step="3"]').click();
+    const descriptions = [...document.querySelectorAll('[data-chip-type="domain-category"] [data-chip-info]')].map((node) => node.dataset.chipInfo);
+    expect(descriptions).toHaveLength(2);
+    expect(new Set(descriptions).size).toBe(2);
+    expect(descriptions[0]).toContain("Paleo Pack");
+    expect(descriptions[0]).toContain("Bone");
+    expect(descriptions[1]).toContain("Panel");
   });
 
   it("limits Relation editing to one radio-selected type and updates one record", async () => {
