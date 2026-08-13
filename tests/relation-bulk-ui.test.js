@@ -283,6 +283,32 @@ describe("Relation bulk UI", () => {
     expect(dom.window.getComputedStyle(document.querySelector("#photoModal")).zIndex).toBe("100");
   });
 
+  it("renders distinct fallback explanations for theme category info buttons", async () => {
+    const customRegistry = {
+      ...registry,
+      packs: [{ id: "paleo", label: "Paleo Pack", icon: "P" }],
+      categoriesByPack: {
+        paleo: [
+          { id: "bone", label: "Bone" },
+          { id: "panel", label: "Panel" },
+        ],
+      },
+    };
+    const project = projectFixture();
+    project.visits[0].domainPackIds = ["paleo"];
+    project.photos[0].observations[0].domainPacks = ["paleo"];
+    const { dom } = await boot(project, customRegistry);
+    const { document } = dom.window;
+
+    document.querySelector('[data-step="3"]').click();
+    const descriptions = [...document.querySelectorAll('[data-chip-type="domain-category"] [data-chip-info]')].map((node) => node.dataset.chipInfo);
+    expect(descriptions).toHaveLength(2);
+    expect(new Set(descriptions).size).toBe(2);
+    expect(descriptions[0]).toContain("Paleo Pack");
+    expect(descriptions[0]).toContain("Bone");
+    expect(descriptions[1]).toContain("Panel");
+  });
+
   it("limits Relation editing to one radio-selected type and updates one record", async () => {
     const project = projectFixture();
     project.relations = [{
