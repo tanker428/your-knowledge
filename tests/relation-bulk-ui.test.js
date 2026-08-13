@@ -297,6 +297,8 @@ describe("Relation bulk UI", () => {
 
     memoInput.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     expect(document.querySelector("#photoModal").classList.contains("open")).toBe(false);
+  });
+
   it("renders distinct fallback explanations for theme category info buttons", async () => {
     const customRegistry = {
       ...registry,
