@@ -624,6 +624,12 @@ export async function initApp(deps) {
   const factUnlocked = (/** @type {any} */ fact) => fact?.status === "learned";
   const packCategories = (/** @type {string} */ packId) =>
     registry.categoriesByPack[packId] || [];
+  const domainCategoryInfo = (/** @type {{description?: string, label?: string, id?: string, packId?: string}} */ item) => {
+    if (item.description) return item.description;
+    const pack = item.packId ? packLabel(item.packId) : "選択中の分野";
+    const label = item.label || item.id || "この分類";
+    return `${pack}の分類「${label}」です。`;
+  };
 
   function showToast(/** @type {string} */ message) {
     const toast = $("#toast");
@@ -1395,7 +1401,7 @@ export async function initApp(deps) {
       <div class="assistant-message"><span class="assistant-avatar">Y</span><div><strong>この対象を、今回のテーマに沿って分類します</strong><p>自然史・古生物など、選択した分野に合う分類を追加します。次の画面でより詳しい知識を登録できます。</p></div></div>
       ${renderObservationTabs(photo)}
       <div class="classification-block"><h3>${escapeHtml(observation.label)}</h3><small>分野パック</small><div class="chip-grid domains">${registry.packs.map((item) => chipButton(item.id, `${item.icon} ${item.label}`, observation.domainPacks.includes(item.id), "domain")).join("")}</div></div>
-      <div class="classification-block"><small>テーマに沿った分類</small><div class="chip-grid">${categoryButtons.map((item) => `<button class="label-chip ${observation.domainCategories.includes(item.id) ? "selected" : ""}" data-chip-type="domain-category" data-chip-domain="${escapeHtml(item.packId)}" data-chip-id="${escapeHtml(item.id)}">${observation.domainCategories.includes(item.id) ? "✓ " : ""}${escapeHtml(item.label)}<span class="chip-info" data-chip-info="${escapeHtml(item.description || "今回の展示や学習テーマに沿った分類です。")}" role="button" tabindex="0" aria-label="${escapeHtml(item.label)}の説明">ⓘ</span></button>`).join("") || '<p class="muted-copy">分野パックを選択してください。</p>'}</div></div>
+      <div class="classification-block"><small>テーマに沿った分類</small><div class="chip-grid">${categoryButtons.map((item) => `<button class="label-chip ${observation.domainCategories.includes(item.id) ? "selected" : ""}" data-chip-type="domain-category" data-chip-domain="${escapeHtml(item.packId)}" data-chip-id="${escapeHtml(item.id)}">${observation.domainCategories.includes(item.id) ? "✓ " : ""}${escapeHtml(item.label)}<span class="chip-info" data-chip-info="${escapeHtml(domainCategoryInfo(item))}" role="button" tabindex="0" aria-label="${escapeHtml(item.label)}の説明">ⓘ</span></button>`).join("") || '<p class="muted-copy">分野パックを選択してください。</p>'}</div></div>
       <div class="quick-action-row"><button class="primary-button inline" data-bulk-action="confirm-domain">全対象の分野分類を一括確認</button><span>具体名は明確な場合だけ任意で追加します</span></div>`;
   }
 
