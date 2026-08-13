@@ -1480,16 +1480,24 @@ export async function initApp(deps) {
       ? `left:${presentation.region.x}%;top:${presentation.region.y}%;width:${presentation.region.w}%;height:${presentation.region.h}%;`
       : "";
     const label = kind === "source" ? "関係元に選ぶ" : "関係先に選ぶ";
-    return `<div class="endpoint-option"><button type="button" class="endpoint-preview-button" data-endpoint-preview="${escapeHtml(entry.observation.id)}" aria-label="${escapeHtml(entry.observation.label)}の写真を拡大"><span class="endpoint-image">${rotatedPhotoFrame(entry.photo, `<img src="${escapeHtml(entry.photo.thumbSrc || entry.photo.src)}" alt="" />${presentation.region ? `<i class="endpoint-region" style="${regionStyle}"></i>` : '<em class="endpoint-whole-label">写真全体</em>'}`)}</span><span><strong>${escapeHtml(entry.observation.label)}</strong><small>${escapeHtml(entry.photo.title)}・#${escapeHtml(entry.photo.order)}・${escapeHtml(OBSERVATION_TYPE_LABELS[entry.observation.observationType] || "観察対象")}</small></span></button><button type="button" class="endpoint-select-button" data-endpoint-select="${escapeHtml(entry.observation.id)}">${label}</button></div>`;
+    return `<div class="endpoint-option" data-endpoint-option="${escapeHtml(entry.observation.id)}"><button type="button" class="endpoint-preview-button" data-endpoint-preview="${escapeHtml(entry.observation.id)}" aria-label="${escapeHtml(entry.observation.label)}の写真を拡大"><span class="endpoint-image">${rotatedPhotoFrame(entry.photo, `<img src="${escapeHtml(entry.photo.thumbSrc || entry.photo.src)}" alt="" />${presentation.region ? `<i class="endpoint-region" style="${regionStyle}"></i>` : '<em class="endpoint-whole-label">写真全体</em>'}`)}</span><span><strong>${escapeHtml(entry.observation.label)}</strong><small>${escapeHtml(entry.photo.title)}・#${escapeHtml(entry.photo.order)}・${escapeHtml(OBSERVATION_TYPE_LABELS[entry.observation.observationType] || "観察対象")}</small></span></button><button type="button" class="endpoint-select-button" data-endpoint-select="${escapeHtml(entry.observation.id)}">${label}</button></div>`;
+  }
+
+  function relationPickerEntries(/** @type {"source"|"target"} */ kind) {
+    if (kind === "target") {
+      return relationCandidates({ photos: state.photos, activeVisitId: state.activeVisitId, sourceId: state.relationDraft.sourceId, scope: state.relationScope });
+    }
+    if (state.relationDraft.targetId) {
+      return relationCandidates({ photos: state.photos, activeVisitId: state.activeVisitId, sourceId: state.relationDraft.targetId, scope: state.relationScope });
+    }
+    return relationEntriesForVisit();
   }
 
   function renderRelationOptions(/** @type {"source"|"target"} */ kind) {
     const options = $(kind === "source" ? "#relationSourceOptions" : "#relationTargetOptions");
     if (!options) return;
     const query = state.relationSearch[kind];
-    const entries = kind === "source"
-      ? relationEntriesForVisit()
-      : relationCandidates({ photos: state.photos, activeVisitId: state.activeVisitId, sourceId: state.relationDraft.sourceId, scope: state.relationScope });
+    const entries = relationPickerEntries(kind);
     const filtered = searchRelationEntries(entries, query);
     options.innerHTML = `<input class="endpoint-search" type="search" placeholder="写真名・Observation名で検索" value="${escapeHtml(query)}" data-endpoint-search="${kind}" />${filtered.length ? filtered.map((entry) => optionMarkup(entry, kind)).join("") : '<p class="muted-copy">該当する候補はありません。</p>'}`;
     options.classList.toggle("hidden", state.relationPicker !== kind);
@@ -2433,9 +2441,14 @@ export async function initApp(deps) {
     }).join("");
     const allPlaced = cards.every((card) => placements.some((placement) => placement.cardId === card.cardId));
     $("#quizStage").innerHTML = `<article class="quiz-card"><div class="quiz-content"><span class="quiz-counter">${quiz.questionType === "hierarchy" ? "CLASSIFICATION" : quiz.questionType === "timeline-map" ? "TIMELINE" : "RELATION"} ${String(state.quizIndex + 1).padStart(2, "0")} / ${String(total).padStart(2, "0")}</span><h2>${escapeHtml(quiz.prompt)}</h2><p class="quiz-placement-help">カードを選んで位置をクリックするか、カードを位置へドラッグしてください。全件を配置してから採点します。</p><div class="quiz-placement-layout"><div class="observation-quiz-card-list">${cardMarkup}</div>${renderQuizPlacementBoard(quiz, placements, scored, state.quizAnswered)}</div><div id="quizFeedback">${scored ? renderQuizFeedback(quiz, scored) : ""}</div><div class="quiz-next-row"><small>${cards.length}件中 ${placements.length}件配置</small>${state.quizAnswered ? `<button class="ghost-button" id="retryQuizButton">もう一度回答</button>` : `<button class="primary-button" id="submitQuizButton" ${allPlaced ? "" : "disabled"}>まとめて採点</button>`}<button class="primary-button" id="nextQuizButton" ${state.quizAnswered ? "" : "disabled"}>${state.quizIndex === total - 1 ? "結果を見る" : "次の問題 →"}</button></div></div></article>`;
-    // #69: keep the shared circular magnifier on matching-quiz option photos.
-    // Structure-quiz observation cards render as SVG region cutouts (no <img>),
-    // so they are intentionally excluded from the magnifier here.
+    // Keep the shared circular magnifier on every quiz photo surface.
+    $$("#quizStage .observation-quiz-card").forEach((cardButton) => {
+      const card = cards.find((item) => item.cardId === cardButton.dataset.observationCard);
+      const photo = card?.photoId ? photoById(card.photoId) : null;
+      mountPhotoMagnifier(cardButton, cardButton.querySelector(".quiz-photo-media img"), photo, {
+        showControls: false,
+      });
+    });
     $$("#quizStage .quiz-choice-option").forEach((card) => {
       const option = quiz.options.find((item) => item.id === card.dataset.quizDrop);
       const optionPhoto = option?.photoId ? photoById(option.photoId) : null;
