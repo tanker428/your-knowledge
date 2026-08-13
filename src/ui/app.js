@@ -3535,7 +3535,8 @@ export async function initApp(deps) {
     });
 
     // ---- experience memo (belongs to the Photo, not to an Observation) ----
-    $("#experienceMemoInput")?.addEventListener("input", (/** @type {any} */ event) => {
+    const experienceMemoInput = $("#experienceMemoInput");
+    experienceMemoInput?.addEventListener("input", (/** @type {any} */ event) => {
       const photo = currentOrganizePhoto();
       if (!photo) return;
       photo.experienceMemo = event.target.value;
@@ -3543,7 +3544,17 @@ export async function initApp(deps) {
     });
     // メモ入力を始めたら、写真ポップアップ（虫眼鏡レンズ／写真モーダル）で
     // 入力欄が隠れないようにする。入力中に何を打っているか見えるようにするため。
-    $("#experienceMemoInput")?.addEventListener("focus", () => {
+    experienceMemoInput?.addEventListener("pointerdown", (/** @type {Event} */ event) => {
+      event.stopPropagation();
+      organizeMagnifierBinding?.reset();
+      closeModal("photoModal");
+    }, { capture: true });
+    experienceMemoInput?.addEventListener("click", (/** @type {Event} */ event) => {
+      event.stopPropagation();
+      organizeMagnifierBinding?.reset();
+      closeModal("photoModal");
+    }, { capture: true });
+    experienceMemoInput?.addEventListener("focus", () => {
       organizeMagnifierBinding?.reset();
       closeModal("photoModal");
     });

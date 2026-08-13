@@ -283,6 +283,22 @@ describe("Relation bulk UI", () => {
     expect(dom.window.getComputedStyle(document.querySelector("#photoModal")).zIndex).toBe("100");
   });
 
+  it("keeps memo input interaction from reopening or covering the photo modal", async () => {
+    const { dom } = await boot();
+    const { document, Event, MouseEvent } = dom.window;
+
+    document.querySelector('[data-view="photos"]').click();
+    document.querySelector('[data-photo-id="photo-1"]').click();
+    expect(document.querySelector("#photoModal").classList.contains("open")).toBe(true);
+
+    const memoInput = document.querySelector("#experienceMemoInput");
+    memoInput.dispatchEvent(new Event("focus", { bubbles: true }));
+    expect(document.querySelector("#photoModal").classList.contains("open")).toBe(false);
+
+    memoInput.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(document.querySelector("#photoModal").classList.contains("open")).toBe(false);
+  });
+
   it("renders distinct fallback explanations for theme category info buttons", async () => {
     const customRegistry = {
       ...registry,
