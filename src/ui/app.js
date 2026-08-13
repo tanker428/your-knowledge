@@ -2433,9 +2433,14 @@ export async function initApp(deps) {
     }).join("");
     const allPlaced = cards.every((card) => placements.some((placement) => placement.cardId === card.cardId));
     $("#quizStage").innerHTML = `<article class="quiz-card"><div class="quiz-content"><span class="quiz-counter">${quiz.questionType === "hierarchy" ? "CLASSIFICATION" : quiz.questionType === "timeline-map" ? "TIMELINE" : "RELATION"} ${String(state.quizIndex + 1).padStart(2, "0")} / ${String(total).padStart(2, "0")}</span><h2>${escapeHtml(quiz.prompt)}</h2><p class="quiz-placement-help">カードを選んで位置をクリックするか、カードを位置へドラッグしてください。全件を配置してから採点します。</p><div class="quiz-placement-layout"><div class="observation-quiz-card-list">${cardMarkup}</div>${renderQuizPlacementBoard(quiz, placements, scored, state.quizAnswered)}</div><div id="quizFeedback">${scored ? renderQuizFeedback(quiz, scored) : ""}</div><div class="quiz-next-row"><small>${cards.length}件中 ${placements.length}件配置</small>${state.quizAnswered ? `<button class="ghost-button" id="retryQuizButton">もう一度回答</button>` : `<button class="primary-button" id="submitQuizButton" ${allPlaced ? "" : "disabled"}>まとめて採点</button>`}<button class="primary-button" id="nextQuizButton" ${state.quizAnswered ? "" : "disabled"}>${state.quizIndex === total - 1 ? "結果を見る" : "次の問題 →"}</button></div></div></article>`;
-    // #69: keep the shared circular magnifier on matching-quiz option photos.
-    // Structure-quiz observation cards render as SVG region cutouts (no <img>),
-    // so they are intentionally excluded from the magnifier here.
+    // Keep the shared circular magnifier on every quiz photo surface.
+    $$("#quizStage .observation-quiz-card").forEach((cardButton) => {
+      const card = cards.find((item) => item.cardId === cardButton.dataset.observationCard);
+      const photo = card?.photoId ? photoById(card.photoId) : null;
+      mountPhotoMagnifier(cardButton, cardButton.querySelector(".quiz-photo-media img"), photo, {
+        showControls: false,
+      });
+    });
     $$("#quizStage .quiz-choice-option").forEach((card) => {
       const option = quiz.options.find((item) => item.id === card.dataset.quizDrop);
       const optionPhoto = option?.photoId ? photoById(option.photoId) : null;

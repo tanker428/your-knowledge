@@ -1,6 +1,7 @@
 import { normalizePhotoRotation } from "../domain/photo-rotation.js";
 import { escapeHtml } from "./html.js";
 import { MISSING_PHOTO_SRC } from "./photo-assets.js";
+import { renderQuizPhotoMedia } from "./quiz-photo.js";
 
 function finitePositive(value, fallback) {
   return Number.isFinite(Number(value)) && Number(value) > 0 ? Number(value) : fallback;
@@ -44,6 +45,7 @@ export function renderObservationQuizCard(card, photo, options = {}) {
   if (options.variant === "thumbnail") {
     return `<span class="observation-quiz-card-thumbnail" aria-label="${escapeHtml(`${card.label || "観察対象"}の配置画像`)}">${cropMarkup}<span>${escapeHtml(card.label || "観察対象")}</span></span>`;
   }
+  const photoMarkup = renderQuizPhotoMedia(photo || {}, card?.region || null, { className: "observation-card-photo" });
   const resultClass = options.result === "correct" ? " correct" : options.result === "incorrect" ? " incorrect" : "";
   const selectedClass = options.selected ? " selected" : "";
   const placed = options.placed ?? Boolean(options.placementLabel && options.placementLabel !== "未配置");
@@ -52,5 +54,5 @@ export function renderObservationQuizCard(card, photo, options = {}) {
   const placement = options.placementLabel
     ? `<small class="observation-card-placement-status"><span aria-hidden="true">${placed ? "✓" : "○"}</span>${placed ? `配置済み：${escapeHtml(options.placementLabel)}` : "未配置"}</small>`
     : "";
-  return `<button type="button" class="observation-quiz-card${placementClass}${selectedClass}${resultClass}" data-observation-card="${escapeHtml(card.cardId || card.observationId)}" draggable="${draggable}" aria-label="${escapeHtml(`${card.label || "観察対象"}のカード${options.placementLabel ? `。現在の配置は${options.placementLabel}` : ""}`)}" aria-pressed="${options.selected ? "true" : "false"}" aria-grabbed="${options.selected ? "true" : "false"}" ${options.disabled ? "disabled" : ""}>${cropMarkup}<strong>${escapeHtml(card.label || "観察対象")}</strong>${placement}</button>`;
+  return `<button type="button" class="observation-quiz-card${placementClass}${selectedClass}${resultClass}" data-observation-card="${escapeHtml(card.cardId || card.observationId)}" draggable="${draggable}" aria-label="${escapeHtml(`${card.label || "観察対象"}のカード${options.placementLabel ? `。現在の配置は${options.placementLabel}` : ""}`)}" aria-pressed="${options.selected ? "true" : "false"}" aria-grabbed="${options.selected ? "true" : "false"}" ${options.disabled ? "disabled" : ""}>${photoMarkup}<strong>${escapeHtml(card.label || "観察対象")}</strong>${placement}</button>`;
 }
