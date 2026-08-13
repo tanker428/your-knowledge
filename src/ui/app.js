@@ -628,7 +628,7 @@ export async function initApp(deps) {
     if (item.description) return item.description;
     const pack = item.packId ? packLabel(item.packId) : "選択中の分野";
     const label = item.label || item.id || "この分類";
-    return `${pack}の分類「${label}」です。写真の対象がこの種類やテーマに当てはまるかを確認します。`;
+    return `${pack}の分類「${label}」です。`;
   };
 
   function showToast(/** @type {string} */ message) {
