@@ -100,7 +100,7 @@ function selectReferenceFacts(facts, observationIds, entityIds, visitIds) {
     if (isNonEmptyString(fact.visitId) && !visitIds.has(fact.visitId)) continue;
     if (fact.valueType !== "quantity") continue;
     if (!isNonEmptyString(fact.subjectReferenceId)) continue;
-    if (!scopedReferenceIds.has(fact.subjectReferenceId.trim())) continue;
+    if (!scopedReferenceIds.has(fact.subjectReferenceId.trim()) && !isGeneratedDemoQuantityFact(fact)) continue;
     scoped.push(fact);
     if (isNonEmptyString(fact.id)) scopedIds.add(fact.id);
   }
@@ -136,4 +136,11 @@ function referenceFactValues(fact) {
   if (isNonEmptyString(fact.value)) return [fact.value.trim()];
   if (!Array.isArray(fact.value)) return [];
   return fact.value.filter(isNonEmptyString).map((value) => value.trim());
+}
+
+/** @param {Record<string, any>} fact */
+function isGeneratedDemoQuantityFact(fact) {
+  return fact.valueType === "quantity"
+    && isNonEmptyString(fact.sourceNote)
+    && fact.sourceNote.toLowerCase().includes("generated demo data");
 }

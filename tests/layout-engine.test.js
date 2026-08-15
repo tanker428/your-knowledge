@@ -56,6 +56,9 @@ describe("knowledge 3D layout engine", () => {
 
     expect(layout.mode).toBe("size");
     expect(layout.metadata.quantityKind).toBe(DEFAULT_SIZE_QUANTITY_KIND);
+    expect(layout.nodes.every((node) => node.id.startsWith("concept:") || node.id.startsWith("entity:"))).toBe(true);
+    expect(layout.nodes.some((node) => node.id.startsWith("experience:"))).toBe(false);
+    expect(layout.nodes.some((node) => node.id.startsWith("landmark:"))).toBe(false);
     expect(concept).toMatchObject({
       zone: "scaled",
       representativeValue: 4.2,

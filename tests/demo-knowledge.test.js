@@ -49,7 +49,7 @@ describe("demo knowledge and quiz generation", () => {
     const observations = new Map(project.photos.flatMap((photo) => photo.observations).map((observation) => [observation.id, observation]));
     expect(referenceFacts.every((fact) => observations.get(fact.targetObservationId)?.status === "confirmed")).toBe(true);
     expect(DEMO_REFERENCE_FACTS.every((fact) => fact.sourceType === "curated" && fact.sourceNote)).toBe(true);
-    expect(quantityFacts).toEqual([
+    expect(quantityFacts).toEqual(expect.arrayContaining([
       expect.objectContaining({
         id: "demo-rf-taxon-cetacea-body-length",
         subjectReferenceId: "taxon:cetacea",
@@ -61,7 +61,17 @@ describe("demo knowledge and quiz generation", () => {
           unitSI: "m",
         }),
       }),
-    ]);
+      expect.objectContaining({
+        id: "demo-rf-taxon-tyrannosaurus-body-length",
+        subjectReferenceId: "taxon:tyrannosaurus",
+        sourceNote: expect.stringContaining("generated demo data"),
+      }),
+      expect.objectContaining({
+        id: "demo-rf-taxon-triceratops-body-length",
+        subjectReferenceId: "taxon:triceratops",
+        sourceNote: expect.stringContaining("generated demo data"),
+      }),
+    ]));
     expect(DEMO_REFERENCE_FACTS.filter((fact) => fact.predicate === "classifiedAs").every((fact) => observations.get(fact.targetObservationId)?.observationType === "physical")).toBe(true);
     expect(DEMO_REFERENCE_FACTS.filter((fact) => fact.axis === "geological-time" && observations.get(fact.targetObservationId)?.observationType === "information").every((fact) => fact.predicate === "occursDuring")).toBe(true);
     expect(DEMO_REFERENCE_FACTS.filter((fact) => ["o19a", "o19b"].includes(fact.targetObservationId)).some((fact) => fact.predicate === "classifiedAs")).toBe(false);
@@ -143,6 +153,8 @@ describe("demo knowledge and quiz generation", () => {
       createdAt: "2026-08-14T00:00:00.000Z",
     });
     const cetacea = visualization.nodes.find((node) => node.id === "concept:taxon:cetacea");
+    const tyrannosaurus = visualization.nodes.find((node) => node.id === "concept:taxon:tyrannosaurus");
+    const triceratops = visualization.nodes.find((node) => node.id === "concept:taxon:triceratops");
 
     expect(cetacea?.measurements?.[0]).toMatchObject({
       quantityKind: "body_length",
@@ -155,6 +167,26 @@ describe("demo knowledge and quiz generation", () => {
       zone: "scaled",
       representativeValue: Math.sqrt(15 * 18),
       rangeSI: { minSI: 15, maxSI: 18 },
+    });
+    expect(tyrannosaurus?.measurements?.[0]).toMatchObject({
+      quantityKind: "body_length",
+      minSI: 11.5,
+      maxSI: 12.5,
+      source: expect.stringContaining("generated demo data"),
+    });
+    expect(triceratops?.measurements?.[0]).toMatchObject({
+      quantityKind: "body_length",
+      minSI: 8.5,
+      maxSI: 9.5,
+      source: expect.stringContaining("generated demo data"),
+    });
+    expect(sizeLayout(visualization).nodes.find((node) => node.id === "concept:taxon:tyrannosaurus")).toMatchObject({
+      zone: "scaled",
+      representativeValue: Math.sqrt(11.5 * 12.5),
+    });
+    expect(sizeLayout(visualization).nodes.find((node) => node.id === "concept:taxon:triceratops")).toMatchObject({
+      zone: "scaled",
+      representativeValue: Math.sqrt(8.5 * 9.5),
     });
   });
 

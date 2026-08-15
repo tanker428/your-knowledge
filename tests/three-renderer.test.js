@@ -158,6 +158,34 @@ function enableCanvasLabels(document) {
   });
 }
 
+function singleConceptGraph(id = "concept:test") {
+  return {
+    schemaVersion: "1.0.0",
+    nodes: [{
+      id,
+      label: "Test concept",
+      kind: "concept",
+      semanticLayer: "conceptual",
+      mappingStatus: "canonical",
+      provenance: { verificationStatus: "verified", createdByType: "reference", confidence: 1, sourceType: "reference", sourceNote: null },
+      sourceNodeIds: ["ReferenceNode:test"],
+      observationIds: [],
+      entityIds: [],
+      visitIds: [],
+      domainIds: [],
+      referenceIds: ["test"],
+    }],
+    edges: [],
+    metadata: {
+      schemaVersion: "1.0.0",
+      scope: "fixture",
+      source: "test",
+      createdAt: "1970-01-01T00:00:00.000Z",
+      mappingStats: { canonical: 1 },
+    },
+  };
+}
+
 describe("Three.js fixture renderer", () => {
   it("keeps Three.js as a fixed vendored lazy module", () => {
     expect(THREE_VERSION).toBe("0.185.1");
@@ -232,31 +260,7 @@ describe("Three.js fixture renderer", () => {
     const fake = fakeThree(jsdom.window.document);
 
     const controller = await mountKnowledge3dGraph(container, {
-      graph: {
-        schemaVersion: "1.0.0",
-        nodes: [{
-          id: "concept:test",
-          label: "Test concept",
-          kind: "concept",
-          semanticLayer: "conceptual",
-          mappingStatus: "canonical",
-          provenance: { verificationStatus: "verified", createdByType: "reference", confidence: 1, sourceType: "reference", sourceNote: null },
-          sourceNodeIds: ["ReferenceNode:test"],
-          observationIds: [],
-          entityIds: [],
-          visitIds: [],
-          domainIds: [],
-          referenceIds: ["test"],
-        }],
-        edges: [],
-        metadata: {
-          schemaVersion: "1.0.0",
-          scope: "fixture",
-          source: "test",
-          createdAt: "1970-01-01T00:00:00.000Z",
-          mappingStats: { canonical: 1 },
-        },
-      },
+      graph: singleConceptGraph(),
       selectedNodeId: "concept:test",
       webglAvailable: true,
       loadThree: async () => fake.THREE,
@@ -272,7 +276,77 @@ describe("Three.js fixture renderer", () => {
     controller.resetCamera?.();
     expect(fake.groups[0].rotation.y).toBe(0);
     controller.updateLayout?.({ mode: "size", selectedNodeId: "concept:test" });
+    controller.updateLayout?.({ mode: "home", selectedNodeId: "concept:test" });
+    controller.updateLayout?.({ mode: "relation", selectedNodeId: "concept:test" });
+    controller.updateLayout?.({ mode: "home", selectedNodeId: "concept:test" });
     controller.dispose();
+  });
+
+  it("keeps auto rotation off by default and disables it for Size or reduced motion", async () => {
+    {
+      const { jsdom, container } = dom();
+      const fake = fakeThree(jsdom.window.document);
+      const controller = await mountKnowledge3dGraph(container, {
+        graph: singleConceptGraph(),
+        webglAvailable: true,
+        loadThree: async () => fake.THREE,
+        runtime: { window: jsdom.window, document: jsdom.window.document },
+        requestAnimationFrame: () => 0,
+        cancelAnimationFrame: vi.fn(),
+      });
+      expect(fake.groups[0].rotation.y).toBe(0);
+      controller.dispose();
+    }
+
+    {
+      const { jsdom, container } = dom();
+      const fake = fakeThree(jsdom.window.document);
+      const controller = await mountKnowledge3dGraph(container, {
+        graph: singleConceptGraph(),
+        autoRotate: true,
+        webglAvailable: true,
+        loadThree: async () => fake.THREE,
+        runtime: { window: jsdom.window, document: jsdom.window.document },
+        requestAnimationFrame: () => 0,
+        cancelAnimationFrame: vi.fn(),
+      });
+      expect(fake.groups[0].rotation.y).toBeGreaterThan(0);
+      controller.dispose();
+    }
+
+    {
+      const { jsdom, container } = dom();
+      const fake = fakeThree(jsdom.window.document);
+      const controller = await mountKnowledge3dGraph(container, {
+        graph: singleConceptGraph(),
+        mode: "size",
+        autoRotate: true,
+        webglAvailable: true,
+        loadThree: async () => fake.THREE,
+        runtime: { window: jsdom.window, document: jsdom.window.document },
+        requestAnimationFrame: () => 0,
+        cancelAnimationFrame: vi.fn(),
+      });
+      expect(fake.groups[0].rotation.y).toBe(0);
+      controller.dispose();
+    }
+
+    {
+      const { jsdom, container } = dom();
+      jsdom.window.matchMedia = vi.fn(() => ({ matches: true }));
+      const fake = fakeThree(jsdom.window.document);
+      const controller = await mountKnowledge3dGraph(container, {
+        graph: singleConceptGraph(),
+        autoRotate: true,
+        webglAvailable: true,
+        loadThree: async () => fake.THREE,
+        runtime: { window: jsdom.window, document: jsdom.window.document },
+        requestAnimationFrame: () => 0,
+        cancelAnimationFrame: vi.fn(),
+      });
+      expect(fake.groups[0].rotation.y).toBe(0);
+      controller.dispose();
+    }
   });
 
   it("keeps text labels to the selected node only", async () => {
