@@ -2125,9 +2125,19 @@ export async function initApp(deps) {
 
   function disposeKnowledge3d() {
     knowledge3dMountToken += 1;
-    knowledge3dController?.dispose?.();
-    knowledge3dController = null;
-    knowledge3dGraphKey = null;
+    releaseKnowledge3dController();
+  }
+
+  function releaseKnowledge3dController(controller = knowledge3dController) {
+    if (controller === knowledge3dController) {
+      knowledge3dController = null;
+      knowledge3dGraphKey = null;
+    }
+    try {
+      controller?.dispose?.();
+    } catch (error) {
+      console.warn("Failed to dispose Knowledge 3D renderer", error);
+    }
   }
 
   function syncKnowledgeControls() {
@@ -2212,6 +2222,14 @@ export async function initApp(deps) {
     const scope = currentKnowledge3dScope();
     const mode = currentKnowledge3dMode();
 
+    if (scope === "activeVisit" && !state.activeVisitId) {
+      disposeKnowledge3d();
+      $("#knowledgeObservationList").innerHTML = '<div class="empty-state"><strong>表示するVisitを選択してください</strong><p>現在のVisitのみで3D表示するには、先にVisitを選択してください。</p></div>';
+      $("#knowledgeGraphCanvas").innerHTML = '<div class="empty-state large"><strong>現在のVisitが未選択です</strong><p>「すべての体験」へ戻すか、Visitを選択すると3D知識空間を表示できます。</p></div>';
+      $("#knowledgeGraphDetail").innerHTML = '<div class="empty-state"><strong>ノードを選択してください</strong></div>';
+      return;
+    }
+
     let graph;
     try {
       graph = buildProjectVisualizationGraph(
@@ -2251,11 +2269,16 @@ export async function initApp(deps) {
     const shouldRemount = !stage || !knowledge3dController || knowledge3dGraphKey !== nextGraphKey;
     if (!shouldRemount) {
       updateKnowledge3dCanvasChrome(graph, mode, scope);
-      knowledge3dController.updateLayout?.({
-        graph,
-        mode,
-        selectedNodeId: state.knowledge3dSelectedNodeId,
-      });
+      try {
+        knowledge3dController.updateLayout?.({
+          graph,
+          mode,
+          selectedNodeId: state.knowledge3dSelectedNodeId,
+        });
+      } catch (error) {
+        releaseKnowledge3dController();
+        if (stage) stage.innerHTML = renderKnowledge3dError(error);
+      }
       bindKnowledge3dEvents(graph);
       return;
     }
@@ -2267,8 +2290,7 @@ export async function initApp(deps) {
     if (!nextStage) return;
     const token = knowledge3dMountToken + 1;
     knowledge3dMountToken = token;
-    knowledge3dController?.dispose?.();
-    knowledge3dController = null;
+    releaseKnowledge3dController();
     knowledge3dGraphKey = nextGraphKey;
     try {
       const controller = await mountKnowledge3dGraph(nextStage, {
@@ -2281,7 +2303,7 @@ export async function initApp(deps) {
         },
       });
       if (token !== knowledge3dMountToken) {
-        controller.dispose();
+        releaseKnowledge3dController(controller);
         return;
       }
       knowledge3dController = controller;

@@ -248,7 +248,7 @@ function resolveMeasurement(node, quantityKind) {
 
 /** @param {VisualizationNode} node */
 function nodeRadius(node) {
-  return round(0.5 + Math.min(1.25, Math.sqrt(node.observationIds.length || 1) * 0.18));
+  return round(0.34 + Math.min(0.72, Math.sqrt(node.observationIds.length || 1) * 0.11));
 }
 
 /** @param {VisualizationNode} node */
