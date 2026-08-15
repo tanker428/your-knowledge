@@ -7,6 +7,7 @@ import {
   readProjectFile,
   SCHEMA_VERSION,
   validateProjectDocument,
+  validateReferenceFactReferences,
 } from "../src/features/project/project-json.js";
 
 /** @returns {any} */
@@ -264,6 +265,57 @@ describe("validateProjectDocument", () => {
     expect(/** @type {any} */ (buildExportDocument({ project: restored })).referenceFacts[0]).toMatchObject({ observationId: "o01a", targetObservationId: "o01a" });
   });
 
+  it("accepts ReferenceFact reference values without requiring Entity or Observation ids", () => {
+    const doc = /** @type {any} */ (exportDoc());
+    doc.referenceFacts[0] = {
+      ...doc.referenceFacts[0],
+      valueType: "reference",
+      axis: "taxonomy",
+      value: "taxon:fukuiraptor",
+    };
+
+    expect(validateProjectDocument(doc).ok).toBe(true);
+  });
+
+  it("accepts and round-trips quantity ReferenceFacts for ReferenceGraph subjects", () => {
+    const doc = /** @type {any} */ (exportDoc());
+    doc.referenceFacts[0] = {
+      id: "rf-body-length",
+      subjectReferenceId: "taxon:fukuiraptor",
+      predicate: "bodyLength",
+      valueType: "quantity",
+      value: {
+        quantityKind: "body_length",
+        valueSI: null,
+        minSI: 4,
+        maxSI: 5.5,
+        unitSI: "m",
+        estimated: true,
+      },
+      confidence: 0.7,
+      sourceType: "curated",
+      sourceNote: "measurement source",
+      status: "verified",
+    };
+
+    expect(validateProjectDocument(doc).ok).toBe(true);
+    const restored = documentToProject(doc, new Set(["p01", "p99"]), "default").project;
+    expect(/** @type {any} */ (buildExportDocument({ project: restored })).referenceFacts[0]).toEqual(doc.referenceFacts[0]);
+  });
+
+  it.each([
+    ["missing axis", (doc) => { doc.referenceFacts[0] = { ...doc.referenceFacts[0], valueType: "reference", value: "taxon:fukuiraptor" }; }],
+    ["empty value", (doc) => { doc.referenceFacts[0] = { ...doc.referenceFacts[0], valueType: "reference", axis: "taxonomy", value: " " }; }],
+    ["unsupported valueType", (doc) => { doc.referenceFacts[0] = { ...doc.referenceFacts[0], valueType: "unknown", axis: "taxonomy", value: "taxon:fukuiraptor" }; }],
+    ["wrong entity reference target type", (doc) => { doc.referenceFacts[0] = { ...doc.referenceFacts[0], valueType: "entity-reference", value: "o01a" }; }],
+    ["wrong observation reference target type", (doc) => { doc.referenceFacts[0] = { ...doc.referenceFacts[0], valueType: "observation-reference", value: "e1" }; }],
+    ["malformed quantity object", (doc) => { doc.referenceFacts[0] = { id: "rf-bad", subjectReferenceId: "taxon:fukuiraptor", valueType: "quantity", value: { quantityKind: "body_length", valueSI: "4.2" } }; }],
+  ])("rejects malformed ReferenceFact reference data: %s", (_label, mutate) => {
+    const doc = /** @type {any} */ (exportDoc());
+    mutate(doc);
+    expect(validateProjectDocument(doc).ok).toBe(false);
+  });
+
   it("accepts a newer minor version of the same major", () => {
     expect(
       validateProjectDocument({ ...exportDoc(), schemaVersion: "1.4.2" }).ok,
@@ -303,6 +355,71 @@ describe("validateProjectDocument", () => {
     const doc = exportDoc();
     delete doc.photos[0].id;
     expect(validateProjectDocument(doc).ok).toBe(false);
+  });
+});
+
+describe("validateReferenceFactReferences", () => {
+  it("reports semantic reference diagnostics without rejecting project structure", () => {
+    const doc = /** @type {any} */ (exportDoc());
+    doc.referenceDataVersion = "paleo-v1";
+    doc.referenceFacts = [
+      {
+        id: "rf-ok",
+        subjectId: "e1",
+        valueType: "reference",
+        axis: "taxonomy",
+        value: "taxon:fukuiraptor",
+      },
+      {
+        id: "rf-missing",
+        subjectId: "e1",
+        valueType: "reference",
+        axis: "taxonomy",
+        value: "taxon:missing",
+      },
+      {
+        id: "rf-axis",
+        subjectId: "e1",
+        valueType: "reference",
+        axis: "taxonomy",
+        value: "geo:cretaceous",
+      },
+      {
+        id: "rf-entity",
+        subjectId: "e1",
+        valueType: "entity-reference",
+        value: "e1",
+      },
+    ];
+    const referenceGraph = {
+      metadata: { referenceDataVersion: "paleo-v2" },
+      nodes: [
+        { id: "taxon:fukuiraptor", axis: "taxonomy" },
+        { id: "geo:cretaceous", axis: "geological-time" },
+      ],
+    };
+
+    expect(validateProjectDocument(doc).ok).toBe(true);
+    expect(validateReferenceFactReferences(doc, referenceGraph)).toEqual([
+      {
+        type: "reference-data-version-mismatch",
+        expectedVersion: "paleo-v1",
+        actualVersion: "paleo-v2",
+      },
+      {
+        type: "unresolved-reference",
+        referenceFactId: "rf-missing",
+        value: "taxon:missing",
+        axis: "taxonomy",
+      },
+      {
+        type: "axis-mismatch",
+        referenceFactId: "rf-axis",
+        value: "geo:cretaceous",
+        axis: "taxonomy",
+        referenceAxis: "geological-time",
+      },
+    ]);
   });
 });
 

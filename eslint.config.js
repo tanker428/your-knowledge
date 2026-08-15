@@ -3,7 +3,7 @@ import globals from "globals";
 
 export default [
   {
-    ignores: ["node_modules/**", "dist/**", ".local-media/**"],
+    ignores: ["node_modules/**", "dist/**", ".local-media/**", "src/vendor/**"],
   },
   js.configs.recommended,
   {

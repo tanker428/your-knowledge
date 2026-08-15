@@ -3,7 +3,7 @@
  * These records use the same ReferenceFact contract as user data; they are
  * not a second quiz-only graph.
  */
-export const DEMO_KNOWLEDGE_VERSION = "2026-08-13.1";
+export const DEMO_KNOWLEDGE_VERSION = "2026-08-14.1";
 export const DEMO_RETIRED_REFERENCE_FACT_IDS = Object.freeze([
   "demo-rf-o18c-archosauria",
   "demo-rf-o19a-pterosauria",
@@ -157,6 +157,24 @@ export const DEMO_REFERENCE_FACTS = Object.freeze([
     axis: "taxonomy",
     sourceType: "curated",
     sourceNote: "同一個体を説明する展示パネルのバシロサウルス・ケトイデスという記載に基づく初期データ",
+    status: "verified",
+  },
+  {
+    id: "demo-rf-taxon-cetacea-body-length",
+    subjectReferenceId: "taxon:cetacea",
+    predicate: "bodyLength",
+    valueType: "quantity",
+    value: {
+      quantityKind: "body_length",
+      valueSI: null,
+      minSI: 15,
+      maxSI: 18,
+      unitSI: "m",
+      estimated: true,
+    },
+    confidence: 0.7,
+    sourceType: "curated",
+    sourceNote: "Demo body-length range for the Basilosaurus-scale cetacean exhibit.",
     status: "verified",
   },
   {

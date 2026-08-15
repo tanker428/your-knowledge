@@ -88,6 +88,8 @@ import {
   getRadialNodeShape,
   shouldShowKnowledgeAxisControls,
 } from "../features/knowledge-graph/selectors.js";
+import { buildProjectVisualizationGraph } from "../features/knowledge-3d/project-visualization-adapter.js";
+import { mountKnowledge3dGraph } from "../features/knowledge-3d/three-fixture-renderer.js";
 import {
   buildQuizResultEntries,
   describeQuizAvailability,
@@ -157,6 +159,32 @@ const FACT_SOURCE_LABELS = {
   learning: "追加学習から",
   external: "外部資料から",
   user: "自分のメモ",
+};
+const KNOWLEDGE_3D_KIND_LABELS = {
+  experience: "体験",
+  entity: "対象",
+  concept: "Concept",
+  landmark: "時代",
+  cluster: "補助Concept",
+};
+const KNOWLEDGE_3D_LAYER_LABELS = {
+  experience: "experience",
+  referent: "referent",
+  conceptual: "conceptual",
+};
+const KNOWLEDGE_3D_STATUS_LABELS = {
+  canonical: "正規",
+  "domain-fallback": "分野補助",
+  provisional: "一時",
+  unresolved: "未解決",
+};
+const KNOWLEDGE_3D_EDGE_LABELS = {
+  REPRESENTS: "表す",
+  DEPICTS: "描く",
+  SPECIMEN_OF: "標本",
+  INSTANCE_OF: "具体例",
+  CLASSIFIED_AS: "分類",
+  OCCURS_DURING: "時代",
 };
 
 /**
@@ -246,8 +274,12 @@ export async function initApp(deps) {
     /** @type {string|null} */
     activeObservationId: "o03a",
     knowledgeMode: "observed",
+    knowledgeDisplayMode: "2d",
     knowledgeViewMode: "overview",
     knowledgeLayoutMode: "radial",
+    knowledge3dMode: "home",
+    knowledge3dScope: "allVisits",
+    knowledge3dSelectedNodeId: null,
     knowledgeZoom: 1,
     knowledgeAxis: "all",
     knowledgeExpanded: new Set(),
@@ -300,6 +332,9 @@ export async function initApp(deps) {
   let organizeLensPoint = null;
   let organizeMagnifierBinding = null;
   let organizeLensZoom = MAGNIFIER_MIN_ZOOM;
+  let knowledge3dController = null;
+  let knowledge3dMountToken = 0;
+  let knowledge3dGraphKey = null;
 
   /**
    * The bundled demo photos, as records. The migration layers saved state on
@@ -594,6 +629,14 @@ export async function initApp(deps) {
     return state.photos.find((photo) => photo.id === id);
   }
 
+  function visitById(/** @type {string|null} */ id) {
+    return state.visits.find((visit) => visit.id === id);
+  }
+
+  function entityById(/** @type {string|null} */ id) {
+    return state.entities.find((entity) => entity.id === id) || entityMap.get(id);
+  }
+
   function originalPhotoSource(/** @type {any} */ photo) {
     return photo?.src || photo?.originalSrc || MISSING_PHOTO_SRC;
   }
@@ -628,7 +671,7 @@ export async function initApp(deps) {
     if (item.description) return item.description;
     const pack = item.packId ? packLabel(item.packId) : "選択中の分野";
     const label = item.label || item.id || "この分類";
-    return `${pack}の分類「${label}」です。`;
+    return `${pack}の分類「${label}」です。写真の対象がこの種類やテーマに当てはまるかを確認します。`;
   };
 
   function showToast(/** @type {string} */ message) {
@@ -645,6 +688,7 @@ export async function initApp(deps) {
   function switchView(/** @type {string} */ viewName) {
     cancelRegionDrawing({ clearDraft: true });
     if (viewName !== "organize") organizeMagnifierBinding?.reset();
+    if (viewName !== "knowledge") disposeKnowledge3d();
     $$(".view").forEach((view) =>
       view.classList.toggle("active", view.id === `view-${viewName}`),
     );
@@ -2079,14 +2123,69 @@ export async function initApp(deps) {
 
   void renderLegacyKnowledge;
 
+  function disposeKnowledge3d() {
+    knowledge3dMountToken += 1;
+    knowledge3dController?.dispose?.();
+    knowledge3dController = null;
+    knowledge3dGraphKey = null;
+  }
+
+  function syncKnowledgeControls() {
+    const observed = state.knowledgeMode !== "learned";
+    const is3d = observed && state.knowledgeDisplayMode === "3d";
+    $$("#knowledgeModeControl [data-knowledge-mode]").forEach((button) =>
+      button.classList.toggle("active", button.dataset.knowledgeMode === state.knowledgeMode),
+    );
+    $$("#knowledgeDisplayModeControl [data-knowledge-display-mode]").forEach((button) =>
+      button.classList.toggle("active", button.dataset.knowledgeDisplayMode === state.knowledgeDisplayMode),
+    );
+    $$("#knowledgeViewModeControl [data-knowledge-view-mode]").forEach((button) =>
+      button.classList.toggle("active", button.dataset.knowledgeViewMode === state.knowledgeViewMode),
+    );
+    $$("#knowledgeLayoutControl [data-knowledge-layout]").forEach((button) =>
+      button.classList.toggle("active", button.dataset.knowledgeLayout === state.knowledgeLayoutMode),
+    );
+    $$("#knowledge3dScopeControl [data-knowledge3d-scope]").forEach((button) =>
+      button.classList.toggle("active", button.dataset.knowledge3dScope === state.knowledge3dScope),
+    );
+    $$("#knowledge3dModeControl [data-knowledge3d-mode]").forEach((button) =>
+      button.classList.toggle("active", button.dataset.knowledge3dMode === state.knowledge3dMode),
+    );
+    $("#knowledgeDisplayModeControl")?.classList.toggle("hidden", !observed);
+    $("#knowledgeViewModeControl")?.classList.toggle("hidden", !observed || is3d);
+    $("#knowledgeLayoutControl")?.classList.toggle("hidden", !observed || is3d);
+    $("#knowledge3dScopeControl")?.classList.toggle("hidden", !is3d);
+    $("#knowledge3dModeControl")?.classList.toggle("hidden", !is3d);
+    $("#view-knowledge .knowledge-focus")?.classList.toggle("knowledge-3d-panel", is3d);
+  }
+
+  /** @returns {"allVisits"|"activeVisit"} */
+  function currentKnowledge3dScope() {
+    return state.knowledge3dScope === "activeVisit" ? "activeVisit" : "allVisits";
+  }
+
+  /** @returns {"home"|"relation"|"size"} */
+  function currentKnowledge3dMode() {
+    if (state.knowledge3dMode === "relation" || state.knowledge3dMode === "size") {
+      return state.knowledge3dMode;
+    }
+    return "home";
+  }
+
   // Core 4's old knowledge screen remains above for compatibility with
   // older markup, but this later declaration is the active ReferenceFact view.
   function renderKnowledge() {
-    $$("#knowledgeModeControl [data-knowledge-mode]").forEach((button) => button.classList.toggle("active", button.dataset.knowledgeMode === state.knowledgeMode));
+    syncKnowledgeControls();
     if (state.knowledgeMode === "learned") {
+      disposeKnowledge3d();
       renderLearnedReferenceFacts();
       return;
     }
+    if (state.knowledgeDisplayMode === "3d") {
+      void renderKnowledge3d();
+      return;
+    }
+    disposeKnowledge3d();
     const project = toProject();
     const view = state.activeVisitId ? buildKnowledgeGraphView(project, state.activeVisitId, registry, referenceData?.graph) : null;
     const observations = view?.source.nodes.filter((node) => node.type === "Observation") || [];
@@ -2106,6 +2205,328 @@ export async function initApp(deps) {
     $("#knowledgeGraphDetail").innerHTML = state.knowledgeObservationId && focus ? renderKnowledgeDetail(focus, state.knowledgeDetailNodeId || `Observation:${state.knowledgeObservationId}`) : '<div class="empty-state"><strong>ノードを選択してください</strong><p>写真内のObservationを選ぶと詳細を表示します。</p></div>';
     bindKnowledgeGraphEvents();
   }
+
+  async function renderKnowledge3d() {
+    syncKnowledgeControls();
+    $("#knowledgeAxisControl")?.classList.add("hidden");
+    const scope = currentKnowledge3dScope();
+    const mode = currentKnowledge3dMode();
+
+    let graph;
+    try {
+      graph = buildProjectVisualizationGraph(
+        toProject(),
+        referenceData?.graph || null,
+        registry,
+        { scope },
+      );
+    } catch (error) {
+      disposeKnowledge3d();
+      $("#knowledgeObservationList").innerHTML = '<div class="empty-state"><strong>3D表示用グラフを作成できません</strong><p>Project JSONとReferenceFactを確認してください。</p></div>';
+      $("#knowledgeGraphCanvas").innerHTML = renderKnowledge3dError(error);
+      $("#knowledgeGraphDetail").innerHTML = '<div class="empty-state"><strong>2D知識マップは利用できます</strong><p>2Dへ切り替えると既存のVisit単位グラフを表示します。</p></div>';
+      return;
+    }
+
+    if (!graph.nodes.length) {
+      disposeKnowledge3d();
+      $("#knowledgeObservationList").innerHTML = '<div class="empty-state"><strong>3D表示できるノードがありません</strong><p>写真とObservationを登録してください。</p></div>';
+      $("#knowledgeGraphCanvas").innerHTML = '<div class="empty-state large"><strong>3D知識空間は空です</strong><p>ObservationとReferenceFactが増えるとここへ表示されます。</p></div>';
+      $("#knowledgeGraphDetail").innerHTML = '<div class="empty-state"><strong>ノードを選択してください</strong></div>';
+      return;
+    }
+
+    if (!graph.nodes.some((node) => node.id === state.knowledge3dSelectedNodeId)) {
+      state.knowledge3dSelectedNodeId = defaultKnowledge3dNodeId(graph);
+    }
+
+    const visibleNodes = filterKnowledge3dNodes(graph);
+    $("#knowledgeObservationList").innerHTML = visibleNodes.length
+      ? `<div class="knowledge-3d-index-note"><strong>${graph.nodes.length} nodes / ${graph.edges.length} edges</strong><small>${escapeHtml(knowledge3dScopeLabel(scope))}・${escapeHtml(knowledge3dModeLabel(mode))}</small></div>${visibleNodes.map((node) => renderKnowledge3dNodeItem(node)).join("")}`
+      : '<div class="empty-state"><strong>検索に一致する3Dノードがありません</strong><p>Concept、Observation、写真メモを別の語句で検索してください。</p></div>';
+    $("#knowledgeGraphDetail").innerHTML = renderKnowledge3dDetail(graph, state.knowledge3dSelectedNodeId);
+
+    const nextGraphKey = knowledge3dGraphSignature(graph, scope);
+    const stage = $("#knowledge3dStage");
+    const shouldRemount = !stage || !knowledge3dController || knowledge3dGraphKey !== nextGraphKey;
+    if (!shouldRemount) {
+      updateKnowledge3dCanvasChrome(graph, mode, scope);
+      knowledge3dController.updateLayout?.({
+        graph,
+        mode,
+        selectedNodeId: state.knowledge3dSelectedNodeId,
+      });
+      bindKnowledge3dEvents(graph);
+      return;
+    }
+
+    $("#knowledgeGraphCanvas").innerHTML = renderKnowledge3dCanvas(graph);
+    bindKnowledge3dEvents(graph);
+
+    const nextStage = $("#knowledge3dStage");
+    if (!nextStage) return;
+    const token = knowledge3dMountToken + 1;
+    knowledge3dMountToken = token;
+    knowledge3dController?.dispose?.();
+    knowledge3dController = null;
+    knowledge3dGraphKey = nextGraphKey;
+    try {
+      const controller = await mountKnowledge3dGraph(nextStage, {
+        graph,
+        mode,
+        selectedNodeId: state.knowledge3dSelectedNodeId,
+        onNodeSelect(nodeId) {
+          state.knowledge3dSelectedNodeId = nodeId;
+          renderKnowledge();
+        },
+      });
+      if (token !== knowledge3dMountToken) {
+        controller.dispose();
+        return;
+      }
+      knowledge3dController = controller;
+    } catch (error) {
+      if (token !== knowledge3dMountToken) return;
+      knowledge3dController = null;
+      knowledge3dGraphKey = null;
+      nextStage.innerHTML = renderKnowledge3dError(error);
+    }
+  }
+
+  function renderKnowledge3dCanvas(graph) {
+    const mode = currentKnowledge3dMode();
+    const scope = currentKnowledge3dScope();
+    return `<div class="kg-canvas-header"><span>WEB 3D</span><strong>${escapeHtml(knowledge3dModeLabel(mode))}</strong><span class="kg-header-actions"><button class="text-button" data-knowledge3d-reset-camera>カメラを戻す</button></span></div><div id="knowledge3dStage" class="knowledge-3d-stage knowledge-3d-mode-${escapeHtml(mode)}"><div class="knowledge-3d-loading"><strong>3D知識空間を読み込み中</strong><small>${escapeHtml(knowledge3dScopeLabel(scope))}・${graph.nodes.length} nodes</small></div></div><div class="knowledge-3d-legend"><span><i class="knowledge-3d-dot kind-experience"></i>体験</span><span><i class="knowledge-3d-dot kind-entity"></i>対象</span><span><i class="knowledge-3d-dot kind-concept"></i>Concept</span><span><i class="knowledge-3d-dot kind-landmark"></i>時代</span></div>`;
+  }
+
+  function updateKnowledge3dCanvasChrome(graph, mode, scope) {
+    const title = $("#knowledgeGraphCanvas .kg-canvas-header strong");
+    if (title) title.textContent = knowledge3dModeLabel(mode);
+    const stage = $("#knowledge3dStage");
+    if (stage) {
+      stage.className = `knowledge-3d-stage knowledge-3d-mode-${mode}`;
+      stage.dataset.scope = scope;
+      stage.dataset.nodeCount = String(graph.nodes.length);
+    }
+  }
+
+  function knowledge3dGraphSignature(graph, scope) {
+    return [
+      scope,
+      graph.schemaVersion,
+      graph.nodes.map((node) => node.id).join(","),
+      graph.edges.map((edge) => `${edge.id}:${edge.sourceId}:${edge.targetId}`).join(","),
+    ].join("|");
+  }
+
+  function renderKnowledge3dError(error) {
+    const message = error instanceof Error ? error.message : String(error || "unknown error");
+    return `<div class="empty-state large knowledge-3d-error"><strong>3D表示を開始できません</strong><p>${escapeHtml(message)}</p><p>2D知識マップ、クイズ、JSON入出力はこのまま利用できます。</p></div>`;
+  }
+
+  function filterKnowledge3dNodes(graph) {
+    const query = state.knowledgeSearch.trim().toLowerCase();
+    const nodes = query
+      ? graph.nodes.filter((node) => knowledge3dNodeSearchText(node).includes(query))
+      : graph.nodes;
+    return [...nodes].sort(compareKnowledge3dNodes);
+  }
+
+  function knowledge3dNodeSearchText(node) {
+    const observations = node.observationIds
+      .map((id) => observationById(id))
+      .filter(Boolean)
+      .flatMap((entry) => [entry.observation?.label, entry.photo?.title, entry.photo?.experienceMemo]);
+    const entities = node.entityIds.map((id) => entityById(id)?.name || entityById(id)?.label || id);
+    return [
+      node.label,
+      node.kind,
+      node.mappingStatus,
+      node.semanticLayer,
+      ...node.sourceNodeIds,
+      ...node.referenceIds,
+      ...observations,
+      ...entities,
+    ].filter(Boolean).join(" ").toLowerCase();
+  }
+
+  function compareKnowledge3dNodes(left, right) {
+    const order = { concept: 0, landmark: 1, entity: 2, experience: 3, cluster: 4 };
+    return (order[left.kind] ?? 9) - (order[right.kind] ?? 9)
+      || left.label.localeCompare(right.label)
+      || left.id.localeCompare(right.id);
+  }
+
+  function defaultKnowledge3dNodeId(graph) {
+    const canonicalConcept = graph.nodes.find((node) => node.kind === "concept" && node.mappingStatus === "canonical");
+    const concept = canonicalConcept || graph.nodes.find((node) => node.kind === "concept");
+    return concept?.id || graph.nodes.find((node) => node.kind === "entity")?.id || graph.nodes[0]?.id || null;
+  }
+
+  function renderKnowledge3dNodeItem(node) {
+    const selected = node.id === state.knowledge3dSelectedNodeId;
+    const counts = [node.observationIds.length ? `Obs ${node.observationIds.length}` : "", node.entityIds.length ? `Entity ${node.entityIds.length}` : ""].filter(Boolean).join(" / ");
+    return `<button class="knowledge-list-item knowledge-3d-list-item ${selected ? "active" : ""}" data-knowledge3d-node="${escapeHtml(node.id)}"><span class="knowledge-3d-node-mark kind-${escapeHtml(node.kind)}">${escapeHtml(knowledge3dKindIcon(node.kind))}</span><span><strong>${escapeHtml(node.label)}</strong><small>${escapeHtml(knowledge3dKindLabel(node.kind))}・${escapeHtml(knowledge3dStatusLabel(node.mappingStatus))}${counts ? `・${escapeHtml(counts)}` : ""}</small></span><i aria-hidden="true">${escapeHtml(knowledge3dLayerShortLabel(node.semanticLayer))}</i></button>`;
+  }
+
+  function renderKnowledge3dDetail(graph, nodeId) {
+    const node = graph.nodes.find((item) => item.id === nodeId);
+    if (!node) {
+      return '<div class="empty-state"><strong>3Dノードを選択してください</strong><p>Conceptを選ぶと元Observation、Entity、Photoへ辿れます。</p></div>';
+    }
+    const factIds = referenceFactIdsForKnowledge3dNode(graph, node);
+    const mastery = state.userKnowledgeStates.filter((item) => factIds.has(item.referenceFactId));
+    const observations = node.observationIds.map(knowledge3dObservationEntry).filter(Boolean);
+    const entities = node.entityIds.map((id) => entityById(id)).filter(Boolean);
+    const visits = node.visitIds.map((id) => visitById(id)).filter(Boolean);
+    return `<div class="kg-detail-header knowledge-3d-detail-header"><span>${escapeHtml(knowledge3dKindLabel(node.kind))} / ${escapeHtml(knowledge3dStatusLabel(node.mappingStatus))}</span><h2>${escapeHtml(node.label)}</h2><div class="knowledge-3d-badges"><span>${escapeHtml(KNOWLEDGE_3D_LAYER_LABELS[node.semanticLayer] || node.semanticLayer)}</span><span>${observations.length} Observation</span><span>${entities.length} Entity</span><span>${factIds.size} ReferenceFact</span></div></div>${renderKnowledge3dSourceSection(observations, entities, visits)}${renderKnowledge3dMeasurementSection(node)}${renderKnowledge3dMasterySection(mastery)}${renderKnowledge3dProvenanceSection(node.provenance)}${renderKnowledge3dReferenceSection(node, factIds)}${renderKnowledge3dConnectionSection(graph, node)}`;
+  }
+
+  function renderKnowledge3dSourceSection(observations, entities, visits) {
+    const observationCards = observations.slice(0, 8).map(({ observation, photo }) => {
+      const region = observation.region ? `<i style="left:${observation.region.x}%;top:${observation.region.y}%;width:${observation.region.w}%;height:${observation.region.h}%"></i>` : "";
+      const image = photo ? rotatedPhotoFrame(photo, `<img src="${escapeHtml(photo.thumbSrc || photo.src || MISSING_PHOTO_SRC)}" alt="" />${region}`) : "";
+      const memo = photo?.experienceMemo ? `<small class="knowledge-3d-memo">${escapeHtml(photo.experienceMemo)}</small>` : "";
+      return `<button class="knowledge-3d-source-card" data-knowledge3d-observation="${escapeHtml(observation.id)}">${image ? `<span class="knowledge-3d-source-thumb">${image}</span>` : ""}<span><strong>${escapeHtml(observation.label || observation.id)}</strong><small>${escapeHtml(photo?.title || "写真なし")}</small>${memo}</span></button>`;
+    }).join("");
+    const entityCards = entities.slice(0, 6).map((entity) => `<button class="knowledge-3d-meta-link" data-knowledge3d-node="entity:${escapeHtml(entity.id)}">Entity：${escapeHtml(entity.name || entity.label || entity.id)}</button>`).join("");
+    const visitText = visits.length ? `<p>${visits.map((visit) => escapeHtml(visit.title || visit.facilityName || visit.placeName || visit.id)).join(" / ")}</p>` : "";
+    if (!observationCards && !entityCards && !visitText) return "";
+    return `<section class="knowledge-3d-detail-section"><h3>元データ</h3>${visitText}<div class="knowledge-3d-source-list">${observationCards}</div><div class="kg-detail-meta">${entityCards}</div></section>`;
+  }
+
+  function renderKnowledge3dMeasurementSection(node) {
+    const measurements = node.measurements || [];
+    if (!measurements.length) return "";
+    const rows = measurements.map((measurement) => {
+      const range = measurement.minSI != null && measurement.maxSI != null
+        ? `${formatNumber(measurement.minSI)} - ${formatNumber(measurement.maxSI)} ${escapeHtml(measurement.unitSI || "")}`
+        : `${formatNumber(measurement.valueSI)} ${escapeHtml(measurement.unitSI || "")}`;
+      return `<div><dt>${escapeHtml(measurement.quantityKind)}</dt><dd>${range}${measurement.estimated ? "（推定）" : ""}</dd></div>`;
+    }).join("");
+    return `<section class="knowledge-3d-detail-section"><h3>Measurement</h3><dl class="knowledge-3d-definition-list">${rows}</dl></section>`;
+  }
+
+  function renderKnowledge3dMasterySection(mastery) {
+    if (!mastery.length) return '<section class="knowledge-3d-detail-section"><h3>Mastery</h3><p>このノードに対応する学習履歴はまだありません。</p></section>';
+    const rows = mastery.map((item) => `<div><dt>${escapeHtml(item.referenceFactId)}</dt><dd>${item.masteryValue === 1 ? "習得" : "未習得"} / ${item.correctCount ?? 0}/${item.attemptCount ?? 0} / ${escapeHtml(item.lastAnsweredAt || "-")}</dd></div>`).join("");
+    return `<section class="knowledge-3d-detail-section"><h3>Mastery</h3><dl class="knowledge-3d-definition-list">${rows}</dl></section>`;
+  }
+
+  function renderKnowledge3dProvenanceSection(provenance = {}) {
+    const rows = [
+      ["verificationStatus", provenance.verificationStatus],
+      ["createdByType", provenance.createdByType],
+      ["confidence", provenance.confidence == null ? null : formatNumber(provenance.confidence)],
+      ["sourceType", provenance.sourceType],
+      ["sourceNote", provenance.sourceNote],
+    ].map(([key, value]) => `<div><dt>${escapeHtml(key)}</dt><dd>${escapeHtml(value ?? "-")}</dd></div>`).join("");
+    return `<section class="knowledge-3d-detail-section"><h3>Provenance</h3><dl class="knowledge-3d-definition-list">${rows}</dl></section>`;
+  }
+
+  function renderKnowledge3dReferenceSection(node, factIds) {
+    const references = node.referenceIds.map((id) => referenceData?.graph?.nodes?.find((item) => item.id === id)).filter(Boolean);
+    const facts = state.referenceFacts.filter((fact) => factIds.has(fact.id));
+    if (!references.length && !facts.length) return "";
+    const referenceRows = references.map((reference) => `<div><dt>ReferenceNode</dt><dd>${escapeHtml(reference.label || reference.id)}${reference.axis ? ` / ${escapeHtml(reference.axis)}` : ""}</dd></div>`).join("");
+    const factRows = facts.map((fact) => `<div><dt>ReferenceFact</dt><dd>${escapeHtml(fact.id)} / ${escapeHtml(fact.predicate || fact.axis || fact.valueType || "-")}</dd></div>`).join("");
+    return `<section class="knowledge-3d-detail-section"><h3>Reference</h3><dl class="knowledge-3d-definition-list">${referenceRows}${factRows}</dl></section>`;
+  }
+
+  function renderKnowledge3dConnectionSection(graph, node) {
+    const nodeById = new Map(graph.nodes.map((item) => [item.id, item]));
+    const rows = graph.edges
+      .filter((edge) => edge.sourceId === node.id || edge.targetId === node.id)
+      .slice(0, 12)
+      .map((edge) => {
+        const outgoing = edge.sourceId === node.id;
+        const otherId = outgoing ? edge.targetId : edge.sourceId;
+        const other = nodeById.get(otherId);
+        const arrow = outgoing ? "→" : "←";
+        return `<button class="knowledge-3d-meta-link" data-knowledge3d-node="${escapeHtml(otherId)}">${arrow} ${escapeHtml(knowledge3dEdgeLabel(edge.type))}：${escapeHtml(other?.label || otherId)}</button>`;
+      }).join("");
+    return rows ? `<section class="knowledge-3d-detail-section"><h3>接続</h3><div class="kg-detail-meta">${rows}</div></section>` : "";
+  }
+
+  function referenceFactIdsForKnowledge3dNode(graph, node) {
+    const ids = new Set(
+      node.sourceNodeIds
+        .filter((id) => id.startsWith("ReferenceFact:"))
+        .map((id) => id.slice("ReferenceFact:".length)),
+    );
+    for (const edge of graph.edges) {
+      if ((edge.sourceId === node.id || edge.targetId === node.id) && edge.sourceReferenceFactId) {
+        ids.add(edge.sourceReferenceFactId);
+      }
+    }
+    for (const fact of state.referenceFacts) {
+      if (!fact?.id || ids.has(fact.id)) continue;
+      if (!referenceFactValuesForUi(fact).some((value) => node.referenceIds.includes(value))) continue;
+      if (knowledge3dFactMatchesNodeSource(fact, node)) ids.add(fact.id);
+    }
+    return ids;
+  }
+
+  function referenceFactValuesForUi(fact) {
+    if (Array.isArray(fact.value)) return fact.value.map(String);
+    return fact.value == null ? [] : [String(fact.value)];
+  }
+
+  function knowledge3dFactMatchesNodeSource(fact, node) {
+    const subjectIds = [fact.subjectId, fact.observationId, fact.targetObservationId].filter(Boolean).map(String);
+    return subjectIds.some((id) => node.observationIds.includes(id) || node.entityIds.includes(id))
+      || (fact.visitId && node.visitIds.includes(String(fact.visitId)));
+  }
+
+  function knowledge3dObservationEntry(id) {
+    const entry = observationById(id);
+    if (!entry) return null;
+    return {
+      observation: {
+        ...entry.observation,
+        photoId: entry.photo.id,
+        visitId: entry.observation.visitId || entry.photo.visitId,
+      },
+      photo: entry.photo,
+    };
+  }
+
+  function bindKnowledge3dEvents(graph) {
+    $$('[data-knowledge3d-node]').forEach((button) =>
+      button.onclick = () => {
+        const id = button.dataset.knowledge3dNode;
+        if (!id || !graph.nodes.some((node) => node.id === id)) return;
+        state.knowledge3dSelectedNodeId = id;
+        renderKnowledge();
+      },
+    );
+    $$('[data-knowledge3d-observation]').forEach((button) =>
+      button.onclick = () => {
+        const id = button.dataset.knowledge3dObservation;
+        if (!id) return;
+        state.knowledgeMode = "observed";
+        state.knowledgeDisplayMode = "2d";
+        state.knowledgeViewMode = "focus";
+        state.knowledgeObservationId = id;
+        state.knowledgeDetailNodeId = `Observation:${id}`;
+        renderKnowledge();
+      },
+    );
+    const resetButton = $("[data-knowledge3d-reset-camera]");
+    if (resetButton) resetButton.onclick = () => knowledge3dController?.resetCamera?.();
+    $$('[data-open-photo]').forEach((button) => {
+      button.onclick = () => openPhotoModal(button.dataset.openPhoto);
+    });
+  }
+
+  function knowledge3dKindLabel(kind) { return KNOWLEDGE_3D_KIND_LABELS[kind] || kind; }
+  function knowledge3dStatusLabel(status) { return KNOWLEDGE_3D_STATUS_LABELS[status] || status; }
+  function knowledge3dEdgeLabel(type) { return KNOWLEDGE_3D_EDGE_LABELS[type] || type; }
+  function knowledge3dModeLabel(mode) { return { home: "Home Layout", relation: "Relation Layout", size: "Size Layout" }[mode] || mode; }
+  function knowledge3dScopeLabel(scope) { return scope === "activeVisit" ? "現在のVisitのみ" : "すべての体験"; }
+  function knowledge3dLayerShortLabel(layer) { return { experience: "E", referent: "R", conceptual: "C" }[layer] || "?"; }
+  function knowledge3dKindIcon(kind) { return { experience: "◎", entity: "◇", concept: "C", landmark: "T", cluster: "◆" }[kind] || "•"; }
+  function formatNumber(value) { return value == null ? "-" : Number(value).toLocaleString("ja-JP", { maximumSignificantDigits: 4 }); }
 
   function renderLearnedReferenceFacts() {
     const learned = getLearnedReferenceFacts(toProject(), state.activeVisitId, state.userId, [...entityMap.values()]);
@@ -3410,6 +3831,12 @@ export async function initApp(deps) {
         renderKnowledge();
       }),
     );
+    $$("#knowledgeDisplayModeControl [data-knowledge-display-mode]").forEach((button) =>
+      button.addEventListener("click", () => {
+        state.knowledgeDisplayMode = button.dataset.knowledgeDisplayMode;
+        renderKnowledge();
+      }),
+    );
     $$("#knowledgeViewModeControl [data-knowledge-view-mode]").forEach((button) =>
       button.addEventListener("click", () => {
         state.knowledgeViewMode = button.dataset.knowledgeViewMode;
@@ -3417,6 +3844,21 @@ export async function initApp(deps) {
       }),
     );
     $$("#knowledgeLayoutControl [data-knowledge-layout]").forEach((button) => button.addEventListener("click", () => { state.knowledgeLayoutMode = button.dataset.knowledgeLayout; renderKnowledge(); }));
+    $$("#knowledge3dScopeControl [data-knowledge3d-scope]").forEach((button) =>
+      button.addEventListener("click", () => {
+        state.knowledgeDisplayMode = "3d";
+        state.knowledge3dScope = button.dataset.knowledge3dScope;
+        state.knowledge3dSelectedNodeId = null;
+        renderKnowledge();
+      }),
+    );
+    $$("#knowledge3dModeControl [data-knowledge3d-mode]").forEach((button) =>
+      button.addEventListener("click", () => {
+        state.knowledgeDisplayMode = "3d";
+        state.knowledge3dMode = button.dataset.knowledge3dMode;
+        renderKnowledge();
+      }),
+    );
     $$("#knowledgeAxisControl [data-knowledge-axis]").forEach((button) =>
       button.addEventListener("click", () => {
         state.knowledgeAxis = button.dataset.knowledgeAxis;
@@ -3542,8 +3984,6 @@ export async function initApp(deps) {
       photo.experienceMemo = event.target.value;
       persist();
     });
-    // メモ入力を始めたら、写真ポップアップ（虫眼鏡レンズ／写真モーダル）で
-    // 入力欄が隠れないようにする。入力中に何を打っているか見えるようにするため。
     experienceMemoInput?.addEventListener("pointerdown", (/** @type {Event} */ event) => {
       event.stopPropagation();
       organizeMagnifierBinding?.reset();
@@ -3554,6 +3994,8 @@ export async function initApp(deps) {
       organizeMagnifierBinding?.reset();
       closeModal("photoModal");
     }, { capture: true });
+    // メモ入力を始めたら、写真ポップアップ（虫眼鏡レンズ／写真モーダル）で
+    // 入力欄が隠れないようにする。入力中に何を打っているか見えるようにするため。
     experienceMemoInput?.addEventListener("focus", () => {
       organizeMagnifierBinding?.reset();
       closeModal("photoModal");

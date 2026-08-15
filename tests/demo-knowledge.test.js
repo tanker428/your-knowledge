@@ -6,6 +6,8 @@ import { buildReferenceGraph } from "../src/domain/reference-registry.js";
 import { buildVisitKnowledgeGraph } from "../src/domain/knowledge-graph.js";
 import { describeQuizAvailability, generateVisitQuizzes, getQuizDifficultyAvailability } from "../src/features/knowledge-graph/quiz-generation.js";
 import { buildObservationFocusGraph } from "../src/features/knowledge-graph/selectors.js";
+import { buildProjectVisualizationGraph } from "../src/features/knowledge-3d/project-visualization-adapter.js";
+import { sizeLayout } from "../src/features/knowledge-3d/layout-engine.js";
 import { migrateProjectDocument } from "../src/features/project/migrate.js";
 import { recordQuizLearning } from "../src/domain/learning-state.js";
 import { verifiedReferenceOptions } from "../src/ui/reference-fact-editor.js";
@@ -38,12 +40,28 @@ describe("demo knowledge and quiz generation", () => {
   it("seeds curated ReferenceFacts into the existing demo Project", async () => {
     const project = demoProject();
     const graph = await referenceGraph();
+    const referenceFacts = DEMO_REFERENCE_FACTS.filter((fact) => fact.valueType === "reference");
+    const quantityFacts = DEMO_REFERENCE_FACTS.filter((fact) => fact.valueType === "quantity");
     expect(project.referenceFacts).toHaveLength(DEMO_REFERENCE_FACTS.length);
     expect(project.referenceFacts.every((fact) => fact.status === "verified")).toBe(true);
-    expect(project.referenceFacts.every((fact) => graph.nodes.some((node) => node.id === fact.value && node.status === "verified"))).toBe(true);
+    expect(referenceFacts.every((fact) => graph.nodes.some((node) => node.id === fact.value && node.status === "verified"))).toBe(true);
+    expect(quantityFacts.every((fact) => graph.nodes.some((node) => node.id === fact.subjectReferenceId && node.status === "verified"))).toBe(true);
     const observations = new Map(project.photos.flatMap((photo) => photo.observations).map((observation) => [observation.id, observation]));
-    expect(DEMO_REFERENCE_FACTS.every((fact) => observations.get(fact.targetObservationId)?.status === "confirmed")).toBe(true);
-    expect(DEMO_REFERENCE_FACTS.every((fact) => fact.sourceType === "curated" && fact.sourceNote && fact.valueType === "reference")).toBe(true);
+    expect(referenceFacts.every((fact) => observations.get(fact.targetObservationId)?.status === "confirmed")).toBe(true);
+    expect(DEMO_REFERENCE_FACTS.every((fact) => fact.sourceType === "curated" && fact.sourceNote)).toBe(true);
+    expect(quantityFacts).toEqual([
+      expect.objectContaining({
+        id: "demo-rf-taxon-cetacea-body-length",
+        subjectReferenceId: "taxon:cetacea",
+        valueType: "quantity",
+        value: expect.objectContaining({
+          quantityKind: "body_length",
+          minSI: 15,
+          maxSI: 18,
+          unitSI: "m",
+        }),
+      }),
+    ]);
     expect(DEMO_REFERENCE_FACTS.filter((fact) => fact.predicate === "classifiedAs").every((fact) => observations.get(fact.targetObservationId)?.observationType === "physical")).toBe(true);
     expect(DEMO_REFERENCE_FACTS.filter((fact) => fact.axis === "geological-time" && observations.get(fact.targetObservationId)?.observationType === "information").every((fact) => fact.predicate === "occursDuring")).toBe(true);
     expect(DEMO_REFERENCE_FACTS.filter((fact) => ["o19a", "o19b"].includes(fact.targetObservationId)).some((fact) => fact.predicate === "classifiedAs")).toBe(false);
@@ -110,9 +128,34 @@ describe("demo knowledge and quiz generation", () => {
   it("builds the demo graph from the same ReferenceFacts and confirmed Relations", () => {
     const project = demoProject();
     const graph = buildVisitKnowledgeGraph(project, "visit-fukui", registries);
-    expect(graph.nodes.filter((node) => node.type === "ReferenceFact")).toHaveLength(DEMO_REFERENCE_FACTS.length);
+    const visitReferenceFacts = DEMO_REFERENCE_FACTS.filter((fact) => fact.subjectId || fact.observationId || fact.targetObservationId);
+    expect(graph.nodes.filter((node) => node.type === "ReferenceFact")).toHaveLength(visitReferenceFacts.length);
+    expect(graph.nodes.some((node) => node.id === "ReferenceFact:demo-rf-taxon-cetacea-body-length")).toBe(false);
     expect(graph.edges.filter((edge) => edge.type === "RELATES_TO" && edge.status === "confirmed").length).toBeGreaterThanOrEqual(2);
     expect(graph.metadata.includesUiState).toBe(false);
+  });
+
+  it("projects the demo body_length quantity into the 3D Size layout", async () => {
+    const project = demoProject();
+    const graph = await referenceGraph();
+    const visualization = buildProjectVisualizationGraph(project, graph, registries, {
+      scope: "allVisits",
+      createdAt: "2026-08-14T00:00:00.000Z",
+    });
+    const cetacea = visualization.nodes.find((node) => node.id === "concept:taxon:cetacea");
+
+    expect(cetacea?.measurements?.[0]).toMatchObject({
+      quantityKind: "body_length",
+      minSI: 15,
+      maxSI: 18,
+      unitSI: "m",
+      source: "Demo body-length range for the Basilosaurus-scale cetacean exhibit.",
+    });
+    expect(sizeLayout(visualization).nodes.find((node) => node.id === "concept:taxon:cetacea")).toMatchObject({
+      zone: "scaled",
+      representativeValue: Math.sqrt(15 * 18),
+      rangeSI: { minSI: 15, maxSI: 18 },
+    });
   });
 
   it("exposes the curated mammal hierarchy in graph focus and reference fact editor options", async () => {

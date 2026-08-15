@@ -40,6 +40,14 @@ const NEVER_SHIP = new Set([
   "node_modules",
 ]);
 
+const LAZY_SHELL_ASSET_PREFIXES = [
+  "./src/vendor/three/",
+];
+
+const EXTERNAL_URL_WARNING_EXCLUDE_PREFIXES = [
+  "src/vendor/",
+];
+
 /** @type {string[]} */
 const errors = [];
 /** @type {string[]} */
@@ -182,7 +190,8 @@ function checkNoSecretsOrExternalCalls() {
           `秘密情報らしき値が含まれています（${name}）: ${rel(file)}`,
         );
     }
-    // Any absolute http(s) URL in shipped code would be an outbound call.
+    if (EXTERNAL_URL_WARNING_EXCLUDE_PREFIXES.some((prefix) => rel(file).startsWith(prefix))) continue;
+    // Any absolute http(s) URL in shipped app code would be an outbound call.
     for (const match of text.matchAll(/https?:\/\/[^\s'"`)<>]+/g)) {
       const url = match[0];
       if (url.startsWith("http://www.w3.org/")) continue; // SVG namespace
@@ -269,7 +278,8 @@ function stampServiceWorker(files) {
     "./pwa-icon-512.png",
     ...files
       .map((file) => `./${path.relative(dist, file).split(path.sep).join("/")}`)
-      .filter((file) => /\.(?:js|css|json)$/.test(file)),
+      .filter((file) => /\.(?:js|css|json)$/.test(file))
+      .filter((file) => !LAZY_SHELL_ASSET_PREFIXES.some((prefix) => file.startsWith(prefix))),
   ];
   const sw = fs.readFileSync(swPath, "utf8")
     .replace(/const SHELL_ASSETS = \[[\s\S]*?\];/, `const SHELL_ASSETS = ${JSON.stringify([...new Set(generated)], null, 2)};`)

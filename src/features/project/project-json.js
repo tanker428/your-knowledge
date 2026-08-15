@@ -17,6 +17,13 @@ export const SCHEMA_VERSION = "2.0.0";
 
 /** Majors we know how to read. Anything else is refused. */
 const SUPPORTED_MAJORS = new Set([1, 2]);
+const REFERENCE_FACT_VALUE_TYPES = new Set([
+  "entity-reference",
+  "observation-reference",
+  "quantity",
+  "reference",
+  "text",
+]);
 
 /**
  * The outcome of reading an untrusted file.
@@ -30,6 +37,21 @@ const SUPPORTED_MAJORS = new Set([1, 2]);
  * @property {string} [reason]
  * @property {any} [data]
  * @property {{photos: number, observations: number, relations: number}} [counts]
+ */
+
+/**
+ * A non-fatal diagnostic from resolving ReferenceFact values against a
+ * ReferenceGraph. These issues should be displayed or logged, not used to
+ * reject the whole project file.
+ *
+ * @typedef {object} ReferenceDiagnostic
+ * @property {"reference-data-version-mismatch"|"unresolved-reference"|"axis-mismatch"} type
+ * @property {string|null} [referenceFactId]
+ * @property {string} [value]
+ * @property {string|null} [axis]
+ * @property {string|null} [referenceAxis]
+ * @property {string} [expectedVersion]
+ * @property {string} [actualVersion]
  */
 
 /**
@@ -107,8 +129,8 @@ export function buildExportDocument(input) {
     observations,
     relations: project.relations,
     entities: Array.isArray(project.entities) ? project.entities : [],
-     referenceFacts: project.referenceFacts || [],
-     demoKnowledgeVersion: project.demoKnowledgeVersion ?? null,
+    referenceFacts: project.referenceFacts || [],
+    demoKnowledgeVersion: project.demoKnowledgeVersion ?? null,
     // Legacy facts are retained under an explicit quarantine key so an old
     // user's data is not silently destroyed or reclassified as ReferenceFact.
     legacyFacts: project.facts || [],
@@ -263,12 +285,42 @@ export function validateProjectDocument(value) {
     if (fact.subjectId != null && !entityIds.has(fact.subjectId) && !observationIds.has(fact.subjectId)) {
       return { ok: false, reason: `referenceFacts[${index}] のsubjectIdが存在しません。` };
     }
+    if (fact.subjectReferenceId != null && !isNonEmptyString(fact.subjectReferenceId)) {
+      return { ok: false, reason: `referenceFacts[${index}] has an invalid subjectReferenceId.` };
+    }
     for (const key of ["observationId", "targetObservationId"]) {
       if (fact[key] != null && !observationIds.has(fact[key])) {
         return { ok: false, reason: `referenceFacts[${index}] の${key}が存在しません。` };
       }
     }
-    const referenceValue = fact.valueType === "entity-reference" || fact.valueType === "observation-reference" || fact.valueType === "reference";
+    if (fact.valueType != null && !REFERENCE_FACT_VALUE_TYPES.has(fact.valueType)) {
+      return { ok: false, reason: `referenceFacts[${index}] has an unsupported valueType.` };
+    }
+    if (fact.valueType === "entity-reference") {
+      const values = stringValues(fact.value);
+      if (!values.length || values.some((value) => !entityIds.has(value))) {
+        return { ok: false, reason: `referenceFacts[${index}] has an invalid entity reference value.` };
+      }
+    }
+    if (fact.valueType === "observation-reference") {
+      const values = stringValues(fact.value);
+      if (!values.length || values.some((value) => !observationIds.has(value))) {
+        return { ok: false, reason: `referenceFacts[${index}] has an invalid observation reference value.` };
+      }
+    }
+    if (fact.valueType === "reference") {
+      if (!isNonEmptyString(fact.axis)) {
+        return { ok: false, reason: `referenceFacts[${index}] has no reference axis.` };
+      }
+      if (!stringValues(fact.value).length) {
+        return { ok: false, reason: `referenceFacts[${index}] has an empty reference value.` };
+      }
+    }
+    if (fact.valueType === "quantity") {
+      const error = validateQuantityFactValue(fact.value, index);
+      if (error) return { ok: false, reason: error };
+    }
+    const referenceValue = fact.valueType === "entity-reference" || fact.valueType === "observation-reference";
     if (referenceValue && typeof fact.value === "string") {
       const exists = entityIds.has(fact.value) || observationIds.has(fact.value);
       if (!exists) return { ok: false, reason: `referenceFacts[${index}] のvalue参照先が存在しません。` };
@@ -284,6 +336,74 @@ export function validateProjectDocument(value) {
       relations: doc.relations.length,
     },
   };
+}
+
+/**
+ * Resolve ReferenceFact valueType:"reference" values against a ReferenceGraph.
+ * This is semantic validation for optional diagnostics. It must not block
+ * project import because ReferenceGraph data can be missing or newer than the
+ * exported project.
+ *
+ * @param {object} documentOrProject Export document or in-memory project.
+ * @param {{metadata?: {referenceDataVersion?: string|null}, nodes?: Array<{id?: string, axis?: string|null}>}|null|undefined} referenceGraph
+ * @returns {ReferenceDiagnostic[]}
+ */
+export function validateReferenceFactReferences(documentOrProject, referenceGraph) {
+  const root = /** @type {Record<string, any>} */ (documentOrProject || {});
+  const referenceFacts = Array.isArray(root.referenceFacts) ? root.referenceFacts : [];
+  const graphNodes = Array.isArray(referenceGraph?.nodes) ? referenceGraph.nodes : [];
+  const nodeById = new Map(
+    graphNodes
+      .filter((node) => isNonEmptyString(node.id))
+      .map((node) => [/** @type {string} */ (node.id), node]),
+  );
+
+  /** @type {ReferenceDiagnostic[]} */
+  const diagnostics = [];
+  const projectVersion = root.referenceDataVersion;
+  const graphVersion = referenceGraph?.metadata?.referenceDataVersion;
+  if (
+    isNonEmptyString(projectVersion) &&
+    isNonEmptyString(graphVersion) &&
+    projectVersion !== graphVersion
+  ) {
+    diagnostics.push({
+      type: "reference-data-version-mismatch",
+      expectedVersion: projectVersion,
+      actualVersion: graphVersion,
+    });
+  }
+
+  for (const fact of referenceFacts) {
+    if (fact?.valueType !== "reference") continue;
+    for (const value of stringValues(fact.value)) {
+      const referenceNode = nodeById.get(value);
+      if (!referenceNode) {
+        diagnostics.push({
+          type: "unresolved-reference",
+          referenceFactId: isNonEmptyString(fact.id) ? fact.id : null,
+          value,
+          axis: isNonEmptyString(fact.axis) ? fact.axis : null,
+        });
+        continue;
+      }
+      if (
+        isNonEmptyString(fact.axis) &&
+        isNonEmptyString(referenceNode.axis) &&
+        fact.axis !== referenceNode.axis
+      ) {
+        diagnostics.push({
+          type: "axis-mismatch",
+          referenceFactId: isNonEmptyString(fact.id) ? fact.id : null,
+          value,
+          axis: fact.axis,
+          referenceAxis: referenceNode.axis,
+        });
+      }
+    }
+  }
+
+  return diagnostics;
 }
 
 /**
@@ -378,4 +498,60 @@ export function documentToProject(doc, availablePhotoIds, projectId) {
     },
     missingPhotoIds,
   };
+}
+
+/**
+ * @param {unknown} value
+ * @returns {value is string}
+ */
+function isNonEmptyString(value) {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+/**
+ * @param {unknown} value
+ * @returns {string[]}
+ */
+function stringValues(value) {
+  if (isNonEmptyString(value)) return [value.trim()];
+  if (!Array.isArray(value)) return [];
+
+  const values = [];
+  for (const item of value) {
+    if (!isNonEmptyString(item)) return [];
+    values.push(item.trim());
+  }
+  return values;
+}
+
+/**
+ * @param {unknown} value
+ * @param {number} index
+ * @returns {string|null}
+ */
+function validateQuantityFactValue(value, index) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return `referenceFacts[${index}] has an invalid quantity value.`;
+  }
+  const quantity = /** @type {Record<string, any>} */ (value);
+  if (!isNonEmptyString(quantity.quantityKind)) {
+    return `referenceFacts[${index}] has no quantityKind.`;
+  }
+  for (const key of ["valueSI", "minSI", "maxSI"]) {
+    if (quantity[key] != null && !isFiniteNumber(quantity[key])) {
+      return `referenceFacts[${index}] has an invalid ${key}.`;
+    }
+  }
+  if (quantity.unitSI != null && !isNonEmptyString(quantity.unitSI)) {
+    return `referenceFacts[${index}] has an invalid unitSI.`;
+  }
+  if (quantity.estimated != null && typeof quantity.estimated !== "boolean") {
+    return `referenceFacts[${index}] has an invalid estimated flag.`;
+  }
+  return null;
+}
+
+/** @param {unknown} value */
+function isFiniteNumber(value) {
+  return typeof value === "number" && Number.isFinite(value);
 }

@@ -163,6 +163,44 @@ ReferenceGraph（分類・時代の参照構造）とReferenceFact（EntityやOb
 知識）は別の層である。ReferenceGraphのstable IDを必要な参照接続から利用し、参照構造そのものを
 保存用KGへ重複保存しない。
 
+## 3D表示用ConceptとVisualizationGraph
+
+3D表示は保存用KnowledgeGraphを置き換えない。保存データ、ReferenceGraph、ReferenceFactから
+表示用の`VisualizationGraphV1`を導出し、Layout Engineで座標を作る。3D座標、クラスタ、
+カメラ状態は保存用KGへ固定保存しない。
+
+短期MVPではConceptはprojection-onlyであり、Project JSONへ保存しない。最終的な永続Concept
+ノードは後続で設計する。
+
+```text
+taxonomy ReferenceNode      → canonical Concept
+geological-time ReferenceNode → time landmark / time interval
+DomainCategory              → domain-fallback cluster / concept-placeholder
+Entity / Observation         → provisional Concept
+解決不能な参照              → unresolved
+```
+
+`observationType: "concept"`はObservationの種別であり、3D表示用Concept層とは別物として扱う。
+EntityをそのままConceptとして扱わず、ラベル一致だけでConceptを統合しない。
+
+同一Observation / axisでcanonical Conceptが立つ場合、DomainCategory fallbackは出さない。
+
+ReferenceFactの明示predicateがある場合だけ、projection edgeを次のように型付けする。
+
+```text
+represents    → REPRESENTS
+depicts       → DEPICTS
+specimenOf    → SPECIMEN_OF
+instanceOf    → INSTANCE_OF
+classifiedAs  → CLASSIFIED_AS
+```
+
+genericCategoryやobservationTypeから導出する場合は`derived: true`、
+`verificationStatus: "suggested"`を付ける。明示根拠がない`INSTANCE_OF`は生成しない。
+
+Size modeの初期数量は`body_length`だけを扱う。一般的なtaxonの体長はObservationへ重複保存せず、
+ReferenceFactで`subjectReferenceId: "taxon:..."`を使う。長さ、重量、面積は同じ軸へ混在させない。
+
 | データ | 保存先 |
 |-------|-------|
 | Photo メタ・Observation・関係・学習状態・クイズ結果 | IndexedDB `projects` |

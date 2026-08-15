@@ -16,5 +16,5 @@
     "strict": false
   },
   "include": ["src/**/*.js", "tests/**/*.js", "scripts/**/*.mjs"],
-  "exclude": ["node_modules", "dist", "sw.js"]
+  "exclude": ["node_modules", "dist", "sw.js", "src/vendor"]
 }

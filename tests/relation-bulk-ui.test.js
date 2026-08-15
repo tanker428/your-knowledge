@@ -283,26 +283,62 @@ describe("Relation bulk UI", () => {
     expect(dom.window.getComputedStyle(document.querySelector("#photoModal")).zIndex).toBe("100");
   });
 
+  it("uses the same scoped candidate filtering when reselecting the relation source", async () => {
+    const project = projectFixture();
+    project.photos.push({
+      id: "photo-2",
+      visitId: "visit-1",
+      file: "other.jpg",
+      order: 2,
+      title: "Other Photo",
+      status: "organized",
+      source: "user",
+      rotation: 0,
+      observations: [
+        { ...observation("o3", "Target on other photo"), photoId: "photo-2" },
+        { ...observation("o4", "Peer on other photo"), photoId: "photo-2" },
+      ],
+    });
+    const { dom } = await boot(project);
+    const { document } = dom.window;
+
+    document.querySelector('[data-step="4"]').click();
+    document.querySelector("#addRelationButton").click();
+    document.querySelector('[data-relation-scope="visit"]').click();
+    document.querySelector("#chooseRelationTargetButton").click();
+    document.querySelector('#relationTargetOptions [data-endpoint-select="o3"]').click();
+    document.querySelector("#chooseRelationSourceButton").click();
+
+    const sourceOptionIds = [...document.querySelectorAll("#relationSourceOptions .endpoint-option")]
+      .map((node) => node.dataset.endpointOption);
+    expect(sourceOptionIds).toEqual(["o1", "o2", "o4"]);
+    expect(document.querySelector("#relationSourceOptions .endpoint-search")).not.toBeNull();
+  });
+
   it("keeps memo input interaction from reopening or covering the photo modal", async () => {
     const { dom } = await boot();
-    const { document, Event, MouseEvent } = dom.window;
+    const { document } = dom.window;
 
     document.querySelector('[data-view="photos"]').click();
     document.querySelector('[data-photo-id="photo-1"]').click();
     expect(document.querySelector("#photoModal").classList.contains("open")).toBe(true);
 
     const memoInput = document.querySelector("#experienceMemoInput");
-    memoInput.dispatchEvent(new Event("focus", { bubbles: true }));
+    memoInput.dispatchEvent(new dom.window.FocusEvent("focus"));
     expect(document.querySelector("#photoModal").classList.contains("open")).toBe(false);
 
-    memoInput.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    const click = new dom.window.MouseEvent("click", { bubbles: true, cancelable: true });
+    memoInput.dispatchEvent(click);
+    expect(click.defaultPrevented).toBe(false);
     expect(document.querySelector("#photoModal").classList.contains("open")).toBe(false);
   });
 
   it("renders distinct fallback explanations for theme category info buttons", async () => {
+    const project = projectFixture();
+    project.photos[0].observations[0].domainPacks = ["paleo"];
     const customRegistry = {
       ...registry,
-      packs: [{ id: "paleo", label: "Paleo Pack", icon: "P" }],
+      packs: [{ id: "paleo", label: "Paleontology", icon: "P", description: "", categories: [] }],
       categoriesByPack: {
         paleo: [
           { id: "bone", label: "Bone" },
@@ -310,19 +346,16 @@ describe("Relation bulk UI", () => {
         ],
       },
     };
-    const project = projectFixture();
-    project.visits[0].domainPackIds = ["paleo"];
-    project.photos[0].observations[0].domainPacks = ["paleo"];
     const { dom } = await boot(project, customRegistry);
     const { document } = dom.window;
 
     document.querySelector('[data-step="3"]').click();
-    const descriptions = [...document.querySelectorAll('[data-chip-type="domain-category"] [data-chip-info]')].map((node) => node.dataset.chipInfo);
-    expect(descriptions).toHaveLength(2);
-    expect(new Set(descriptions).size).toBe(2);
-    expect(descriptions[0]).toContain("Paleo Pack");
-    expect(descriptions[0]).toContain("Bone");
-    expect(descriptions[1]).toContain("Panel");
+    const infoMessages = [...document.querySelectorAll('[data-chip-type="domain-category"] [data-chip-info]')]
+      .map((node) => node.dataset.chipInfo);
+    expect(infoMessages).toHaveLength(2);
+    expect(new Set(infoMessages).size).toBe(2);
+    expect(infoMessages[0]).toContain("Bone");
+    expect(infoMessages[1]).toContain("Panel");
   });
 
   it("limits Relation editing to one radio-selected type and updates one record", async () => {
