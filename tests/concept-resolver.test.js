@@ -149,6 +149,16 @@ const referenceFacts = [
     sourceType: "curated",
   },
   {
+    id: "rf-missing-other",
+    targetObservationId: "o-domain",
+    predicate: "classifiedAs",
+    valueType: "reference",
+    value: "taxon:missing",
+    axis: "taxonomy",
+    status: "verified",
+    sourceType: "curated",
+  },
+  {
     id: "rf-model-a",
     subjectId: "e-model-a",
     predicate: "represents",
@@ -310,10 +320,11 @@ describe("buildConceptVisualizationGraph", () => {
     expect(built.nodes).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          id: "concept:unresolved:rf-missing",
+          id: "concept:unresolved:taxon%3Amissing",
           mappingStatus: "unresolved",
-          observationIds: ["o-missing"],
-          referenceIds: [],
+          observationIds: ["o-domain", "o-missing"],
+          referenceIds: ["taxon:missing"],
+          sourceNodeIds: ["ReferenceFact:rf-missing", "ReferenceFact:rf-missing-other"],
         }),
         expect.objectContaining({
           id: "concept:provisional:entity:e-provisional",
@@ -328,6 +339,23 @@ describe("buildConceptVisualizationGraph", () => {
       ]),
     );
     expect(built.nodes.some((node) => node.id === "concept:o-observation-concept")).toBe(false);
+  });
+
+  it("aggregates unresolved reference Concepts by reference id rather than by fact id", () => {
+    const built = graph();
+    const unresolved = built.nodes.filter((node) => node.id === "concept:unresolved:taxon%3Amissing");
+
+    expect(unresolved).toHaveLength(1);
+    expect(unresolved[0]).toMatchObject({
+      label: "taxon:missing",
+      mappingStatus: "unresolved",
+      referenceIds: ["taxon:missing"],
+      observationIds: ["o-domain", "o-missing"],
+      sourceNodeIds: ["ReferenceFact:rf-missing", "ReferenceFact:rf-missing-other"],
+      data: expect.objectContaining({
+        unresolvedReferenceId: "taxon:missing",
+      }),
+    });
   });
 
   it("attaches quantity ReferenceFacts to canonical Concepts through subjectReferenceId", () => {

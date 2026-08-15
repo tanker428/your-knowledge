@@ -25,6 +25,23 @@ describe("knowledge 3D measurements", () => {
     });
   });
 
+  it("does not infer meters for raw body_length values without an explicit unit", () => {
+    expect(normalizeBodyLengthQuantity({
+      quantityKind: BODY_LENGTH_QUANTITY_KIND,
+      value: 12,
+      min: 10,
+      max: 14,
+      estimated: true,
+    })).toEqual({
+      quantityKind: BODY_LENGTH_QUANTITY_KIND,
+      valueSI: null,
+      minSI: null,
+      maxSI: null,
+      unitSI: "m",
+      estimated: true,
+    });
+  });
+
   it("converts quantity ReferenceFacts into Visualization measurements", () => {
     expect(measurementFromQuantityReferenceFact({
       id: "rf-body-length",
@@ -48,6 +65,24 @@ describe("knowledge 3D measurements", () => {
       estimated: true,
       confidence: 0.7,
       source: "fixture source",
+    });
+  });
+
+  it("drops out-of-range confidence instead of projecting invalid confidence values", () => {
+    expect(measurementFromQuantityReferenceFact({
+      id: "rf-body-length-invalid-confidence",
+      valueType: "quantity",
+      value: {
+        quantityKind: "body_length",
+        valueSI: 4.2,
+        unitSI: "m",
+        estimated: true,
+      },
+      confidence: 1.4,
+      sourceType: "curated",
+    })).toMatchObject({
+      valueSI: 4.2,
+      confidence: null,
     });
   });
 
@@ -81,6 +116,16 @@ describe("knowledge 3D measurements", () => {
       minSI: null,
       maxSI: null,
       unitSI: "cm",
+      estimated: true,
+      confidence: null,
+      source: null,
+    })).toBeNull();
+    expect(resolveMeasurementForLogScale({
+      quantityKind: "body_length",
+      valueSI: null,
+      minSI: 5.5,
+      maxSI: 4,
+      unitSI: "m",
       estimated: true,
       confidence: null,
       source: null,

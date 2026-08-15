@@ -141,4 +141,28 @@ describe("validateVisualizationGraph", () => {
       ]),
     );
   });
+
+  it("rejects measurement confidence outside the 0..1 range", () => {
+    const invalid = structuredClone(VISUALIZATION_GRAPH_FIXTURE);
+    invalid.nodes[0] = {
+      ...invalid.nodes[0],
+      measurements: [{
+        quantityKind: "body_length",
+        valueSI: 4,
+        minSI: null,
+        maxSI: null,
+        unitSI: "m",
+        estimated: false,
+        confidence: 1.2,
+        source: "test",
+      }],
+    };
+
+    expect(validateVisualizationGraph(invalid)).toMatchObject({
+      ok: false,
+      errors: expect.arrayContaining([
+        `measurement confidence must be between 0 and 1: ${invalid.nodes[0].id}.measurements[0]`,
+      ]),
+    });
+  });
 });

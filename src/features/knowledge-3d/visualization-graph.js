@@ -206,6 +206,14 @@ function validateMeasurements(node, errors) {
         errors.push(`measurement ${key} must be null or finite number: ${label}`);
       }
     }
+    if (
+      measurement.confidence !== null &&
+      measurement.confidence !== undefined &&
+      isFiniteNumber(measurement.confidence) &&
+      (measurement.confidence < 0 || measurement.confidence > 1)
+    ) {
+      errors.push(`measurement confidence must be between 0 and 1: ${label}`);
+    }
     if (measurement.unitSI !== null && measurement.unitSI !== undefined && !isNonEmptyString(measurement.unitSI)) {
       errors.push(`measurement unitSI must be null or string: ${label}`);
     }

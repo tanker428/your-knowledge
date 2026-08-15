@@ -44,7 +44,7 @@ const LENGTH_UNIT_TO_METERS = Object.freeze({
 export function normalizeBodyLengthQuantity(value) {
   if (!isPlainObject(value)) return null;
   const rawUnit = cleanString(value.unit);
-  const multiplier = rawUnit ? lengthUnitMultiplier(rawUnit) : 1;
+  const multiplier = rawUnit ? lengthUnitMultiplier(rawUnit) : null;
   const canConvertRaw = multiplier !== null;
 
   const valueSI = finiteNumberOrNull(value.valueSI) ?? (canConvertRaw ? scaledFiniteNumberOrNull(value.value, multiplier) : null);
@@ -96,7 +96,7 @@ export function measurementFromQuantityReferenceFact(fact) {
   if (!quantity) return null;
   return {
     ...quantity,
-    confidence: finiteNumberOrNull(fact.confidence),
+    confidence: confidenceOrNull(fact.confidence),
     source: firstCleanString(fact.sourceNote, fact.sourceType, fact.id),
   };
 }
@@ -114,7 +114,11 @@ export function resolveMeasurementForLogScale(measurement, unitSI = LENGTH_UNIT_
   if (isPositiveFiniteNumber(measurement.valueSI)) {
     return { representativeValue: measurement.valueSI, rangeSI: null };
   }
-  if (isPositiveFiniteNumber(measurement.minSI) && isPositiveFiniteNumber(measurement.maxSI)) {
+  if (
+    isPositiveFiniteNumber(measurement.minSI) &&
+    isPositiveFiniteNumber(measurement.maxSI) &&
+    measurement.minSI <= measurement.maxSI
+  ) {
     return {
       representativeValue: Math.sqrt(measurement.minSI * measurement.maxSI),
       rangeSI: {
@@ -149,6 +153,12 @@ function scaledFiniteNumberOrNull(value, multiplier) {
 /** @param {unknown} value @returns {number|null} */
 function finiteNumberOrNull(value) {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+/** @param {unknown} value @returns {number|null} */
+function confidenceOrNull(value) {
+  const number = finiteNumberOrNull(value);
+  return number !== null && number >= 0 && number <= 1 ? number : null;
 }
 
 /** @param {unknown} value */
