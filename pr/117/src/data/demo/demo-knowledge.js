@@ -3,7 +3,7 @@
  * These records use the same ReferenceFact contract as user data; they are
  * not a second quiz-only graph.
  */
-export const DEMO_KNOWLEDGE_VERSION = "2026-08-14.1";
+export const DEMO_KNOWLEDGE_VERSION = "2026-08-15.1";
 export const DEMO_RETIRED_REFERENCE_FACT_IDS = Object.freeze([
   "demo-rf-o18c-archosauria",
   "demo-rf-o19a-pterosauria",
@@ -175,6 +175,44 @@ export const DEMO_REFERENCE_FACTS = Object.freeze([
     confidence: 0.7,
     sourceType: "curated",
     sourceNote: "Demo body-length range for the Basilosaurus-scale cetacean exhibit.",
+    status: "verified",
+  },
+  {
+    id: "demo-rf-taxon-tyrannosaurus-body-length",
+    subjectReferenceId: "taxon:tyrannosaurus",
+    visitId: "visit-fukui",
+    predicate: "bodyLength",
+    valueType: "quantity",
+    value: {
+      quantityKind: "body_length",
+      valueSI: null,
+      minSI: 11.5,
+      maxSI: 12.5,
+      unitSI: "m",
+      estimated: true,
+    },
+    confidence: 0.35,
+    sourceType: "curated",
+    sourceNote: "generated demo data: synthetic body_length range for Size layout QA; not a verified observation.",
+    status: "verified",
+  },
+  {
+    id: "demo-rf-taxon-triceratops-body-length",
+    subjectReferenceId: "taxon:triceratops",
+    visitId: "visit-fukui",
+    predicate: "bodyLength",
+    valueType: "quantity",
+    value: {
+      quantityKind: "body_length",
+      valueSI: null,
+      minSI: 8.5,
+      maxSI: 9.5,
+      unitSI: "m",
+      estimated: true,
+    },
+    confidence: 0.35,
+    sourceType: "curated",
+    sourceNote: "generated demo data: synthetic body_length range for Size layout QA; not a verified observation.",
     status: "verified",
   },
   {

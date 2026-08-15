@@ -278,7 +278,7 @@ export async function initApp(deps) {
     knowledgeViewMode: "overview",
     knowledgeLayoutMode: "radial",
     knowledge3dMode: "home",
-    knowledge3dScope: "allVisits",
+    knowledge3dScope: "activeVisit",
     knowledge3dSelectedNodeId: null,
     knowledgeZoom: 1,
     knowledgeAxis: "all",
@@ -2254,11 +2254,15 @@ export async function initApp(deps) {
       return;
     }
 
-    if (!graph.nodes.some((node) => node.id === state.knowledge3dSelectedNodeId)) {
-      state.knowledge3dSelectedNodeId = defaultKnowledge3dNodeId(graph);
+    const displayNodes = knowledge3dDisplayNodes(graph, mode);
+    if (!displayNodes.some((node) => node.id === state.knowledge3dSelectedNodeId)) {
+      state.knowledge3dSelectedNodeId = defaultKnowledge3dNodeId({ nodes: displayNodes }) || defaultKnowledge3dNodeId(graph);
     }
 
-    const visibleNodes = filterKnowledge3dNodes(graph);
+    const visibleNodes = filterKnowledge3dNodes(graph, displayNodes);
+    if (state.knowledgeSearch.trim() && visibleNodes.length === 1) {
+      state.knowledge3dSelectedNodeId = visibleNodes[0].id;
+    }
     $("#knowledgeObservationList").innerHTML = visibleNodes.length
       ? `<div class="knowledge-3d-index-note"><strong>${graph.nodes.length} nodes / ${graph.edges.length} edges</strong><small>${escapeHtml(knowledge3dScopeLabel(scope))}・${escapeHtml(knowledge3dModeLabel(mode))}</small></div>${visibleNodes.map((node) => renderKnowledge3dNodeItem(node)).join("")}`
       : '<div class="empty-state"><strong>検索に一致する3Dノードがありません</strong><p>Concept、Observation、写真メモを別の語句で検索してください。</p></div>';
@@ -2274,10 +2278,40 @@ export async function initApp(deps) {
           graph,
           mode,
           selectedNodeId: state.knowledge3dSelectedNodeId,
+          autoRotate: false,
         });
-      } catch (error) {
+      } catch {
         releaseKnowledge3dController();
-        if (stage) stage.innerHTML = renderKnowledge3dError(error);
+        knowledge3dGraphKey = null;
+        $("#knowledgeGraphCanvas").innerHTML = renderKnowledge3dCanvas(graph);
+        bindKnowledge3dEvents(graph);
+        const retryStage = $("#knowledge3dStage");
+        if (!retryStage) return;
+        const token = knowledge3dMountToken + 1;
+        knowledge3dMountToken = token;
+        knowledge3dGraphKey = nextGraphKey;
+        try {
+          const controller = await mountKnowledge3dGraph(retryStage, {
+            graph,
+            mode,
+            selectedNodeId: state.knowledge3dSelectedNodeId,
+            autoRotate: false,
+            onNodeSelect(nodeId) {
+              state.knowledge3dSelectedNodeId = nodeId;
+              renderKnowledge();
+            },
+          });
+          if (token !== knowledge3dMountToken) {
+            releaseKnowledge3dController(controller);
+            return;
+          }
+          knowledge3dController = controller;
+        } catch (retryError) {
+          if (token !== knowledge3dMountToken) return;
+          knowledge3dController = null;
+          knowledge3dGraphKey = null;
+          retryStage.innerHTML = renderKnowledge3dError(retryError);
+        }
       }
       bindKnowledge3dEvents(graph);
       return;
@@ -2297,6 +2331,7 @@ export async function initApp(deps) {
         graph,
         mode,
         selectedNodeId: state.knowledge3dSelectedNodeId,
+        autoRotate: false,
         onNodeSelect(nodeId) {
           state.knowledge3dSelectedNodeId = nodeId;
           renderKnowledge();
@@ -2318,7 +2353,7 @@ export async function initApp(deps) {
   function renderKnowledge3dCanvas(graph) {
     const mode = currentKnowledge3dMode();
     const scope = currentKnowledge3dScope();
-    return `<div class="kg-canvas-header"><span>WEB 3D</span><strong>${escapeHtml(knowledge3dModeLabel(mode))}</strong><span class="kg-header-actions"><button class="text-button" data-knowledge3d-reset-camera>カメラを戻す</button></span></div><div id="knowledge3dStage" class="knowledge-3d-stage knowledge-3d-mode-${escapeHtml(mode)}"><div class="knowledge-3d-loading"><strong>3D知識空間を読み込み中</strong><small>${escapeHtml(knowledge3dScopeLabel(scope))}・${graph.nodes.length} nodes</small></div></div><div class="knowledge-3d-legend"><span><i class="knowledge-3d-dot kind-experience"></i>体験</span><span><i class="knowledge-3d-dot kind-entity"></i>対象</span><span><i class="knowledge-3d-dot kind-concept"></i>Concept</span><span><i class="knowledge-3d-dot kind-landmark"></i>時代</span></div>`;
+    return `<div class="kg-canvas-header"><span>WEB 3D</span><strong>${escapeHtml(knowledge3dModeLabel(mode))}</strong><span class="kg-header-actions"><button class="text-button" data-knowledge3d-reset-camera>カメラを戻す</button></span></div><div id="knowledge3dStage" class="knowledge-3d-stage knowledge-3d-mode-${escapeHtml(mode)}"><div class="knowledge-3d-loading"><strong>3D知識空間を読み込み中</strong><small>${escapeHtml(knowledge3dScopeLabel(scope))}・${graph.nodes.length} nodes</small></div></div><div class="knowledge-3d-legend">${renderKnowledge3dLegend(mode)}</div>`;
   }
 
   function updateKnowledge3dCanvasChrome(graph, mode, scope) {
@@ -2330,6 +2365,15 @@ export async function initApp(deps) {
       stage.dataset.scope = scope;
       stage.dataset.nodeCount = String(graph.nodes.length);
     }
+    const legend = $("#knowledgeGraphCanvas .knowledge-3d-legend");
+    if (legend) legend.innerHTML = renderKnowledge3dLegend(mode);
+  }
+
+  function renderKnowledge3dLegend(mode) {
+    if (mode === "size") {
+      return '<span><i class="knowledge-3d-dot kind-concept"></i>Concept</span><span><i class="knowledge-3d-dot kind-entity"></i>対象</span><span>body_length axis</span><span>unset: no body_length</span>';
+    }
+    return '<span><i class="knowledge-3d-dot kind-experience"></i>体験</span><span><i class="knowledge-3d-dot kind-entity"></i>対象</span><span><i class="knowledge-3d-dot kind-concept"></i>Concept</span><span><i class="knowledge-3d-dot kind-landmark"></i>時代</span>';
   }
 
   function knowledge3dGraphSignature(graph, scope) {
@@ -2346,12 +2390,18 @@ export async function initApp(deps) {
     return `<div class="empty-state large knowledge-3d-error"><strong>3D表示を開始できません</strong><p>${escapeHtml(message)}</p><p>2D知識マップ、クイズ、JSON入出力はこのまま利用できます。</p></div>`;
   }
 
-  function filterKnowledge3dNodes(graph) {
+  function knowledge3dDisplayNodes(graph, mode) {
+    const nodes = graph.nodes || [];
+    if (mode !== "size") return nodes;
+    return nodes.filter((node) => node.kind === "concept" || node.kind === "entity");
+  }
+
+  function filterKnowledge3dNodes(graph, nodes = graph.nodes) {
     const query = state.knowledgeSearch.trim().toLowerCase();
-    const nodes = query
-      ? graph.nodes.filter((node) => knowledge3dNodeSearchText(node).includes(query))
-      : graph.nodes;
-    return [...nodes].sort(compareKnowledge3dNodes);
+    const matchedNodes = query
+      ? nodes.filter((node) => knowledge3dNodeSearchText(node).includes(query))
+      : nodes;
+    return [...matchedNodes].sort(compareKnowledge3dNodes);
   }
 
   function knowledge3dNodeSearchText(node) {

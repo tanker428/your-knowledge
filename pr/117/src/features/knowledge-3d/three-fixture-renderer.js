@@ -24,7 +24,7 @@ const MODE_TRANSITION_MS = 520;
  * @property {string|null} reason
  * @property {() => void} dispose
  * @property {() => void} [resetCamera]
- * @property {(options:{graph?: any, mode?: "home"|"relation"|"size", selectedNodeId?: string|null}) => void} [updateLayout]
+ * @property {(options:{graph?: any, mode?: "home"|"relation"|"size", selectedNodeId?: string|null, autoRotate?: boolean}) => void} [updateLayout]
  */
 
 /**
@@ -32,7 +32,7 @@ const MODE_TRANSITION_MS = 520;
  * this function is called and WebGL has been confirmed available.
  *
  * @param {HTMLElement} container
- * @param {{mode?: "home"|"relation"|"size", loadThree?: () => Promise<any>, runtime?: any, webglAvailable?: boolean, requestAnimationFrame?: FrameRequestCallback, cancelAnimationFrame?: (id:number) => void, graph?: any, selectedNodeId?: string|null, onNodeSelect?: (nodeId:string) => void}} [options]
+ * @param {{mode?: "home"|"relation"|"size", loadThree?: () => Promise<any>, runtime?: any, webglAvailable?: boolean, requestAnimationFrame?: FrameRequestCallback, cancelAnimationFrame?: (id:number) => void, graph?: any, selectedNodeId?: string|null, onNodeSelect?: (nodeId:string) => void, autoRotate?: boolean}} [options]
  * @returns {Promise<Knowledge3dController>}
  */
 export async function mountKnowledge3dFixture(container, options = {}) {
@@ -47,7 +47,7 @@ export async function mountKnowledge3dFixture(container, options = {}) {
  * lifecycle as the fixture preview.
  *
  * @param {HTMLElement} container
- * @param {{mode?: "home"|"relation"|"size", loadThree?: () => Promise<any>, runtime?: any, webglAvailable?: boolean, requestAnimationFrame?: FrameRequestCallback, cancelAnimationFrame?: (id:number) => void, graph?: any, selectedNodeId?: string|null, onNodeSelect?: (nodeId:string) => void}} [options]
+ * @param {{mode?: "home"|"relation"|"size", loadThree?: () => Promise<any>, runtime?: any, webglAvailable?: boolean, requestAnimationFrame?: FrameRequestCallback, cancelAnimationFrame?: (id:number) => void, graph?: any, selectedNodeId?: string|null, onNodeSelect?: (nodeId:string) => void, autoRotate?: boolean}} [options]
  * @returns {Promise<Knowledge3dController>}
  */
 export async function mountKnowledge3dGraph(container, options = {}) {
@@ -73,6 +73,7 @@ export async function mountKnowledge3dGraph(container, options = {}) {
     cancelAnimationFrame: options.cancelAnimationFrame,
     selectedNodeId: options.selectedNodeId,
     onNodeSelect: options.onNodeSelect,
+    autoRotate: options.autoRotate,
   });
 }
 
@@ -105,7 +106,7 @@ function mountFallback(container, reason) {
  * @param {any} THREE
  * @param {any} graph
  * @param {import('./layout-engine.js').VisualizationLayout} layout
- * @param {{runtime:any, requestAnimationFrame?: FrameRequestCallback, cancelAnimationFrame?: (id:number) => void, selectedNodeId?: string|null, onNodeSelect?: (nodeId:string) => void}} options
+ * @param {{runtime:any, requestAnimationFrame?: FrameRequestCallback, cancelAnimationFrame?: (id:number) => void, selectedNodeId?: string|null, onNodeSelect?: (nodeId:string) => void, autoRotate?: boolean}} options
  * @returns {Knowledge3dController}
  */
 function mountThreeScene(container, THREE, graph, layout, options) {
@@ -147,6 +148,9 @@ function mountThreeScene(container, THREE, graph, layout, options) {
   let currentLayout = layout;
   let currentMode = layout.mode;
   let currentSelectedNodeId = options.selectedNodeId || null;
+  let autoRotateRequested = options.autoRotate === true;
+  const reducedMotion = prefersReducedMotion(hostWindow);
+  let currentAutoRotate = shouldAutoRotate(autoRotateRequested, currentMode, reducedMotion);
   let activeTransition = null;
   const nodeObjectById = new Map();
   const labelObjectById = new Map();
@@ -213,6 +217,8 @@ function mountThreeScene(container, THREE, graph, layout, options) {
     const nextGraph = updateOptions.graph || currentGraph;
     const nextMode = updateOptions.mode || currentMode;
     const nextSelectedNodeId = updateOptions.selectedNodeId || null;
+    if ("autoRotate" in updateOptions) autoRotateRequested = updateOptions.autoRotate === true;
+    currentAutoRotate = shouldAutoRotate(autoRotateRequested, nextMode, reducedMotion);
     const nextLayout = layoutVisualizationGraph(nextGraph, { mode: nextMode });
     reconcileSceneObjects(THREE, container.ownerDocument, root, {
       graph: nextGraph,
@@ -246,6 +252,7 @@ function mountThreeScene(container, THREE, graph, layout, options) {
   container.addEventListener("pointermove", pointerMove);
   container.addEventListener("pointerup", pointerUp);
   container.addEventListener("pointerleave", pointerUp);
+  container.addEventListener("pointercancel", pointerUp);
   hostWindow.addEventListener?.("resize", resize);
 
   let frameId = 0;
@@ -256,7 +263,7 @@ function mountThreeScene(container, THREE, graph, layout, options) {
       activeTransition = applyLayoutTransition(activeTransition, animationNow(hostWindow));
       updateEdgeGeometry(THREE, currentLayout, edgeObjectById, nodeObjectById);
     }
-    root.rotation.y += dragging ? 0 : 0.0015;
+    if (!dragging && currentAutoRotate) root.rotation.y += 0.0015;
     renderer.render(scene, camera);
     if (requestFrame) frameId = requestFrame(render);
   };
@@ -278,6 +285,7 @@ function mountThreeScene(container, THREE, graph, layout, options) {
       container.removeEventListener("pointermove", pointerMove);
       container.removeEventListener("pointerup", pointerUp);
       container.removeEventListener("pointerleave", pointerUp);
+      container.removeEventListener("pointercancel", pointerUp);
       disposeObject(root);
       renderer.renderLists?.dispose?.();
       renderer.forceContextLoss?.();
@@ -537,6 +545,24 @@ function easeInOutCubic(value) {
 /** @param {any} hostWindow */
 function animationNow(hostWindow) {
   return hostWindow.performance?.now?.() ?? Date.now();
+}
+
+/**
+ * @param {boolean} requested
+ * @param {"home"|"relation"|"size"} mode
+ * @param {boolean} reducedMotion
+ */
+function shouldAutoRotate(requested, mode, reducedMotion) {
+  return requested && mode !== "size" && !reducedMotion;
+}
+
+/** @param {any} hostWindow */
+function prefersReducedMotion(hostWindow) {
+  try {
+    return hostWindow.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true;
+  } catch {
+    return false;
+  }
 }
 
 /** @param {unknown} value */

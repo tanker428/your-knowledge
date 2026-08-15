@@ -119,7 +119,8 @@ export function sizeLayout(graph, options = {}) {
   const unsetAreaX = options.unsetAreaX ?? 14;
 
   let unsetIndex = 0;
-  const nodes = graph.nodes.map((node) => {
+  const sizeNodes = graph.nodes.filter(isSizeComparableNode);
+  const nodes = sizeNodes.map((node) => {
     const resolved = resolveMeasurement(node, quantityKind);
     if (!resolved) {
       const next = unsetIndex;
@@ -244,6 +245,11 @@ function resolveMeasurement(node, quantityKind) {
   const measurement = (node.measurements || []).find((item) => item.quantityKind === quantityKind);
   if (!measurement) return null;
   return resolveMeasurementForLogScale(measurement);
+}
+
+/** @param {VisualizationNode} node */
+function isSizeComparableNode(node) {
+  return node.kind === "concept" || node.kind === "entity";
 }
 
 /** @param {VisualizationNode} node */
