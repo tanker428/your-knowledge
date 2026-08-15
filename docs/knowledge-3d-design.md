@@ -153,6 +153,19 @@ conceptual = 2
 
 乱数を使う場合はnode ID由来のseedを使う。confirmed / verified関係を通常表示の対象とし、suggested / derived関係は見た目を分けられる属性を残す。
 
+### 3D空間内の2Dボード表現
+
+Size、分類表、時系列表のような軸・表ベースの表示は、完全な立体配置にこだわらず、3D空間内の平面ボードや数直線として描画してよい。
+これはあくまで表示上のlayoutであり、生成された座標や板面配置は保存用Knowledge Graphへ固定保存しない。
+
+将来の「歩ける分類表 / 時系列表 / サイズ数直線」は、次のように既存参照データを表示用surfaceへ投影する。
+
+- taxonomy board: taxonomy ReferenceGraphのnodeとSUBCLASS_OF系の関係を使う
+- timeline board: geological-time ReferenceGraphのstart/end範囲を使う
+- size board: quantity ReferenceFactをlog軸へ正規化して使う
+
+外部JSONやdrawio由来の板面座標を使う場合も、Project JSONの永続ConceptやKnowledge Graph座標ではなく、Visualization AdapterまたはLayout Engineの表示ヒントとして扱う。
+
 ## Size mode
 
 初期対応は `body_length` の1種類に限定する。長さ、重量、面積を同じ軸へ混在させない。
@@ -185,4 +198,3 @@ Three.jsは固定バージョンのvendored ESMとして導入し、ライセン
 オフライン方針はcache-on-first-useとする。初回3D表示時に取得し、取得後に再利用できるようにする。初回オフライン時は2D fallbackを表示する。
 
 Renderer、Geometry、Material、Texture、AnimationFrame、イベントリスナは3D画面終了時に破棄する。
-

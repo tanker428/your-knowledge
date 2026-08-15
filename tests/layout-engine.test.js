@@ -24,6 +24,13 @@ describe("knowledge 3D layout engine", () => {
     }
   });
 
+  it("keeps node radii compact enough for dense 3D displays", () => {
+    const layout = homeLayout(VISUALIZATION_GRAPH_FIXTURE);
+
+    expect(Math.max(...layout.nodes.map((node) => node.radius))).toBeLessThanOrEqual(1.06);
+    expect(Math.min(...layout.nodes.map((node) => node.radius))).toBeGreaterThanOrEqual(0.45);
+  });
+
   it("creates deterministic Relation layout and preserves edge visual state", () => {
     const layout = relationLayout(VISUALIZATION_GRAPH_FIXTURE);
     const explicit = layout.edges.find((edge) => edge.type === "REPRESENTS");

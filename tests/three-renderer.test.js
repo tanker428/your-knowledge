@@ -25,19 +25,38 @@ function dom() {
 
 function fakeThree(doc = document) {
   const rendererDispose = vi.fn();
+  const renderListsDispose = vi.fn();
+  const forceContextLoss = vi.fn();
   const geometryDispose = vi.fn();
   const materialDispose = vi.fn();
+  const textureDispose = vi.fn();
+  const groups = [];
+  const sprites = [];
 
   class Object3D {
     constructor() {
       this.children = [];
-      this.position = { set: vi.fn() };
+      this.position = {
+        x: 0,
+        y: 0,
+        z: 0,
+        set: vi.fn((x, y, z) => {
+          this.position.x = x;
+          this.position.y = y;
+          this.position.z = z;
+        }),
+      };
       this.rotation = { y: 0 };
       this.scale = { set: vi.fn() };
       this.userData = {};
     }
     add(child) {
       this.children.push(child);
+      child.parent = this;
+    }
+    remove(child) {
+      this.children = this.children.filter((item) => item !== child);
+      child.parent = null;
     }
     traverse(callback) {
       callback(this);
@@ -61,7 +80,12 @@ function fakeThree(doc = document) {
     BufferGeometry: Geometry,
     Color: class {},
     DirectionalLight: class extends Object3D {},
-    Group: class extends Object3D {},
+    Group: class extends Object3D {
+      constructor() {
+        super();
+        groups.push(this);
+      }
+    },
     Line: class extends Object3D {
       constructor(geometry, material) {
         super();
@@ -88,19 +112,50 @@ function fakeThree(doc = document) {
     },
     Scene: class extends Object3D {},
     SphereGeometry: Geometry,
+    CanvasTexture: class {
+      dispose = textureDispose;
+    },
+    Sprite: class extends Object3D {
+      constructor(material) {
+        super();
+        this.material = material;
+        this.isSprite = true;
+        sprites.push(this);
+      }
+    },
+    SpriteMaterial: Material,
     Vector3: class {},
     WebGLRenderer: class {
       constructor() {
         this.domElement = doc.createElement("canvas");
+        this.renderLists = { dispose: renderListsDispose };
       }
       setPixelRatio = vi.fn();
       setSize = vi.fn();
       render = vi.fn();
       dispose = rendererDispose;
+      forceContextLoss = forceContextLoss;
     },
   };
 
-  return { THREE, rendererDispose, geometryDispose, materialDispose };
+  return { THREE, rendererDispose, renderListsDispose, forceContextLoss, geometryDispose, materialDispose, textureDispose, groups, sprites };
+}
+
+function enableCanvasLabels(document) {
+  const originalCreateElement = document.createElement.bind(document);
+  vi.spyOn(document, "createElement").mockImplementation((tagName, options) => {
+    const element = originalCreateElement(tagName, options);
+    if (String(tagName).toLowerCase() === "canvas") {
+      element.getContext = vi.fn(() => ({
+        fillStyle: "",
+        font: "",
+        textBaseline: "",
+        fillRect: vi.fn(),
+        fillText: vi.fn(),
+      }));
+    }
+    return element;
+  });
 }
 
 describe("Three.js fixture renderer", () => {
@@ -166,6 +221,8 @@ describe("Three.js fixture renderer", () => {
     expect(removeEventListener).toHaveBeenCalledWith("resize", expect.any(Function));
     expect(fake.geometryDispose).toHaveBeenCalled();
     expect(fake.materialDispose).toHaveBeenCalled();
+    expect(fake.renderListsDispose).toHaveBeenCalledTimes(1);
+    expect(fake.forceContextLoss).toHaveBeenCalledTimes(1);
     expect(fake.rendererDispose).toHaveBeenCalledTimes(1);
     expect(container.children).toHaveLength(0);
   });
@@ -211,8 +268,58 @@ describe("Three.js fixture renderer", () => {
     expect(controller.status).toBe("mounted");
     expect(controller.resetCamera).toEqual(expect.any(Function));
     expect(controller.updateLayout).toEqual(expect.any(Function));
+    fake.groups[0].rotation.y = 1.2;
     controller.resetCamera?.();
+    expect(fake.groups[0].rotation.y).toBe(0);
     controller.updateLayout?.({ mode: "size", selectedNodeId: "concept:test" });
+    controller.dispose();
+  });
+
+  it("keeps text labels to the selected node only", async () => {
+    const { jsdom, container } = dom();
+    enableCanvasLabels(jsdom.window.document);
+    const fake = fakeThree(jsdom.window.document);
+    const graph = {
+      schemaVersion: "1.0.0",
+      nodes: ["one", "two", "three"].map((id) => ({
+        id: `concept:${id}`,
+        label: id,
+        kind: "concept",
+        semanticLayer: "conceptual",
+        mappingStatus: "canonical",
+        provenance: { verificationStatus: "verified", createdByType: "reference", confidence: 1, sourceType: "reference", sourceNote: null },
+        sourceNodeIds: [`ReferenceNode:${id}`],
+        observationIds: [],
+        entityIds: [],
+        visitIds: [],
+        domainIds: [],
+        referenceIds: [id],
+      })),
+      edges: [],
+      metadata: {
+        schemaVersion: "1.0.0",
+        scope: "fixture",
+        source: "test",
+        createdAt: "1970-01-01T00:00:00.000Z",
+        mappingStats: { canonical: 3 },
+      },
+    };
+
+    const controller = await mountKnowledge3dGraph(container, {
+      graph,
+      selectedNodeId: "concept:one",
+      webglAvailable: true,
+      loadThree: async () => fake.THREE,
+      runtime: { window: jsdom.window, document: jsdom.window.document },
+      requestAnimationFrame: () => 0,
+      cancelAnimationFrame: vi.fn(),
+    });
+    const rootGroup = fake.groups[0];
+
+    expect(rootGroup.children.filter((child) => child.isSprite)).toHaveLength(1);
+    controller.updateLayout?.({ selectedNodeId: "concept:two" });
+    expect(rootGroup.children.filter((child) => child.isSprite)).toHaveLength(1);
+    expect(fake.sprites).toHaveLength(2);
     controller.dispose();
   });
 

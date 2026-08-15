@@ -127,7 +127,11 @@ function mountThreeScene(container, THREE, graph, layout, options) {
   const camera = new THREE.PerspectiveCamera(52, 1, 0.1, 1000);
   camera.position.set(10, 8, 14);
   camera.lookAt(0, 1, 0);
+  const root = new THREE.Group();
+  const decorationRoot = new THREE.Group();
+  root.add(decorationRoot);
   const resetCamera = () => {
+    root.rotation.y = 0;
     camera.position.set(10, 8, 14);
     camera.lookAt(0, 1, 0);
     camera.updateProjectionMatrix?.();
@@ -137,8 +141,6 @@ function mountThreeScene(container, THREE, graph, layout, options) {
   const keyLight = new THREE.DirectionalLight(0xffffff, 1.2);
   keyLight.position.set(6, 12, 8);
   scene.add(keyLight);
-
-  const root = new THREE.Group();
   scene.add(root);
 
   let currentGraph = graph;
@@ -155,13 +157,13 @@ function mountThreeScene(container, THREE, graph, layout, options) {
     const mesh = createNodeMesh(THREE, graphNode, node, node.id === currentSelectedNodeId);
     root.add(mesh);
     nodeObjectById.set(node.id, mesh);
-    const label = createLabelSprite(THREE, container.ownerDocument, graphNode?.label || node.id);
-    if (label) {
-      label.position.set(node.x, node.y * NODE_Y_SCALE + LABEL_Y_OFFSET, node.z);
-      root.add(label);
-      labelObjectById.set(node.id, label);
-    }
   }
+  syncSelectedLabel(THREE, container.ownerDocument, root, {
+    graphNodeById,
+    layoutNodesById: layoutNodeById(layout),
+    labelObjectById,
+    selectedNodeId: currentSelectedNodeId,
+  });
   for (const edge of layout.edges) {
     const source = layoutNodeById(layout).get(edge.sourceId);
     const target = layoutNodeById(layout).get(edge.targetId);
@@ -170,6 +172,7 @@ function mountThreeScene(container, THREE, graph, layout, options) {
     root.add(line);
     edgeObjectById.set(edge.id, line);
   }
+  refreshLayoutDecorations(THREE, container.ownerDocument, decorationRoot, layout);
 
   const resize = () => {
     const width = Math.max(1, container.clientWidth || 640);
@@ -236,6 +239,7 @@ function mountThreeScene(container, THREE, graph, layout, options) {
     currentSelectedNodeId = nextSelectedNodeId;
     updateSelection(nodeObjectById, currentSelectedNodeId);
     updateEdgeGeometry(THREE, currentLayout, edgeObjectById, nodeObjectById);
+    refreshLayoutDecorations(THREE, container.ownerDocument, decorationRoot, currentLayout);
   };
 
   container.addEventListener("pointerdown", pointerDown);
@@ -266,6 +270,7 @@ function mountThreeScene(container, THREE, graph, layout, options) {
     resetCamera,
     updateLayout,
     dispose() {
+      if (disposed) return;
       disposed = true;
       if (frameId && cancelFrame) cancelFrame(frameId);
       hostWindow.removeEventListener?.("resize", resize);
@@ -274,6 +279,8 @@ function mountThreeScene(container, THREE, graph, layout, options) {
       container.removeEventListener("pointerup", pointerUp);
       container.removeEventListener("pointerleave", pointerUp);
       disposeObject(root);
+      renderer.renderLists?.dispose?.();
+      renderer.forceContextLoss?.();
       renderer.dispose?.();
       renderer.domElement?.remove?.();
       container.replaceChildren();
@@ -340,14 +347,14 @@ function reconcileSceneObjects(THREE, document, root, options) {
       const mesh = createNodeMesh(THREE, graphNode, node, node.id === options.selectedNodeId);
       root.add(mesh);
       options.nodeObjectById.set(node.id, mesh);
-      const label = createLabelSprite(THREE, document, graphNode?.label || node.id);
-      if (label) {
-        label.position.set(node.x, node.y * NODE_Y_SCALE + LABEL_Y_OFFSET, node.z);
-        root.add(label);
-        options.labelObjectById.set(node.id, label);
-      }
     }
   }
+  syncSelectedLabel(THREE, document, root, {
+    graphNodeById,
+    layoutNodesById,
+    labelObjectById: options.labelObjectById,
+    selectedNodeId: options.selectedNodeId,
+  });
 
   for (const [id, line] of [...options.edgeObjectById.entries()]) {
     if (layoutEdgeIds.has(id)) continue;
@@ -365,6 +372,31 @@ function reconcileSceneObjects(THREE, document, root, options) {
     root.add(line);
     options.edgeObjectById.set(edge.id, line);
   }
+}
+
+/**
+ * @param {any} THREE
+ * @param {Document} document
+ * @param {any} root
+ * @param {{graphNodeById:Map<string, any>, layoutNodesById:Map<string, import('./layout-engine.js').LayoutNode>, labelObjectById:Map<string, any>, selectedNodeId:string|null}} options
+ */
+function syncSelectedLabel(THREE, document, root, options) {
+  for (const [id, label] of [...options.labelObjectById.entries()]) {
+    if (id === options.selectedNodeId && options.layoutNodesById.has(id)) continue;
+    root.remove?.(label);
+    disposeObject(label);
+    options.labelObjectById.delete(id);
+  }
+
+  if (!options.selectedNodeId || options.labelObjectById.has(options.selectedNodeId)) return;
+  const layoutNode = options.layoutNodesById.get(options.selectedNodeId);
+  if (!layoutNode) return;
+  const graphNode = options.graphNodeById.get(options.selectedNodeId);
+  const label = createLabelSprite(THREE, document, graphNode?.label || options.selectedNodeId);
+  if (!label) return;
+  label.position.set(layoutNode.x, layoutNode.y * NODE_Y_SCALE + LABEL_Y_OFFSET, layoutNode.z);
+  root.add(label);
+  options.labelObjectById.set(options.selectedNodeId, label);
 }
 
 /**
@@ -567,9 +599,87 @@ function createEdgeLine(THREE, edge, source, target) {
 /**
  * @param {any} THREE
  * @param {Document} document
+ * @param {any} decorationRoot
+ * @param {import('./layout-engine.js').VisualizationLayout} layout
+ */
+function refreshLayoutDecorations(THREE, document, decorationRoot, layout) {
+  clearGroup(decorationRoot);
+  if (layout.mode !== "size") return;
+
+  const scaledXs = layout.nodes.filter((node) => node.zone === "scaled").map((node) => node.x);
+  const minX = Math.min(-6, ...scaledXs);
+  const maxX = Math.max(8, ...scaledXs);
+  const axisY = -0.35;
+  const axisZ = -6.75;
+  const unsetBoundaryX = layout.metadata.unsetAreaX - 1.2;
+
+  decorationRoot.add(createDecorationLine(THREE, [
+    { x: minX, y: axisY, z: axisZ },
+    { x: maxX, y: axisY, z: axisZ },
+  ], 0x58784d, 0.55));
+  decorationRoot.add(createDecorationLine(THREE, [
+    { x: unsetBoundaryX, y: -0.8, z: -7.4 },
+    { x: unsetBoundaryX, y: 6.2, z: 7.4 },
+  ], 0x8a6f2a, 0.42));
+
+  addDecorationLabel(THREE, document, decorationRoot, layout.metadata.quantityKind || "quantity", {
+    x: minX,
+    y: axisY + 0.6,
+    z: axisZ,
+  });
+  addDecorationLabel(THREE, document, decorationRoot, "unset: no body_length", {
+    x: layout.metadata.unsetAreaX + 1.7,
+    y: 5.9,
+    z: -6.9,
+  });
+  for (const value of [0.1, 1, 10]) {
+    const x = Math.log10(value) * 6;
+    if (x < minX || x > maxX) continue;
+    decorationRoot.add(createDecorationLine(THREE, [
+      { x, y: axisY - 0.25, z: axisZ },
+      { x, y: axisY + 0.25, z: axisZ },
+    ], 0x2f3a32, 0.5));
+    addDecorationLabel(THREE, document, decorationRoot, `${value} m`, {
+      x,
+      y: axisY - 0.65,
+      z: axisZ,
+    });
+  }
+}
+
+/**
+ * @param {any} THREE
+ * @param {{x:number,y:number,z:number}[]} points
+ * @param {number} color
+ * @param {number} opacity
+ */
+function createDecorationLine(THREE, points, color, opacity) {
+  const geometry = new THREE.BufferGeometry().setFromPoints(points.map((point) => new THREE.Vector3(point.x, point.y, point.z)));
+  const material = new THREE.LineBasicMaterial({ color, transparent: true, opacity });
+  return new THREE.Line(geometry, material);
+}
+
+/**
+ * @param {any} THREE
+ * @param {Document} document
+ * @param {any} root
+ * @param {string} text
+ * @param {{x:number,y:number,z:number}} position
+ */
+function addDecorationLabel(THREE, document, root, text, position) {
+  const label = createLabelSprite(THREE, document, text);
+  if (!label) return;
+  label.position.set(position.x, position.y, position.z);
+  root.add(label);
+}
+
+/**
+ * @param {any} THREE
+ * @param {Document} document
  * @param {string} label
  */
 function createLabelSprite(THREE, document, label) {
+  if (!THREE.CanvasTexture || !THREE.SpriteMaterial || !THREE.Sprite) return null;
   const canvas = document.createElement("canvas");
   canvas.width = 256;
   canvas.height = 64;
@@ -591,6 +701,15 @@ function createLabelSprite(THREE, document, label) {
   const sprite = new THREE.Sprite(material);
   sprite.scale.set(2.2, 0.55, 1);
   return sprite;
+}
+
+/** @param {any} group */
+function clearGroup(group) {
+  for (const child of [...(group.children || [])]) {
+    group.remove?.(child);
+    disposeObject(child);
+  }
+  if (Array.isArray(group.children)) group.children.length = 0;
 }
 
 /** @param {any} object */

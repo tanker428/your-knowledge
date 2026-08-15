@@ -197,6 +197,21 @@ describe("buildProjectVisualizationGraph", () => {
     expect(graph.nodes.some((node) => node.observationIds.includes("o-b"))).toBe(false);
   });
 
+  it("returns an empty activeVisit graph when no Visit is selected", () => {
+    const value = project();
+    value.activeVisitId = null;
+
+    const graph = buildProjectVisualizationGraph(value, referenceGraph, registries, {
+      scope: "activeVisit",
+      createdAt: "2026-08-14T00:00:00.000Z",
+    });
+
+    expect(validateVisualizationGraph(graph)).toEqual({ ok: true, errors: [] });
+    expect(graph.metadata.scope).toBe("activeVisit");
+    expect(graph.nodes).toEqual([]);
+    expect(graph.edges).toEqual([]);
+  });
+
   it("does not cross-visit aggregate provisional Concepts", () => {
     const graph = buildProjectVisualizationGraph(project(), referenceGraph, registries, {
       scope: "allVisits",
