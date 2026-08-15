@@ -428,9 +428,8 @@ function unsupportedReferenceNode(referenceNode, fact, source) {
  * @returns {VisualizationNode}
  */
 function unresolvedNodeForFact(fact, value, source) {
-  const idPart = fact.id || value;
   return {
-    id: `concept:unresolved:${stablePart(idPart)}`,
+    id: `concept:unresolved:${stablePart(value)}`,
     label: value,
     kind: "concept",
     semanticLayer: "conceptual",
@@ -441,7 +440,7 @@ function unresolvedNodeForFact(fact, value, source) {
     entityIds: factEntityIds(source),
     visitIds: factVisitIds(fact, source),
     domainIds: [],
-    referenceIds: [],
+    referenceIds: [value],
     data: {
       reason: "unresolved-reference",
       unresolvedReferenceId: value,
@@ -521,9 +520,8 @@ function measuredReferenceNode(referenceNode, fact, measurement) {
  * @returns {VisualizationNode}
  */
 function unresolvedMeasurementReferenceNode(fact, referenceId, measurement) {
-  const idPart = fact.id || referenceId;
   return {
-    id: `concept:unresolved:${stablePart(idPart)}`,
+    id: `concept:unresolved:${stablePart(referenceId)}`,
     label: referenceId,
     kind: "concept",
     semanticLayer: "conceptual",
@@ -534,7 +532,7 @@ function unresolvedMeasurementReferenceNode(fact, referenceId, measurement) {
     entityIds: [],
     visitIds: isNonEmptyString(fact.visitId) ? [fact.visitId] : [],
     domainIds: [],
-    referenceIds: [],
+    referenceIds: [referenceId],
     measurements: [measurement],
     data: {
       reason: "unresolved-reference",
