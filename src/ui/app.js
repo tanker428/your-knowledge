@@ -2268,6 +2268,11 @@ export async function initApp(deps) {
       : '<div class="empty-state"><strong>検索に一致する3Dノードがありません</strong><p>Concept、Observation、写真メモを別の語句で検索してください。</p></div>';
     $("#knowledgeGraphDetail").innerHTML = renderKnowledge3dDetail(graph, state.knowledge3dSelectedNodeId);
 
+    // Home and Relation drift slowly so the space reads as three-dimensional.
+    // An active search pins the view instead, and Size never rotates at all
+    // (see shouldAutoRotate in the renderer).
+    const autoRotate = !state.knowledgeSearch.trim();
+
     const nextGraphKey = knowledge3dGraphSignature(graph, scope);
     const stage = $("#knowledge3dStage");
     const shouldRemount = !stage || !knowledge3dController || knowledge3dGraphKey !== nextGraphKey;
@@ -2278,7 +2283,7 @@ export async function initApp(deps) {
           graph,
           mode,
           selectedNodeId: state.knowledge3dSelectedNodeId,
-          autoRotate: false,
+          autoRotate,
         });
       } catch {
         releaseKnowledge3dController();
@@ -2295,7 +2300,7 @@ export async function initApp(deps) {
             graph,
             mode,
             selectedNodeId: state.knowledge3dSelectedNodeId,
-            autoRotate: false,
+            autoRotate,
             onNodeSelect(nodeId) {
               state.knowledge3dSelectedNodeId = nodeId;
               renderKnowledge();
@@ -2331,7 +2336,7 @@ export async function initApp(deps) {
         graph,
         mode,
         selectedNodeId: state.knowledge3dSelectedNodeId,
-        autoRotate: false,
+        autoRotate,
         onNodeSelect(nodeId) {
           state.knowledge3dSelectedNodeId = nodeId;
           renderKnowledge();
@@ -2370,10 +2375,14 @@ export async function initApp(deps) {
   }
 
   function renderKnowledge3dLegend(mode) {
+    // Node size encodes how many Observations back a node; edge darkness
+    // separates recorded relations from derived ones. Both are explained here
+    // because neither is guessable from the 3D view alone.
+    const scale = '<span class="knowledge-3d-legend-note">丸の大きさ = 元になったObservationの数</span><span class="knowledge-3d-legend-note">線の濃さ = 濃い実線は登録した関係、薄い灰色は推測された関係</span>';
     if (mode === "size") {
-      return '<span><i class="knowledge-3d-dot kind-concept"></i>Concept</span><span><i class="knowledge-3d-dot kind-entity"></i>対象</span><span>body_length axis</span><span>unset: no body_length</span>';
+      return `<span><i class="knowledge-3d-dot kind-concept"></i>Concept（分類などの共通概念）</span><span><i class="knowledge-3d-dot kind-entity"></i>対象（写真に写っていた個体・展示物）</span><span>横軸 = body_length（体長・対数目盛り）</span><span>unset = 体長が未登録の対象</span>${scale}`;
     }
-    return '<span><i class="knowledge-3d-dot kind-experience"></i>体験</span><span><i class="knowledge-3d-dot kind-entity"></i>対象</span><span><i class="knowledge-3d-dot kind-concept"></i>Concept</span><span><i class="knowledge-3d-dot kind-landmark"></i>時代</span>';
+    return `<span><i class="knowledge-3d-dot kind-experience"></i>体験（訪問・写真）</span><span><i class="knowledge-3d-dot kind-entity"></i>対象（写真に写っていた個体・展示物）</span><span><i class="knowledge-3d-dot kind-concept"></i>Concept（分類などの共通概念）</span><span><i class="knowledge-3d-dot kind-landmark"></i>時代（地質時代の区間）</span>${scale}`;
   }
 
   function knowledge3dGraphSignature(graph, scope) {
@@ -2474,7 +2483,10 @@ export async function initApp(deps) {
       const range = measurement.minSI != null && measurement.maxSI != null
         ? `${formatNumber(measurement.minSI)} - ${formatNumber(measurement.maxSI)} ${escapeHtml(measurement.unitSI || "")}`
         : `${formatNumber(measurement.valueSI)} ${escapeHtml(measurement.unitSI || "")}`;
-      return `<div><dt>${escapeHtml(measurement.quantityKind)}</dt><dd>${range}${measurement.estimated ? "（推定）" : ""}</dd></div>`;
+      const source = measurement.source
+        ? `<small class="knowledge-3d-measurement-source">出典: ${escapeHtml(measurement.source)}</small>`
+        : "";
+      return `<div><dt>${escapeHtml(measurement.quantityKind)}</dt><dd>${range}${measurement.estimated ? "（推定）" : ""}${source}</dd></div>`;
     }).join("");
     return `<section class="knowledge-3d-detail-section"><h3>Measurement</h3><dl class="knowledge-3d-definition-list">${rows}</dl></section>`;
   }

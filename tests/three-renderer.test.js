@@ -32,6 +32,7 @@ function fakeThree(doc = document) {
   const textureDispose = vi.fn();
   const groups = [];
   const sprites = [];
+  const cameras = [];
 
   class Object3D {
     constructor() {
@@ -73,6 +74,9 @@ function fakeThree(doc = document) {
 
   class Material {
     dispose = materialDispose;
+    constructor(options = {}) {
+      Object.assign(this, options);
+    }
   }
 
   const THREE = {
@@ -108,6 +112,7 @@ function fakeThree(doc = document) {
         this.aspect = 1;
         this.updateProjectionMatrix = vi.fn();
         this.lookAt = vi.fn();
+        cameras.push(this);
       }
     },
     Scene: class extends Object3D {},
@@ -138,7 +143,7 @@ function fakeThree(doc = document) {
     },
   };
 
-  return { THREE, rendererDispose, renderListsDispose, forceContextLoss, geometryDispose, materialDispose, textureDispose, groups, sprites };
+  return { THREE, cameras, rendererDispose, renderListsDispose, forceContextLoss, geometryDispose, materialDispose, textureDispose, groups, sprites };
 }
 
 function enableCanvasLabels(document) {
@@ -404,6 +409,68 @@ describe("Three.js fixture renderer", () => {
     expect(build).toContain("./src/vendor/three/");
     expect(fs.readFileSync(path.join(root, "tsconfig.json"), "utf8")).toContain("\"src/vendor\"");
     expect(fs.readFileSync(path.join(root, "eslint.config.js"), "utf8")).toContain("src/vendor/**");
+  });
+
+  it("zooms the camera with the wheel and restores it on camera reset", async () => {
+    const { jsdom, container } = dom();
+    const fake = fakeThree(jsdom.window.document);
+
+    const controller = await mountKnowledge3dGraph(container, {
+      graph: singleConceptGraph(),
+      webglAvailable: true,
+      loadThree: async () => fake.THREE,
+      runtime: { window: jsdom.window, document: jsdom.window.document },
+      requestAnimationFrame: () => 0,
+      cancelAnimationFrame: vi.fn(),
+    });
+
+    const camera = fake.cameras[0];
+    expect(camera.position.x).toBeCloseTo(10, 5);
+
+    const wheel = (deltaY) => container.dispatchEvent(
+      new jsdom.window.WheelEvent("wheel", { deltaY, cancelable: true }),
+    );
+
+    wheel(-100);
+    expect(camera.position.x).toBeLessThan(10);
+
+    wheel(100);
+    expect(camera.position.x).toBeCloseTo(10, 5);
+
+    // Zooming past the limit clamps instead of passing through the origin.
+    for (let index = 0; index < 40; index += 1) wheel(-100);
+    expect(camera.position.x).toBeCloseTo(3.5, 5);
+    expect(camera.position.x).toBeGreaterThan(0);
+
+    controller.resetCamera?.();
+    expect(camera.position.x).toBeCloseTo(10, 5);
+    expect(camera.position.y).toBeCloseTo(8, 5);
+    expect(camera.position.z).toBeCloseTo(14, 5);
+    controller.dispose();
+  });
+
+  it("draws labels on top of nodes and edges", async () => {
+    const { jsdom, container } = dom();
+    enableCanvasLabels(jsdom.window.document);
+    const fake = fakeThree(jsdom.window.document);
+
+    const controller = await mountKnowledge3dGraph(container, {
+      graph: singleConceptGraph("concept:label"),
+      selectedNodeId: "concept:label",
+      webglAvailable: true,
+      loadThree: async () => fake.THREE,
+      runtime: { window: jsdom.window, document: jsdom.window.document },
+      requestAnimationFrame: () => 0,
+      cancelAnimationFrame: vi.fn(),
+    });
+
+    expect(fake.sprites.length).toBeGreaterThan(0);
+    for (const sprite of fake.sprites) {
+      expect(sprite.material.depthTest).toBe(false);
+      expect(sprite.material.depthWrite).toBe(false);
+      expect(sprite.renderOrder).toBeGreaterThan(0);
+    }
+    controller.dispose();
   });
 
   it("detects WebGL availability conservatively", () => {

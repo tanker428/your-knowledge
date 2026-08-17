@@ -17,6 +17,13 @@ const NODE_COLORS = Object.freeze({
 const NODE_Y_SCALE = 2.6;
 const LABEL_Y_OFFSET = 0.55;
 const MODE_TRANSITION_MS = 520;
+/** Labels draw on top of nodes and edges instead of being clipped by them. */
+const LABEL_RENDER_ORDER = 900;
+const CAMERA_HOME = Object.freeze({ x: 10, y: 8, z: 14 });
+const CAMERA_TARGET = Object.freeze({ x: 0, y: 1, z: 0 });
+const CAMERA_ZOOM_MIN = 0.35;
+const CAMERA_ZOOM_MAX = 2.6;
+const CAMERA_ZOOM_STEP = 1.12;
 
 /**
  * @typedef {object} Knowledge3dController
@@ -126,16 +133,31 @@ function mountThreeScene(container, THREE, graph, layout, options) {
   scene.background = new THREE.Color(0xf6f4ef);
 
   const camera = new THREE.PerspectiveCamera(52, 1, 0.1, 1000);
-  camera.position.set(10, 8, 14);
-  camera.lookAt(0, 1, 0);
+  let cameraZoom = 1;
+  /** Place the camera along the home-to-target ray. Smaller zoom = closer. */
+  const applyCameraZoom = () => {
+    camera.position.set(
+      CAMERA_TARGET.x + (CAMERA_HOME.x - CAMERA_TARGET.x) * cameraZoom,
+      CAMERA_TARGET.y + (CAMERA_HOME.y - CAMERA_TARGET.y) * cameraZoom,
+      CAMERA_TARGET.z + (CAMERA_HOME.z - CAMERA_TARGET.z) * cameraZoom,
+    );
+    camera.lookAt(CAMERA_TARGET.x, CAMERA_TARGET.y, CAMERA_TARGET.z);
+    camera.updateProjectionMatrix?.();
+  };
+  /** @param {number} factor */
+  const zoomBy = (factor) => {
+    if (!Number.isFinite(factor) || factor <= 0) return;
+    cameraZoom = clamp(cameraZoom * factor, CAMERA_ZOOM_MIN, CAMERA_ZOOM_MAX);
+    applyCameraZoom();
+  };
+  applyCameraZoom();
   const root = new THREE.Group();
   const decorationRoot = new THREE.Group();
   root.add(decorationRoot);
   const resetCamera = () => {
     root.rotation.y = 0;
-    camera.position.set(10, 8, 14);
-    camera.lookAt(0, 1, 0);
-    camera.updateProjectionMatrix?.();
+    cameraZoom = 1;
+    applyCameraZoom();
   };
 
   scene.add(new THREE.AmbientLight(0xffffff, 0.7));
@@ -189,12 +211,42 @@ function mountThreeScene(container, THREE, graph, layout, options) {
   let dragging = false;
   let lastX = 0;
   let pointerStart = null;
+  /** Active pointers, tracked so two fingers pinch instead of rotating. */
+  const activePointers = new Map();
+  let pinchDistance = 0;
+  const pinchSpread = () => {
+    const points = [...activePointers.values()];
+    if (points.length < 2) return 0;
+    return Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y);
+  };
+  const onWheel = (/** @type {WheelEvent} */ event) => {
+    event.preventDefault?.();
+    zoomBy(event.deltaY > 0 ? CAMERA_ZOOM_STEP : 1 / CAMERA_ZOOM_STEP);
+  };
   const pointerDown = (/** @type {PointerEvent} */ event) => {
+    activePointers.set(event.pointerId ?? 0, { x: event.clientX, y: event.clientY });
+    if (activePointers.size >= 2) {
+      // A second finger cancels the in-flight drag so one gesture cannot both
+      // rotate and pinch at the same time.
+      dragging = false;
+      pointerStart = null;
+      pinchDistance = pinchSpread();
+      return;
+    }
     dragging = true;
     lastX = event.clientX;
     pointerStart = { x: event.clientX, y: event.clientY };
   };
   const pointerMove = (/** @type {PointerEvent} */ event) => {
+    if (activePointers.has(event.pointerId ?? 0)) {
+      activePointers.set(event.pointerId ?? 0, { x: event.clientX, y: event.clientY });
+    }
+    if (activePointers.size >= 2) {
+      const next = pinchSpread();
+      if (pinchDistance > 0 && next > 0) zoomBy(pinchDistance / next);
+      pinchDistance = next;
+      return;
+    }
     if (!dragging) return;
     const dx = event.clientX - lastX;
     lastX = event.clientX;
@@ -208,6 +260,8 @@ function mountThreeScene(container, THREE, graph, layout, options) {
     ) {
       selectNodeAtPointer(THREE, renderer, camera, root, event, options.onNodeSelect);
     }
+    activePointers.delete(event.pointerId ?? 0);
+    if (activePointers.size < 2) pinchDistance = 0;
     dragging = false;
     pointerStart = null;
   };
@@ -253,6 +307,7 @@ function mountThreeScene(container, THREE, graph, layout, options) {
   container.addEventListener("pointerup", pointerUp);
   container.addEventListener("pointerleave", pointerUp);
   container.addEventListener("pointercancel", pointerUp);
+  container.addEventListener("wheel", onWheel, { passive: false });
   hostWindow.addEventListener?.("resize", resize);
 
   let frameId = 0;
@@ -286,6 +341,8 @@ function mountThreeScene(container, THREE, graph, layout, options) {
       container.removeEventListener("pointerup", pointerUp);
       container.removeEventListener("pointerleave", pointerUp);
       container.removeEventListener("pointercancel", pointerUp);
+      container.removeEventListener("wheel", onWheel);
+      activePointers.clear();
       disposeObject(root);
       renderer.renderLists?.dispose?.();
       renderer.forceContextLoss?.();
@@ -552,6 +609,15 @@ function animationNow(hostWindow) {
  * @param {"home"|"relation"|"size"} mode
  * @param {boolean} reducedMotion
  */
+/**
+ * @param {number} value
+ * @param {number} min
+ * @param {number} max
+ */
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
 function shouldAutoRotate(requested, mode, reducedMotion) {
   return requested && mode !== "size" && !reducedMotion;
 }
@@ -612,10 +678,12 @@ function createEdgeLine(THREE, edge, source, target) {
     new THREE.Vector3(source.x, source.y * NODE_Y_SCALE, source.z),
     new THREE.Vector3(target.x, target.y * NODE_Y_SCALE, target.z),
   ]);
+  // WebGL ignores LineBasicMaterial.linewidth on virtually every platform, so
+  // contrast is the only lever available for making edges easier to read.
   const material = new THREE.LineBasicMaterial({
-    color: edge.derived ? 0x9ca3af : 0x2f3a32,
+    color: edge.derived ? 0x6b7480 : 0x1b231d,
     transparent: true,
-    opacity: edge.opacity,
+    opacity: Math.min(1, edge.opacity + 0.12),
   });
   const line = new THREE.Line(geometry, material);
   line.userData = { edgeId: edge.id, sourceId: edge.sourceId, targetId: edge.targetId };
@@ -707,8 +775,10 @@ function addDecorationLabel(THREE, document, root, text, position) {
 function createLabelSprite(THREE, document, label) {
   if (!THREE.CanvasTexture || !THREE.SpriteMaterial || !THREE.Sprite) return null;
   const canvas = document.createElement("canvas");
-  canvas.width = 256;
-  canvas.height = 64;
+  // Drawn at 2x the previous resolution so the label stays sharp instead of
+  // being stretched into thin, blurry strokes.
+  canvas.width = 512;
+  canvas.height = 128;
   let context;
   try {
     context = canvas.getContext("2d");
@@ -716,16 +786,30 @@ function createLabelSprite(THREE, document, label) {
     context = null;
   }
   if (!context) return null;
-  context.fillStyle = "rgba(246,244,239,0.88)";
+  context.fillStyle = "rgba(246,244,239,0.95)";
   context.fillRect(0, 0, canvas.width, canvas.height);
+  // Four filled bars rather than strokeRect, to keep the 2d context surface
+  // this function depends on as small as possible.
+  context.fillStyle = "rgba(47,58,50,0.55)";
+  context.fillRect(0, 0, canvas.width, 4);
+  context.fillRect(0, canvas.height - 4, canvas.width, 4);
+  context.fillRect(0, 0, 4, canvas.height);
+  context.fillRect(canvas.width - 4, 0, 4, canvas.height);
   context.fillStyle = "#1f241f";
-  context.font = "700 20px sans-serif";
+  context.font = "700 44px sans-serif";
   context.textBaseline = "middle";
-  context.fillText(label.slice(0, 24), 12, canvas.height / 2);
+  context.fillText(label.slice(0, 24), 20, canvas.height / 2);
   const texture = new THREE.CanvasTexture(canvas);
-  const material = new THREE.SpriteMaterial({ map: texture, transparent: true });
+  const material = new THREE.SpriteMaterial({
+    map: texture,
+    transparent: true,
+    // Labels stay readable even when a node or edge sits in front of them.
+    depthTest: false,
+    depthWrite: false,
+  });
   const sprite = new THREE.Sprite(material);
-  sprite.scale.set(2.2, 0.55, 1);
+  sprite.renderOrder = LABEL_RENDER_ORDER;
+  sprite.scale.set(3.2, 0.8, 1);
   return sprite;
 }
 
