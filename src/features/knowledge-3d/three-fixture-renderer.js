@@ -605,11 +605,6 @@ function animationNow(hostWindow) {
 }
 
 /**
- * @param {boolean} requested
- * @param {"home"|"relation"|"size"} mode
- * @param {boolean} reducedMotion
- */
-/**
  * @param {number} value
  * @param {number} min
  * @param {number} max
@@ -618,6 +613,11 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
+/**
+ * @param {boolean} requested
+ * @param {"home"|"relation"|"size"} mode
+ * @param {boolean} reducedMotion
+ */
 function shouldAutoRotate(requested, mode, reducedMotion) {
   return requested && mode !== "size" && !reducedMotion;
 }
