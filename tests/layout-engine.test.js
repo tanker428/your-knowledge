@@ -7,8 +7,10 @@ import {
   relationLayout,
   SEMANTIC_LAYER_Y,
   sizeLayout,
+  SIZE_LAYOUT_DEFAULT_UNSET_X,
   SIZE_LAYOUT_SCALE,
   VISUALIZATION_LAYOUT_SCHEMA_VERSION,
+  visualizationNodesForLayout,
 } from "../src/features/knowledge-3d/layout-engine.js";
 
 describe("knowledge 3D layout engine", () => {
@@ -114,9 +116,19 @@ describe("knowledge 3D layout engine", () => {
     expect(unresolved).toMatchObject({ zone: "unset", representativeValue: null });
     expect(massOnly).toMatchObject({ zone: "unset", representativeValue: null });
     expect(zero).toMatchObject({ zone: "unset", representativeValue: null });
-    expect(unresolved?.x).toBeGreaterThanOrEqual(layout.metadata.unsetAreaX);
-    expect(massOnly?.x).toBeGreaterThanOrEqual(layout.metadata.unsetAreaX);
-    expect(zero?.x).toBeGreaterThanOrEqual(layout.metadata.unsetAreaX);
+    expect(layout.metadata.unsetAreaX).toBe(SIZE_LAYOUT_DEFAULT_UNSET_X);
+    expect(unresolved?.x).toBe(layout.metadata.unsetAreaX);
+    expect(massOnly?.x).toBe(layout.metadata.unsetAreaX);
+    expect(zero?.x).toBe(layout.metadata.unsetAreaX);
+  });
+
+  it("keeps UI-visible nodes identical to the nodes represented by each layout", () => {
+    expect(visualizationNodesForLayout(VISUALIZATION_GRAPH_FIXTURE, { mode: "home" }))
+      .toEqual(VISUALIZATION_GRAPH_FIXTURE.nodes);
+    const sizeNodes = visualizationNodesForLayout(VISUALIZATION_GRAPH_FIXTURE, { mode: "size" });
+
+    expect(sizeNodes).toHaveLength(sizeLayout(VISUALIZATION_GRAPH_FIXTURE).nodes.length);
+    expect(sizeNodes.every((node) => node.kind === "concept" || node.kind === "entity")).toBe(true);
   });
 
   it("dispatches layoutVisualizationGraph by mode without mutating the graph", () => {
