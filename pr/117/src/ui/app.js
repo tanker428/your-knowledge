@@ -89,6 +89,7 @@ import {
   shouldShowKnowledgeAxisControls,
 } from "../features/knowledge-graph/selectors.js";
 import { buildProjectVisualizationGraph } from "../features/knowledge-3d/project-visualization-adapter.js";
+import { visualizationNodesForLayout } from "../features/knowledge-3d/layout-engine.js";
 import { mountKnowledge3dGraph } from "../features/knowledge-3d/three-fixture-renderer.js";
 import {
   buildQuizResultEntries,
@@ -2256,7 +2257,7 @@ export async function initApp(deps) {
 
     const displayNodes = knowledge3dDisplayNodes(graph, mode);
     if (!displayNodes.some((node) => node.id === state.knowledge3dSelectedNodeId)) {
-      state.knowledge3dSelectedNodeId = defaultKnowledge3dNodeId({ nodes: displayNodes }) || defaultKnowledge3dNodeId(graph);
+      state.knowledge3dSelectedNodeId = defaultKnowledge3dNodeId({ nodes: displayNodes });
     }
 
     const visibleNodes = filterKnowledge3dNodes(graph, displayNodes);
@@ -2264,7 +2265,7 @@ export async function initApp(deps) {
       state.knowledge3dSelectedNodeId = visibleNodes[0].id;
     }
     $("#knowledgeObservationList").innerHTML = visibleNodes.length
-      ? `<div class="knowledge-3d-index-note"><strong>${graph.nodes.length} nodes / ${graph.edges.length} edges</strong><small>${escapeHtml(knowledge3dScopeLabel(scope))}・${escapeHtml(knowledge3dModeLabel(mode))}</small></div>${visibleNodes.map((node) => renderKnowledge3dNodeItem(node)).join("")}`
+      ? `<div class="knowledge-3d-index-note"><strong>${displayNodes.length} nodes / ${graph.edges.length} edges</strong><small>${escapeHtml(knowledge3dScopeLabel(scope))}・${escapeHtml(knowledge3dModeLabel(mode))}</small></div>${visibleNodes.map((node) => renderKnowledge3dNodeItem(node)).join("")}`
       : '<div class="empty-state"><strong>検索に一致する3Dノードがありません</strong><p>Concept、Observation、写真メモを別の語句で検索してください。</p></div>';
     $("#knowledgeGraphDetail").innerHTML = renderKnowledge3dDetail(graph, state.knowledge3dSelectedNodeId);
 
@@ -2358,7 +2359,8 @@ export async function initApp(deps) {
   function renderKnowledge3dCanvas(graph) {
     const mode = currentKnowledge3dMode();
     const scope = currentKnowledge3dScope();
-    return `<div class="kg-canvas-header"><span>WEB 3D</span><strong>${escapeHtml(knowledge3dModeLabel(mode))}</strong><span class="kg-header-actions"><button class="text-button" data-knowledge3d-reset-camera>カメラを戻す</button></span></div><div id="knowledge3dStage" class="knowledge-3d-stage knowledge-3d-mode-${escapeHtml(mode)}"><div class="knowledge-3d-loading"><strong>3D知識空間を読み込み中</strong><small>${escapeHtml(knowledge3dScopeLabel(scope))}・${graph.nodes.length} nodes</small></div></div><div class="knowledge-3d-legend">${renderKnowledge3dLegend(mode)}</div>`;
+    const displayNodeCount = knowledge3dDisplayNodes(graph, mode).length;
+    return `<div class="kg-canvas-header"><span>WEB 3D</span><strong>${escapeHtml(knowledge3dModeLabel(mode))}</strong><span class="kg-header-actions"><button class="text-button" data-knowledge3d-reset-camera>カメラを戻す</button></span></div><div id="knowledge3dStage" class="knowledge-3d-stage knowledge-3d-mode-${escapeHtml(mode)}"><div class="knowledge-3d-loading"><strong>3D知識空間を読み込み中</strong><small>${escapeHtml(knowledge3dScopeLabel(scope))}・${displayNodeCount} nodes</small></div></div><div class="knowledge-3d-legend">${renderKnowledge3dLegend(mode)}</div>`;
   }
 
   function updateKnowledge3dCanvasChrome(graph, mode, scope) {
@@ -2368,7 +2370,7 @@ export async function initApp(deps) {
     if (stage) {
       stage.className = `knowledge-3d-stage knowledge-3d-mode-${mode}`;
       stage.dataset.scope = scope;
-      stage.dataset.nodeCount = String(graph.nodes.length);
+      stage.dataset.nodeCount = String(knowledge3dDisplayNodes(graph, mode).length);
     }
     const legend = $("#knowledgeGraphCanvas .knowledge-3d-legend");
     if (legend) legend.innerHTML = renderKnowledge3dLegend(mode);
@@ -2400,9 +2402,7 @@ export async function initApp(deps) {
   }
 
   function knowledge3dDisplayNodes(graph, mode) {
-    const nodes = graph.nodes || [];
-    if (mode !== "size") return nodes;
-    return nodes.filter((node) => node.kind === "concept" || node.kind === "entity");
+    return visualizationNodesForLayout(graph, { mode });
   }
 
   function filterKnowledge3dNodes(graph, nodes = graph.nodes) {

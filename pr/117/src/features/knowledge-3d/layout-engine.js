@@ -10,6 +10,7 @@ export const SEMANTIC_LAYER_Y = Object.freeze({
 
 export const DEFAULT_SIZE_QUANTITY_KIND = "body_length";
 export const SIZE_LAYOUT_SCALE = 6;
+export const SIZE_LAYOUT_DEFAULT_UNSET_X = 10;
 
 const HOME_RADIUS_BY_LAYER = Object.freeze({
   experience: 3.5,
@@ -72,6 +73,18 @@ export function layoutVisualizationGraph(graph, options = {}) {
   return homeLayout(graph);
 }
 
+/**
+ * Return exactly the graph nodes represented by the selected layout. Keeping
+ * this projection in the layout layer prevents the UI count and selection
+ * state from drifting away from what the renderer can actually display.
+ * @param {VisualizationGraphV1} graph
+ * @param {{mode?: LayoutMode}} [options]
+ */
+export function visualizationNodesForLayout(graph, options = {}) {
+  const ids = new Set(layoutVisualizationGraph(graph, options).nodes.map((node) => node.id));
+  return graph.nodes.filter((node) => ids.has(node.id));
+}
+
 /** @param {VisualizationGraphV1} graph @returns {VisualizationLayout} */
 export function homeLayout(graph) {
   const nodes = [];
@@ -116,17 +129,27 @@ export function relationLayout(graph) {
 export function sizeLayout(graph, options = {}) {
   const quantityKind = options.quantityKind || DEFAULT_SIZE_QUANTITY_KIND;
   const scale = options.sizeScale ?? SIZE_LAYOUT_SCALE;
-  const unsetAreaX = options.unsetAreaX ?? 14;
+  const sizeNodes = graph.nodes.filter(isSizeComparableNode);
+  const resolvedNodes = sizeNodes.map((node) => ({
+    node,
+    resolved: resolveMeasurement(node, quantityKind),
+  }));
+  const scaledXs = resolvedNodes
+    .filter((entry) => entry.resolved)
+    .map((entry) => Math.log10(entry.resolved.representativeValue) * scale);
+  const unsetAreaX = options.unsetAreaX
+    ?? round(Math.max(SIZE_LAYOUT_DEFAULT_UNSET_X, ...scaledXs.map((x) => x + 3)));
 
   let unsetIndex = 0;
-  const sizeNodes = graph.nodes.filter(isSizeComparableNode);
-  const nodes = sizeNodes.map((node) => {
-    const resolved = resolveMeasurement(node, quantityKind);
+  const nodes = resolvedNodes.map(({ node, resolved }) => {
     if (!resolved) {
       const next = unsetIndex;
       unsetIndex += 1;
       return layoutNode(node, {
-        x: round(unsetAreaX + (semanticY(node) * 0.7)),
+        // Semantic depth already has its own Y axis. Adding it again to X
+        // pushed conceptual unset nodes off-screen and made the zone appear
+        // empty even though the nodes existed.
+        x: unsetAreaX,
         y: semanticY(node),
         z: round((next % 12) - 5.5 + Math.floor(next / 12) * 1.25),
         zone: "unset",
