@@ -314,6 +314,41 @@ describe("buildConceptVisualizationGraph", () => {
     );
   });
 
+  it("carries a complete taxonomy path when only the leaf is materialized", () => {
+    const built = buildConceptVisualizationGraph({
+      observations: [{ id: "o-leaf", visitId: "visit-a", label: "Leaf", status: "confirmed" }],
+      referenceFacts: [{
+        id: "rf-leaf",
+        targetObservationId: "o-leaf",
+        predicate: "classifiedAs",
+        valueType: "reference",
+        value: "taxon:leaf",
+        axis: "taxonomy",
+        status: "verified",
+      }],
+      referenceGraph: {
+        nodes: [
+          { id: "taxon:root", label: "Root", axis: "taxonomy", parentIds: [], status: "verified" },
+          { id: "taxon:middle", label: "Middle", axis: "taxonomy", parentIds: ["taxon:root"], status: "verified" },
+          { id: "taxon:leaf", label: "Leaf", axis: "taxonomy", parentIds: ["taxon:middle"], status: "verified" },
+        ],
+      },
+    });
+    const leaf = built.nodes.find((node) => node.id === conceptNodeIdForReference("taxon:leaf"));
+
+    expect(built.nodes.some((node) => node.id === conceptNodeIdForReference("taxon:middle"))).toBe(false);
+    expect(leaf?.data).toMatchObject({
+      parentIds: ["taxon:middle"],
+      ancestorIds: ["taxon:middle", "taxon:root"],
+      taxonomyDepth: 2,
+      taxonomyPath: [
+        { id: "taxon:root", label: "Root", depth: 0, parentId: null },
+        { id: "taxon:middle", label: "Middle", depth: 1, parentId: "taxon:root" },
+        { id: "taxon:leaf", label: "Leaf", depth: 2, parentId: "taxon:middle" },
+      ],
+    });
+  });
+
   it("creates unresolved and provisional nodes without saving persistent Concepts", () => {
     const built = graph();
 

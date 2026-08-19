@@ -17,6 +17,8 @@ export const DEFAULT_SIZE_QUANTITY_KIND = "body_length";
 export const SIZE_LAYOUT_SCALE = 6;
 export const SIZE_LAYOUT_DEFAULT_UNSET_X = 10;
 export const TIME_LAYOUT_WIDTH = 16;
+export const CLASSIFICATION_DEPTH_SPACING = 3;
+export const CLASSIFICATION_ROW_SPACING = 2.4;
 
 const HOME_RADIUS_BY_LAYER = Object.freeze({
   experience: 3.5,
@@ -28,7 +30,7 @@ const HOME_RADIUS_BY_LAYER = Object.freeze({
  * @typedef {import('./visualization-graph.js').VisualizationGraphV1} VisualizationGraphV1
  * @typedef {import('./visualization-graph.js').VisualizationNode} VisualizationNode
  * @typedef {import('./visualization-graph.js').VisualizationEdge} VisualizationEdge
- * @typedef {"home"|"relation"|"size"|"time"} LayoutMode
+ * @typedef {"home"|"relation"|"size"|"time"|"classification"} LayoutMode
  */
 
 /**
@@ -44,6 +46,7 @@ const HOME_RADIUS_BY_LAYER = Object.freeze({
  * @property {number|null} representativeValue
  * @property {{minSI:number, maxSI:number}|null} rangeSI
  * @property {{kind:string,startMa:number,endMa:number,referenceId:string}|null} timeRangeMa
+ * @property {string|null} classificationReferenceId
  */
 
 /**
@@ -77,14 +80,15 @@ export function layoutVisualizationGraph(graph, options = {}) {
   const mode = options.mode || "home";
   if (mode === "size") return sizeLayout(graph, options);
   if (mode === "time") return timeLayout(graph, options);
+  if (mode === "classification") return classificationLayout(graph, options);
   if (mode === "relation") return relationLayout(graph);
   return homeLayout(graph);
 }
 
 /**
  * Return exactly the selectable graph nodes represented by the selected
- * layout. Geological periods stay out of this set as non-selectable
- * decorations, keeping UI count and selection aligned with the renderer.
+ * layout. Decorations such as geological periods and taxonomy ancestors stay
+ * out of this set, keeping UI count and selection aligned with the renderer.
  * @param {VisualizationGraphV1} graph
  * @param {{mode?: LayoutMode}} [options]
  */
@@ -231,6 +235,49 @@ export function timeLayout(graph, options = {}) {
 }
 
 /**
+ * Lay taxonomy Concepts out by their resolver-provided root-to-leaf path.
+ * Missing ancestors remain non-selectable guides; rank is never used as depth.
+ * @param {VisualizationGraphV1} graph
+ * @param {{unsetAreaX?:number}} [options]
+ * @returns {VisualizationLayout}
+ */
+export function classificationLayout(graph, options = {}) {
+  const taxonomyConcepts = graph.nodes.filter(isTaxonomyConcept);
+  const classificationGuides = buildClassificationGuides(graph, taxonomyConcepts);
+  const guideByReferenceId = new Map(classificationGuides.map((guide) => [guide.id, guide]));
+  const maxGuideX = Math.max(8, ...classificationGuides.map((guide) => guide.x));
+  const unsetAreaX = options.unsetAreaX
+    ?? Math.max(SIZE_LAYOUT_DEFAULT_UNSET_X, maxGuideX + 4);
+  const candidates = graph.nodes.filter(isClassificationComparableNode);
+  let unsetIndex = 0;
+  const nodes = candidates.map((node) => {
+    const guide = classificationGuideForNode(node, graph, guideByReferenceId);
+    if (!guide) {
+      const next = unsetIndex;
+      unsetIndex += 1;
+      return layoutNode(node, {
+        x: unsetAreaX,
+        y: semanticY(node),
+        z: unsetRowZ(next),
+        zone: "unset",
+      });
+    }
+    return layoutNode(node, {
+      x: guide.x,
+      y: semanticY(node),
+      z: round(guide.z + (isTaxonomyConcept(node) ? 0 : stableJitter(node.id) * 0.85)),
+      zone: "classified",
+      classificationReferenceId: guide.id,
+    });
+  });
+  return buildLayout("classification", graph, nodes, {
+    unsetAreaX,
+    classificationGuides,
+    maxTaxonomyDepth: Math.max(0, ...classificationGuides.map((guide) => guide.depth)),
+  });
+}
+
+/**
  * @param {LayoutMode} mode
  * @param {VisualizationGraphV1} graph
  * @param {LayoutNode[]} nodes
@@ -258,7 +305,7 @@ function buildLayout(mode, graph, nodes, metadata = {}) {
 
 /**
  * @param {VisualizationNode} node
- * @param {{x:number, y:number, z:number, zone:string, representativeValue?:number|null, rangeSI?:{minSI:number, maxSI:number}|null, timeRangeMa?:{kind:string,startMa:number,endMa:number,referenceId:string}|null}} position
+ * @param {{x:number, y:number, z:number, zone:string, representativeValue?:number|null, rangeSI?:{minSI:number, maxSI:number}|null, timeRangeMa?:{kind:string,startMa:number,endMa:number,referenceId:string}|null, classificationReferenceId?:string|null}} position
  * @returns {LayoutNode}
  */
 function layoutNode(node, position) {
@@ -274,6 +321,7 @@ function layoutNode(node, position) {
     representativeValue: position.representativeValue ?? null,
     rangeSI: position.rangeSI ?? null,
     timeRangeMa: position.timeRangeMa ?? null,
+    classificationReferenceId: position.classificationReferenceId ?? null,
   };
 }
 
@@ -400,6 +448,161 @@ function isTimeComparableNode(node) {
   if (node.kind === "concept" || node.kind === "entity") return true;
   return node.kind === "experience"
     && node.sourceNodeIds.some((id) => id.startsWith("Observation:"));
+}
+
+/**
+ * @param {VisualizationGraphV1} graph
+ * @param {VisualizationNode[]} taxonomyConcepts
+ */
+function buildClassificationGuides(graph, taxonomyConcepts) {
+  const entries = new Map();
+  for (const concept of taxonomyConcepts.sort(compareById)) {
+    const path = taxonomyPathForConcept(concept, graph);
+    const conceptReferenceId = taxonomyReferenceId(concept);
+    path.forEach((entry, depth) => {
+      const parentId = depth > 0 ? path[depth - 1].id : null;
+      const existing = entries.get(entry.id);
+      const next = {
+        id: entry.id,
+        label: entry.label || entry.id,
+        depth,
+        parentId,
+        referenced: entry.id === conceptReferenceId,
+      };
+      if (!existing) entries.set(entry.id, next);
+      else {
+        existing.referenced ||= next.referenced;
+        if (next.depth > existing.depth) {
+          existing.depth = next.depth;
+          existing.parentId = next.parentId;
+        } else if (next.depth === existing.depth && String(next.parentId || "").localeCompare(String(existing.parentId || "")) < 0) {
+          existing.parentId = next.parentId;
+        }
+      }
+    });
+  }
+  return positionClassificationGuides([...entries.values()]);
+}
+
+/** @param {VisualizationNode} concept @param {VisualizationGraphV1} graph */
+function taxonomyPathForConcept(concept, graph) {
+  const path = concept.data?.taxonomyPath;
+  if (Array.isArray(path) && path.length) {
+    return path
+      .filter((entry) => typeof entry?.id === "string" && entry.id.length)
+      .map((entry) => ({ id: entry.id, label: entry.label || entry.id }));
+  }
+  return longestVisualizationTaxonomyPath(concept.id, graph, new Set()).map((node) => ({
+    id: taxonomyReferenceId(node) || node.id,
+    label: node.label,
+  }));
+}
+
+/**
+ * Compatibility path for fixtures and older VisualizationGraph snapshots.
+ * New resolver output always carries `taxonomyPath` and does not depend on
+ * materialized ancestor nodes.
+ * @param {string} nodeId
+ * @param {VisualizationGraphV1} graph
+ * @param {Set<string>} seen
+ * @returns {VisualizationNode[]}
+ */
+function longestVisualizationTaxonomyPath(nodeId, graph, seen) {
+  if (seen.has(nodeId)) return [];
+  const node = graph.nodes.find((candidate) => candidate.id === nodeId);
+  if (!node) return [];
+  const nextSeen = new Set(seen).add(nodeId);
+  const parentPaths = graph.edges
+    .filter((edge) => edge.sourceId === nodeId && edge.type === "SUBCLASS_OF")
+    .map((edge) => longestVisualizationTaxonomyPath(edge.targetId, graph, nextSeen))
+    .filter((path) => path.length)
+    .sort((left, right) => right.length - left.length || left.map((item) => item.id).join("/").localeCompare(right.map((item) => item.id).join("/")));
+  return [...(parentPaths[0] || []), node];
+}
+
+/** @param {Array<{id:string,label:string,depth:number,parentId:string|null,referenced:boolean}>} entries */
+function positionClassificationGuides(entries) {
+  if (!entries.length) return [];
+  const byId = new Map(entries.map((entry) => [entry.id, entry]));
+  const children = new Map(entries.map((entry) => [entry.id, []]));
+  for (const entry of entries) {
+    if (entry.parentId && children.has(entry.parentId)) children.get(entry.parentId).push(entry.id);
+  }
+  for (const ids of children.values()) ids.sort();
+  const roots = entries
+    .filter((entry) => !entry.parentId || !byId.has(entry.parentId))
+    .map((entry) => entry.id)
+    .sort();
+  const zById = new Map();
+  let row = 0;
+  const assign = (id, path = new Set()) => {
+    if (zById.has(id)) return zById.get(id);
+    if (path.has(id)) return row++ * CLASSIFICATION_ROW_SPACING;
+    const nextPath = new Set(path).add(id);
+    const childZs = (children.get(id) || []).map((childId) => assign(childId, nextPath));
+    const z = childZs.length
+      ? childZs.reduce((sum, value) => sum + value, 0) / childZs.length
+      : row++ * CLASSIFICATION_ROW_SPACING;
+    zById.set(id, z);
+    return z;
+  };
+  roots.forEach((id) => assign(id));
+  entries.map((entry) => entry.id).sort().forEach((id) => assign(id));
+  const rawZs = [...zById.values()];
+  const centerZ = (Math.min(...rawZs) + Math.max(...rawZs)) / 2;
+  const maxDepth = Math.max(0, ...entries.map((entry) => entry.depth));
+  return entries
+    .map((entry) => ({
+      ...entry,
+      x: round((entry.depth - maxDepth / 2) * CLASSIFICATION_DEPTH_SPACING),
+      z: round(zById.get(entry.id) - centerZ),
+    }))
+    .sort(compareById);
+}
+
+/**
+ * @param {VisualizationNode} node
+ * @param {VisualizationGraphV1} graph
+ * @param {Map<string, any>} guideByReferenceId
+ */
+function classificationGuideForNode(node, graph, guideByReferenceId) {
+  if (isTaxonomyConcept(node)) return guideByReferenceId.get(taxonomyReferenceId(node)) || null;
+  const taxonomyByNodeId = new Map(
+    graph.nodes.filter(isTaxonomyConcept).map((concept) => [concept.id, concept]),
+  );
+  const mappingTypes = new Set(["CLASSIFIED_AS", "REPRESENTS", "DEPICTS", "SPECIMEN_OF", "INSTANCE_OF"]);
+  const candidates = graph.edges
+    .filter((edge) => edge.sourceId === node.id && mappingTypes.has(edge.type) && taxonomyByNodeId.has(edge.targetId))
+    .map((edge) => guideByReferenceId.get(taxonomyReferenceId(taxonomyByNodeId.get(edge.targetId))))
+    .filter(Boolean);
+  if (node.kind === "entity") {
+    for (const concept of taxonomyByNodeId.values()) {
+      if (
+        intersects(node.observationIds, concept.observationIds)
+        || intersects(node.entityIds, concept.entityIds)
+      ) {
+        const guide = guideByReferenceId.get(taxonomyReferenceId(concept));
+        if (guide) candidates.push(guide);
+      }
+    }
+  }
+  return uniqueBy(candidates, (guide) => guide.id)
+    .sort((left, right) => right.depth - left.depth || left.id.localeCompare(right.id))[0] || null;
+}
+
+/** @param {VisualizationNode} node */
+function isClassificationComparableNode(node) {
+  return node.kind === "concept" || node.kind === "entity";
+}
+
+/** @param {VisualizationNode} node */
+function isTaxonomyConcept(node) {
+  return node.kind === "concept" && node.data?.referenceAxis === "taxonomy";
+}
+
+/** @param {VisualizationNode|undefined} node */
+function taxonomyReferenceId(node) {
+  return node?.referenceIds?.[0] || null;
 }
 
 /** @param {string[]} left @param {string[]} right */

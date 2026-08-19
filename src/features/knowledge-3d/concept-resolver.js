@@ -87,7 +87,7 @@ export function buildConceptVisualizationGraph(input = {}) {
     for (const value of stringValues(fact.value)) {
       const referenceNode = referenceById.get(value);
       const targetNode = referenceNode
-        ? nodeForReference(referenceNode, fact, source)
+        ? nodeForReference(referenceNode, fact, source, referenceById)
         : unresolvedNodeForFact(fact, value, source);
       addNode(nodes, targetNode);
       addConceptEdge(edges, source.nodeId, targetNode.id, fact, referenceNode);
@@ -330,11 +330,12 @@ function visitIdsForObservations(observationIds, observationById) {
  * @param {Record<string, any>} referenceNode
  * @param {Record<string, any>} fact
  * @param {{nodeId:string, entityId:string|null, observationIds:string[], visitIds:string[]}} source
+ * @param {Map<string, Record<string, any>>} referenceById
  * @returns {VisualizationNode}
  */
-function nodeForReference(referenceNode, fact, source) {
+function nodeForReference(referenceNode, fact, source, referenceById) {
   if (referenceNode.axis === "geological-time") return landmarkNode(referenceNode, fact, source);
-  if (referenceNode.axis === "taxonomy") return canonicalConceptNode(referenceNode, fact, source);
+  if (referenceNode.axis === "taxonomy") return canonicalConceptNode(referenceNode, fact, source, referenceById);
   return unsupportedReferenceNode(referenceNode, fact, source);
 }
 
@@ -342,9 +343,11 @@ function nodeForReference(referenceNode, fact, source) {
  * @param {Record<string, any>} referenceNode
  * @param {Record<string, any>} fact
  * @param {{nodeId:string, entityId:string|null, observationIds:string[], visitIds:string[]}} source
+ * @param {Map<string, Record<string, any>>} referenceById
  * @returns {VisualizationNode}
  */
-function canonicalConceptNode(referenceNode, fact, source) {
+function canonicalConceptNode(referenceNode, fact, source, referenceById) {
+  const lineage = taxonomyLineage(referenceNode, referenceById);
   return {
     id: conceptNodeIdForReference(referenceNode.id),
     label: referenceNode.label || referenceNode.scientificName || referenceNode.id,
@@ -361,8 +364,89 @@ function canonicalConceptNode(referenceNode, fact, source) {
     data: {
       referenceAxis: referenceNode.axis,
       rank: referenceNode.rank || null,
+      parentIds: lineage.parentIds,
+      ancestorIds: lineage.ancestorIds,
+      taxonomyDepth: lineage.taxonomyDepth,
+      taxonomyPath: lineage.taxonomyPath,
     },
   };
+}
+
+/**
+ * Preserve a deterministic root-to-node taxonomy path in the display graph.
+ * ReferenceFacts materialize only their target node, so a direct parent id is
+ * insufficient when the parent itself is not referenced by another fact.
+ *
+ * @param {Record<string, any>} referenceNode
+ * @param {Map<string, Record<string, any>>} referenceById
+ */
+function taxonomyLineage(referenceNode, referenceById) {
+  const parentIds = referenceParentIds(referenceNode);
+  const ancestorIds = collectTaxonomyAncestorIds(referenceNode, referenceById);
+  const path = longestTaxonomyPath(referenceNode, referenceById, new Set());
+  const taxonomyPath = path.map((node, depth) => ({
+    id: node.id,
+    label: node.label || node.scientificName || node.id,
+    depth,
+    parentId: depth > 0 ? path[depth - 1].id : null,
+  }));
+  return {
+    parentIds,
+    ancestorIds,
+    taxonomyDepth: Math.max(0, taxonomyPath.length - 1),
+    taxonomyPath,
+  };
+}
+
+/** @param {Record<string, any>} node */
+function referenceParentIds(node) {
+  return sortedUnique([
+    ...(Array.isArray(node?.parentIds) ? node.parentIds : []),
+    node?.parentId,
+  ]);
+}
+
+/**
+ * @param {Record<string, any>} referenceNode
+ * @param {Map<string, Record<string, any>>} referenceById
+ */
+function collectTaxonomyAncestorIds(referenceNode, referenceById) {
+  const ancestors = new Set();
+  const queue = referenceParentIds(referenceNode);
+  while (queue.length) {
+    const id = queue.shift();
+    if (ancestors.has(id)) continue;
+    ancestors.add(id);
+    const parent = referenceById.get(id);
+    if (parent?.axis === "taxonomy") queue.push(...referenceParentIds(parent));
+  }
+  ancestors.delete(referenceNode.id);
+  return [...ancestors].sort();
+}
+
+/**
+ * Choose the deepest available parent chain. Ties are resolved by stable id,
+ * which keeps multi-parent taxonomies deterministic without using `rank`.
+ * @param {Record<string, any>} referenceNode
+ * @param {Map<string, Record<string, any>>} referenceById
+ * @param {Set<string>} seen
+ * @returns {Record<string, any>[]}
+ */
+function longestTaxonomyPath(referenceNode, referenceById, seen) {
+  if (!referenceNode?.id || seen.has(referenceNode.id)) return [];
+  const nextSeen = new Set(seen).add(referenceNode.id);
+  const parentPaths = referenceParentIds(referenceNode)
+    .map((id) => referenceById.get(id))
+    .filter((node) => node?.axis === "taxonomy")
+    .map((node) => longestTaxonomyPath(node, referenceById, nextSeen))
+    .filter((path) => path.length)
+    .sort((left, right) => right.length - left.length || taxonomyPathKey(left).localeCompare(taxonomyPathKey(right)));
+  return [...(parentPaths[0] || []), referenceNode];
+}
+
+/** @param {Record<string, any>[]} path */
+function taxonomyPathKey(path) {
+  return path.map((node) => node.id).join("/");
 }
 
 /**
@@ -462,7 +546,7 @@ function nodeForMeasurementFact(fact, measurement, referenceById, observationByI
     const referenceId = fact.subjectReferenceId.trim();
     const referenceNode = referenceById.get(referenceId);
     return referenceNode
-      ? measuredReferenceNode(referenceNode, fact, measurement)
+      ? measuredReferenceNode(referenceNode, fact, measurement, referenceById)
       : unresolvedMeasurementReferenceNode(fact, referenceId, measurement);
   }
 
@@ -495,9 +579,10 @@ function nodeForMeasurementFact(fact, measurement, referenceById, observationByI
  * @param {Record<string, any>} referenceNode
  * @param {Record<string, any>} fact
  * @param {VisualizationMeasurement} measurement
+ * @param {Map<string, Record<string, any>>} referenceById
  * @returns {VisualizationNode}
  */
-function measuredReferenceNode(referenceNode, fact, measurement) {
+function measuredReferenceNode(referenceNode, fact, measurement, referenceById) {
   const source = {
     nodeId: isNonEmptyString(fact.id) ? `ReferenceFact:${fact.id}` : `ReferenceNode:${referenceNode.id}`,
     entityId: null,
@@ -506,7 +591,7 @@ function measuredReferenceNode(referenceNode, fact, measurement) {
   };
   return addMeasurementTrace(
     {
-      ...nodeForReference(referenceNode, fact, source),
+      ...nodeForReference(referenceNode, fact, source, referenceById),
       measurements: [measurement],
     },
     fact,

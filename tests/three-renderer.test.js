@@ -285,6 +285,7 @@ describe("Three.js fixture renderer", () => {
     controller.updateLayout?.({ mode: "home", selectedNodeId: "concept:test" });
     controller.updateLayout?.({ mode: "relation", selectedNodeId: "concept:test" });
     controller.updateLayout?.({ mode: "time", selectedNodeId: "concept:test" });
+    controller.updateLayout?.({ mode: "classification", selectedNodeId: "concept:test" });
     controller.updateLayout?.({ mode: "home", selectedNodeId: "concept:test" });
     controller.dispose();
   });
@@ -356,7 +357,7 @@ describe("Three.js fixture renderer", () => {
     }
   });
 
-  it("keeps Time static while rendering non-selectable geological guides", async () => {
+  it("keeps Time and Classification static while rendering non-selectable structural guides", async () => {
     const { jsdom, container } = dom();
     enableCanvasLabels(jsdom.window.document);
     const fake = fakeThree(jsdom.window.document);
@@ -377,6 +378,9 @@ describe("Three.js fixture renderer", () => {
     expect(rootGroup.children.some((child) => child.userData?.nodeId?.startsWith("landmark:"))).toBe(false);
     expect(decorationGroup.children.length).toBeGreaterThan(0);
 
+    controller.updateLayout?.({ mode: "classification", autoRotate: true });
+    expect(rootGroup.rotation.y).toBe(0);
+    expect(decorationGroup.children.length).toBeGreaterThan(0);
     controller.updateLayout?.({ mode: "home", autoRotate: true });
     controller.dispose();
   });
@@ -438,12 +442,14 @@ describe("Three.js fixture renderer", () => {
     expect(fs.readFileSync(path.join(root, "eslint.config.js"), "utf8")).toContain("src/vendor/**");
   });
 
-  it("exposes Time controls through the application UI", () => {
+  it("exposes Time and Classification controls through the application UI", () => {
     const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
     const app = fs.readFileSync(path.join(root, "src/ui/app.js"), "utf8");
 
     expect(html).toContain('data-knowledge3d-mode="time"');
+    expect(html).toContain('data-knowledge3d-mode="classification"');
     expect(app).toContain('time: "Time Layout"');
+    expect(app).toContain('classification: "Classification Layout"');
     expect(app).toContain("visualizationNodesForLayout");
   });
 

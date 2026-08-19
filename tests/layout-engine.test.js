@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { VISUALIZATION_GRAPH_FIXTURE } from "../src/features/knowledge-3d/visualization-graph-fixture.js";
 import {
+  classificationLayout,
   DEFAULT_SIZE_QUANTITY_KIND,
   homeLayout,
   layoutVisualizationGraph,
@@ -218,6 +219,108 @@ describe("knowledge 3D layout engine", () => {
     expect(unset?.x).toBe(layout.metadata.unsetAreaX);
   });
 
+  it("reconstructs unmaterialized taxonomy ancestors and projects Entities to the deepest branch", () => {
+    const conceptTemplate = VISUALIZATION_GRAPH_FIXTURE.nodes.find((node) => node.id === "concept:taxon:theropoda");
+    const entityTemplate = VISUALIZATION_GRAPH_FIXTURE.nodes.find((node) => node.id === "entity:e-fossil");
+    const graph = {
+      ...VISUALIZATION_GRAPH_FIXTURE,
+      nodes: [
+        {
+          ...conceptTemplate,
+          id: "concept:taxon:leaf",
+          label: "Leaf",
+          observationIds: ["o-leaf"],
+          entityIds: ["e-leaf"],
+          referenceIds: ["taxon:leaf"],
+          data: {
+            referenceAxis: "taxonomy",
+            rank: "taxon",
+            taxonomyDepth: 2,
+            taxonomyPath: [
+              { id: "taxon:root", label: "Root", depth: 0, parentId: null },
+              { id: "taxon:middle", label: "Middle", depth: 1, parentId: "taxon:root" },
+              { id: "taxon:leaf", label: "Leaf", depth: 2, parentId: "taxon:middle" },
+            ],
+          },
+        },
+        {
+          ...entityTemplate,
+          id: "entity:e-leaf",
+          label: "Leaf entity",
+          entityIds: ["e-leaf"],
+          observationIds: ["o-leaf"],
+        },
+        {
+          ...conceptTemplate,
+          id: "concept:unclassified",
+          label: "Unclassified",
+          referenceIds: [],
+          data: {},
+        },
+      ],
+      edges: [],
+    };
+
+    const layout = classificationLayout(graph);
+    const leaf = layout.nodes.find((node) => node.id === "concept:taxon:leaf");
+    const entity = layout.nodes.find((node) => node.id === "entity:e-leaf");
+    const guides = layout.metadata.classificationGuides;
+
+    expect(JSON.stringify(layout)).toBe(JSON.stringify(classificationLayout(graph)));
+    expect(guides.map((guide) => [guide.id, guide.depth, guide.parentId])).toEqual([
+      ["taxon:leaf", 2, "taxon:middle"],
+      ["taxon:middle", 1, "taxon:root"],
+      ["taxon:root", 0, null],
+    ]);
+    expect(leaf).toMatchObject({ zone: "classified", classificationReferenceId: "taxon:leaf" });
+    expect(entity).toMatchObject({ zone: "classified", classificationReferenceId: "taxon:leaf" });
+    expect(entity?.x).toBe(leaf?.x);
+    const unclassified = layout.nodes.find((node) => node.id === "concept:unclassified");
+    expect(unclassified?.zone).toBe("unset");
+    expect(unclassified?.x).toBe(layout.metadata.unsetAreaX);
+    expect(layout.nodes.every((node) => ["concept", "entity"].includes(graph.nodes.find((item) => item.id === node.id)?.kind))).toBe(true);
+  });
+
+  it("chooses the deepest taxonomy target deterministically when a subject has multiple facts", () => {
+    const conceptTemplate = VISUALIZATION_GRAPH_FIXTURE.nodes.find((node) => node.id === "concept:taxon:theropoda");
+    const entityTemplate = VISUALIZATION_GRAPH_FIXTURE.nodes.find((node) => node.id === "entity:e-fossil");
+    const taxonomyConcept = (id, path) => ({
+      ...conceptTemplate,
+      id: `concept:${id}`,
+      label: id,
+      referenceIds: [id],
+      observationIds: [],
+      entityIds: [],
+      data: { referenceAxis: "taxonomy", rank: "taxon", taxonomyPath: path },
+    });
+    const shallowPath = [
+      { id: "taxon:root", label: "Root" },
+      { id: "taxon:shallow", label: "Shallow" },
+    ];
+    const deepPath = [
+      { id: "taxon:root", label: "Root" },
+      { id: "taxon:middle", label: "Middle" },
+      { id: "taxon:deep", label: "Deep" },
+    ];
+    const graph = {
+      ...VISUALIZATION_GRAPH_FIXTURE,
+      nodes: [
+        taxonomyConcept("taxon:shallow", shallowPath),
+        taxonomyConcept("taxon:deep", deepPath),
+        { ...entityTemplate, id: "entity:multi", entityIds: ["multi"], observationIds: [] },
+      ],
+      edges: [
+        { ...VISUALIZATION_GRAPH_FIXTURE.edges[0], id: "edge:multi:shallow", sourceId: "entity:multi", targetId: "concept:taxon:shallow", type: "CLASSIFIED_AS" },
+        { ...VISUALIZATION_GRAPH_FIXTURE.edges[0], id: "edge:multi:deep", sourceId: "entity:multi", targetId: "concept:taxon:deep", type: "CLASSIFIED_AS" },
+      ],
+    };
+
+    expect(classificationLayout(graph).nodes.find((node) => node.id === "entity:multi")).toMatchObject({
+      zone: "classified",
+      classificationReferenceId: "taxon:deep",
+    });
+  });
+
   it("dispatches layoutVisualizationGraph by mode without mutating the graph", () => {
     const before = JSON.stringify(VISUALIZATION_GRAPH_FIXTURE);
 
@@ -225,6 +328,7 @@ describe("knowledge 3D layout engine", () => {
     expect(layoutVisualizationGraph(VISUALIZATION_GRAPH_FIXTURE, { mode: "relation" }).mode).toBe("relation");
     expect(layoutVisualizationGraph(VISUALIZATION_GRAPH_FIXTURE, { mode: "size" }).mode).toBe("size");
     expect(layoutVisualizationGraph(VISUALIZATION_GRAPH_FIXTURE, { mode: "time" }).mode).toBe("time");
+    expect(layoutVisualizationGraph(VISUALIZATION_GRAPH_FIXTURE, { mode: "classification" }).mode).toBe("classification");
     expect(visualizationNodesForLayout(VISUALIZATION_GRAPH_FIXTURE, { mode: "time" }).some((node) => node.kind === "landmark")).toBe(false);
     expect(JSON.stringify(VISUALIZATION_GRAPH_FIXTURE)).toBe(before);
   });
