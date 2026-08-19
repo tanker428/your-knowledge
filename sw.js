@@ -12,7 +12,7 @@
 
 // Replaced with a content-derived value by scripts/build.mjs. The fallback is
 // useful for the local source tree and is never used by the production build.
-const VERSION = "build-8a9073d4985de942";
+const VERSION = "build-0473f6851e7d8e7d";
 const SHELL_CACHE = `your-knowledge-shell-${VERSION}`;
 const SAMPLE_CACHE = `your-knowledge-samples-${VERSION}`;
 const SHARED_PHOTO_DB = "your-knowledge-shared-photos";
@@ -52,6 +52,14 @@ const SHELL_ASSETS = [
   "./src/domain/relation.js",
   "./src/domain/visit.js",
   "./src/features/collections/collection-progress.js",
+  "./src/features/knowledge-3d/concept-resolver.js",
+  "./src/features/knowledge-3d/layout-engine.js",
+  "./src/features/knowledge-3d/measurements.js",
+  "./src/features/knowledge-3d/project-visualization-adapter.js",
+  "./src/features/knowledge-3d/three-fixture-renderer.js",
+  "./src/features/knowledge-3d/three-module.js",
+  "./src/features/knowledge-3d/visualization-graph-fixture.js",
+  "./src/features/knowledge-3d/visualization-graph.js",
   "./src/features/knowledge-graph/quiz-generation.js",
   "./src/features/knowledge-graph/selectors.js",
   "./src/features/knowledge-graph/timeline-placement.js",
