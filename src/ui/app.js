@@ -2175,12 +2175,13 @@ export async function initApp(deps) {
     return state.knowledge3dScope === "activeVisit" ? "activeVisit" : "allVisits";
   }
 
-  /** @returns {"home"|"relation"|"size"|"time"} */
+  /** @returns {"home"|"relation"|"size"|"time"|"classification"} */
   function currentKnowledge3dMode() {
     if (
       state.knowledge3dMode === "relation"
       || state.knowledge3dMode === "size"
       || state.knowledge3dMode === "time"
+      || state.knowledge3dMode === "classification"
     ) {
       return state.knowledge3dMode;
     }
@@ -2390,6 +2391,9 @@ export async function initApp(deps) {
     }
     if (mode === "time") {
       return `<span><i class="knowledge-3d-dot kind-experience"></i>Observation（時代ReferenceFactの対象）</span><span><i class="knowledge-3d-dot kind-entity"></i>対象</span><span><i class="knowledge-3d-dot kind-concept"></i>Concept</span><span>横軸 = 地質時代（古い → 新しい）</span><span>紫の区間 = 選択できない時代ガイド</span><span>unset = 時代が未登録の対象</span>${scale}`;
+    }
+    if (mode === "classification") {
+      return `<span><i class="knowledge-3d-dot kind-concept"></i>Concept（分類Reference）</span><span><i class="knowledge-3d-dot kind-entity"></i>対象</span><span>横方向 = rootからの分類深度</span><span>緑の枝 = 参照されていない祖先を含む分類経路</span><span>unset = 分類が未登録の対象</span>${scale}`;
     }
     return `<span><i class="knowledge-3d-dot kind-experience"></i>体験（訪問・写真）</span><span><i class="knowledge-3d-dot kind-entity"></i>対象（写真に写っていた個体・展示物）</span><span><i class="knowledge-3d-dot kind-concept"></i>Concept（分類などの共通概念）</span><span><i class="knowledge-3d-dot kind-landmark"></i>時代（地質時代の区間）</span>${scale}`;
   }
@@ -2613,7 +2617,7 @@ export async function initApp(deps) {
   function knowledge3dKindLabel(kind) { return KNOWLEDGE_3D_KIND_LABELS[kind] || kind; }
   function knowledge3dStatusLabel(status) { return KNOWLEDGE_3D_STATUS_LABELS[status] || status; }
   function knowledge3dEdgeLabel(type) { return KNOWLEDGE_3D_EDGE_LABELS[type] || type; }
-  function knowledge3dModeLabel(mode) { return { home: "Home Layout", relation: "Relation Layout", size: "Size Layout", time: "Time Layout" }[mode] || mode; }
+  function knowledge3dModeLabel(mode) { return { home: "Home Layout", relation: "Relation Layout", size: "Size Layout", time: "Time Layout", classification: "Classification Layout" }[mode] || mode; }
   function knowledge3dScopeLabel(scope) { return scope === "activeVisit" ? "現在のVisitのみ" : "すべての体験"; }
   function knowledge3dLayerShortLabel(layer) { return { experience: "E", referent: "R", conceptual: "C" }[layer] || "?"; }
   function knowledge3dKindIcon(kind) { return { experience: "◎", entity: "◇", concept: "C", landmark: "T", cluster: "◆" }[kind] || "•"; }

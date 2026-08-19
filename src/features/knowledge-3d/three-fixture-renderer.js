@@ -31,7 +31,7 @@ const CAMERA_ZOOM_STEP = 1.12;
  * @property {string|null} reason
  * @property {() => void} dispose
  * @property {() => void} [resetCamera]
- * @property {(options:{graph?: any, mode?: "home"|"relation"|"size"|"time", selectedNodeId?: string|null, autoRotate?: boolean}) => void} [updateLayout]
+ * @property {(options:{graph?: any, mode?: "home"|"relation"|"size"|"time"|"classification", selectedNodeId?: string|null, autoRotate?: boolean}) => void} [updateLayout]
  */
 
 /**
@@ -39,7 +39,7 @@ const CAMERA_ZOOM_STEP = 1.12;
  * this function is called and WebGL has been confirmed available.
  *
  * @param {HTMLElement} container
- * @param {{mode?: "home"|"relation"|"size"|"time", loadThree?: () => Promise<any>, runtime?: any, webglAvailable?: boolean, requestAnimationFrame?: FrameRequestCallback, cancelAnimationFrame?: (id:number) => void, graph?: any, selectedNodeId?: string|null, onNodeSelect?: (nodeId:string) => void, autoRotate?: boolean}} [options]
+ * @param {{mode?: "home"|"relation"|"size"|"time"|"classification", loadThree?: () => Promise<any>, runtime?: any, webglAvailable?: boolean, requestAnimationFrame?: FrameRequestCallback, cancelAnimationFrame?: (id:number) => void, graph?: any, selectedNodeId?: string|null, onNodeSelect?: (nodeId:string) => void, autoRotate?: boolean}} [options]
  * @returns {Promise<Knowledge3dController>}
  */
 export async function mountKnowledge3dFixture(container, options = {}) {
@@ -54,7 +54,7 @@ export async function mountKnowledge3dFixture(container, options = {}) {
  * lifecycle as the fixture preview.
  *
  * @param {HTMLElement} container
- * @param {{mode?: "home"|"relation"|"size"|"time", loadThree?: () => Promise<any>, runtime?: any, webglAvailable?: boolean, requestAnimationFrame?: FrameRequestCallback, cancelAnimationFrame?: (id:number) => void, graph?: any, selectedNodeId?: string|null, onNodeSelect?: (nodeId:string) => void, autoRotate?: boolean}} [options]
+ * @param {{mode?: "home"|"relation"|"size"|"time"|"classification", loadThree?: () => Promise<any>, runtime?: any, webglAvailable?: boolean, requestAnimationFrame?: FrameRequestCallback, cancelAnimationFrame?: (id:number) => void, graph?: any, selectedNodeId?: string|null, onNodeSelect?: (nodeId:string) => void, autoRotate?: boolean}} [options]
  * @returns {Promise<Knowledge3dController>}
  */
 export async function mountKnowledge3dGraph(container, options = {}) {
@@ -615,11 +615,11 @@ function clamp(value, min, max) {
 
 /**
  * @param {boolean} requested
- * @param {"home"|"relation"|"size"|"time"} mode
+ * @param {"home"|"relation"|"size"|"time"|"classification"} mode
  * @param {boolean} reducedMotion
  */
 function shouldAutoRotate(requested, mode, reducedMotion) {
-  return requested && !["size", "time"].includes(mode) && !reducedMotion;
+  return requested && !["size", "time", "classification"].includes(mode) && !reducedMotion;
 }
 
 /** @param {any} hostWindow */
@@ -700,6 +700,7 @@ function refreshLayoutDecorations(THREE, document, decorationRoot, layout) {
   clearGroup(decorationRoot);
   if (layout.mode === "size") refreshSizeDecorations(THREE, document, decorationRoot, layout);
   if (layout.mode === "time") refreshTimeDecorations(THREE, document, decorationRoot, layout);
+  if (layout.mode === "classification") refreshClassificationDecorations(THREE, document, decorationRoot, layout);
 }
 
 /**
@@ -806,6 +807,44 @@ function timeGuideLabel(guide) {
   return guide.kind === "period"
     ? `${guide.label} ${formatAge(guide.startMa)}–${formatAge(guide.endMa)}`
     : `${guide.label} ${formatAge(guide.startMa)}`;
+}
+
+/**
+ * Draw the complete root-to-leaf structure supplied by the resolver. Ancestor
+ * guides are intentionally decoration-only and therefore cannot be selected.
+ * @param {any} THREE
+ * @param {Document} document
+ * @param {any} decorationRoot
+ * @param {import('./layout-engine.js').VisualizationLayout} layout
+ */
+function refreshClassificationDecorations(THREE, document, decorationRoot, layout) {
+  const guides = layout.metadata.classificationGuides || [];
+  const byId = new Map(guides.map((guide) => [guide.id, guide]));
+  const branchY = 2 * NODE_Y_SCALE;
+  const unsetBoundaryX = layout.metadata.unsetAreaX - 1.2;
+  decorationRoot.add(createDecorationLine(THREE, [
+    { x: unsetBoundaryX, y: -0.8, z: -7.4 },
+    { x: unsetBoundaryX, y: 6.2, z: 7.4 },
+  ], 0x8a6f2a, 0.42));
+  addDecorationLabel(THREE, document, decorationRoot, "unset: no taxonomy", {
+    x: layout.metadata.unsetAreaX + 1.7,
+    y: 5.9,
+    z: -6.9,
+  });
+  for (const guide of guides) {
+    const parent = byId.get(guide.parentId);
+    if (parent) {
+      decorationRoot.add(createDecorationLine(THREE, [
+        { x: parent.x, y: branchY, z: parent.z },
+        { x: guide.x, y: branchY, z: guide.z },
+      ], 0x58784d, guide.referenced ? 0.62 : 0.38));
+    }
+    addDecorationLabel(THREE, document, decorationRoot, guide.label, {
+      x: guide.x,
+      y: branchY + 0.72,
+      z: guide.z,
+    });
+  }
 }
 
 /**
