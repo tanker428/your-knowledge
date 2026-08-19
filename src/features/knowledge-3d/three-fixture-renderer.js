@@ -31,7 +31,7 @@ const CAMERA_ZOOM_STEP = 1.12;
  * @property {string|null} reason
  * @property {() => void} dispose
  * @property {() => void} [resetCamera]
- * @property {(options:{graph?: any, mode?: "home"|"relation"|"size", selectedNodeId?: string|null, autoRotate?: boolean}) => void} [updateLayout]
+ * @property {(options:{graph?: any, mode?: "home"|"relation"|"size"|"time", selectedNodeId?: string|null, autoRotate?: boolean}) => void} [updateLayout]
  */
 
 /**
@@ -39,7 +39,7 @@ const CAMERA_ZOOM_STEP = 1.12;
  * this function is called and WebGL has been confirmed available.
  *
  * @param {HTMLElement} container
- * @param {{mode?: "home"|"relation"|"size", loadThree?: () => Promise<any>, runtime?: any, webglAvailable?: boolean, requestAnimationFrame?: FrameRequestCallback, cancelAnimationFrame?: (id:number) => void, graph?: any, selectedNodeId?: string|null, onNodeSelect?: (nodeId:string) => void, autoRotate?: boolean}} [options]
+ * @param {{mode?: "home"|"relation"|"size"|"time", loadThree?: () => Promise<any>, runtime?: any, webglAvailable?: boolean, requestAnimationFrame?: FrameRequestCallback, cancelAnimationFrame?: (id:number) => void, graph?: any, selectedNodeId?: string|null, onNodeSelect?: (nodeId:string) => void, autoRotate?: boolean}} [options]
  * @returns {Promise<Knowledge3dController>}
  */
 export async function mountKnowledge3dFixture(container, options = {}) {
@@ -54,7 +54,7 @@ export async function mountKnowledge3dFixture(container, options = {}) {
  * lifecycle as the fixture preview.
  *
  * @param {HTMLElement} container
- * @param {{mode?: "home"|"relation"|"size", loadThree?: () => Promise<any>, runtime?: any, webglAvailable?: boolean, requestAnimationFrame?: FrameRequestCallback, cancelAnimationFrame?: (id:number) => void, graph?: any, selectedNodeId?: string|null, onNodeSelect?: (nodeId:string) => void, autoRotate?: boolean}} [options]
+ * @param {{mode?: "home"|"relation"|"size"|"time", loadThree?: () => Promise<any>, runtime?: any, webglAvailable?: boolean, requestAnimationFrame?: FrameRequestCallback, cancelAnimationFrame?: (id:number) => void, graph?: any, selectedNodeId?: string|null, onNodeSelect?: (nodeId:string) => void, autoRotate?: boolean}} [options]
  * @returns {Promise<Knowledge3dController>}
  */
 export async function mountKnowledge3dGraph(container, options = {}) {
@@ -615,11 +615,11 @@ function clamp(value, min, max) {
 
 /**
  * @param {boolean} requested
- * @param {"home"|"relation"|"size"} mode
+ * @param {"home"|"relation"|"size"|"time"} mode
  * @param {boolean} reducedMotion
  */
 function shouldAutoRotate(requested, mode, reducedMotion) {
-  return requested && mode !== "size" && !reducedMotion;
+  return requested && !["size", "time"].includes(mode) && !reducedMotion;
 }
 
 /** @param {any} hostWindow */
@@ -698,8 +698,17 @@ function createEdgeLine(THREE, edge, source, target) {
  */
 function refreshLayoutDecorations(THREE, document, decorationRoot, layout) {
   clearGroup(decorationRoot);
-  if (layout.mode !== "size") return;
+  if (layout.mode === "size") refreshSizeDecorations(THREE, document, decorationRoot, layout);
+  if (layout.mode === "time") refreshTimeDecorations(THREE, document, decorationRoot, layout);
+}
 
+/**
+ * @param {any} THREE
+ * @param {Document} document
+ * @param {any} decorationRoot
+ * @param {import('./layout-engine.js').VisualizationLayout} layout
+ */
+function refreshSizeDecorations(THREE, document, decorationRoot, layout) {
   const scaledXs = layout.nodes.filter((node) => node.zone === "scaled").map((node) => node.x);
   const minX = Math.min(-6, ...scaledXs);
   const maxX = Math.max(8, ...scaledXs);
@@ -739,6 +748,64 @@ function refreshLayoutDecorations(THREE, document, decorationRoot, layout) {
       z: axisZ,
     });
   }
+}
+
+/**
+ * Render geological intervals as non-selectable guide lines. Their horizontal
+ * extent is the same normalized geometry used by the 2D timeline quiz.
+ * @param {any} THREE
+ * @param {Document} document
+ * @param {any} decorationRoot
+ * @param {import('./layout-engine.js').VisualizationLayout} layout
+ */
+function refreshTimeDecorations(THREE, document, decorationRoot, layout) {
+  const minX = layout.metadata.axisMinX ?? -8;
+  const maxX = layout.metadata.axisMaxX ?? 8;
+  const unsetBoundaryX = layout.metadata.unsetAreaX - 1.2;
+  const axisY = -0.35;
+  const axisZ = Math.min(-6.8, ...(layout.metadata.timeGuides || []).map((guide) => guide.z - 1.4));
+  decorationRoot.add(createDecorationLine(THREE, [
+    { x: minX, y: axisY, z: axisZ },
+    { x: maxX, y: axisY, z: axisZ },
+  ], 0x8a4f7d, 0.62));
+  decorationRoot.add(createDecorationLine(THREE, [
+    { x: unsetBoundaryX, y: -0.8, z: axisZ - 0.6 },
+    { x: unsetBoundaryX, y: 6.2, z: Math.max(7.4, -axisZ) },
+  ], 0x8a6f2a, 0.42));
+  addDecorationLabel(THREE, document, decorationRoot, "古い", { x: minX, y: axisY + 0.6, z: axisZ });
+  addDecorationLabel(THREE, document, decorationRoot, "新しい", { x: maxX, y: axisY + 0.6, z: axisZ });
+  addDecorationLabel(THREE, document, decorationRoot, "unset: no geological time", {
+    x: layout.metadata.unsetAreaX + 1.9,
+    y: 5.9,
+    z: axisZ,
+  });
+  for (const guide of layout.metadata.timeGuides || []) {
+    const startX = guide.startX;
+    const endX = guide.kind === "period" ? guide.endX : guide.startX;
+    decorationRoot.add(createDecorationLine(THREE, [
+      { x: startX, y: 0.15, z: guide.z },
+      { x: endX, y: 0.15, z: guide.z },
+    ], 0x8a4f7d, 0.48));
+    for (const x of new Set([startX, endX])) {
+      decorationRoot.add(createDecorationLine(THREE, [
+        { x, y: -0.1, z: guide.z },
+        { x, y: 0.4, z: guide.z },
+      ], 0x5f3657, 0.58));
+    }
+    addDecorationLabel(THREE, document, decorationRoot, timeGuideLabel(guide), {
+      x: guide.centerX,
+      y: 0.85,
+      z: guide.z,
+    });
+  }
+}
+
+/** @param {{label:string,startMa:number,endMa:number,kind:string}} guide */
+function timeGuideLabel(guide) {
+  const formatAge = (value) => `${Number(value).toLocaleString("ja-JP", { maximumFractionDigits: 3 })} Ma`;
+  return guide.kind === "period"
+    ? `${guide.label} ${formatAge(guide.startMa)}–${formatAge(guide.endMa)}`
+    : `${guide.label} ${formatAge(guide.startMa)}`;
 }
 
 /**

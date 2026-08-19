@@ -9,8 +9,9 @@ import {
   sizeLayout,
   SIZE_LAYOUT_DEFAULT_UNSET_X,
   SIZE_LAYOUT_SCALE,
-  VISUALIZATION_LAYOUT_SCHEMA_VERSION,
+  timeLayout,
   visualizationNodesForLayout,
+  VISUALIZATION_LAYOUT_SCHEMA_VERSION,
 } from "../src/features/knowledge-3d/layout-engine.js";
 
 describe("knowledge 3D layout engine", () => {
@@ -131,12 +132,100 @@ describe("knowledge 3D layout engine", () => {
     expect(sizeNodes.every((node) => node.kind === "concept" || node.kind === "entity")).toBe(true);
   });
 
+  it("projects subjects to normalized geological intervals and keeps landmarks decorative", () => {
+    const template = VISUALIZATION_GRAPH_FIXTURE.nodes.find((node) => node.id === "concept:taxon:theropoda");
+    const landmarkTemplate = VISUALIZATION_GRAPH_FIXTURE.nodes.find((node) => node.id === "landmark:geo:barremian");
+    const graph = {
+      ...VISUALIZATION_GRAPH_FIXTURE,
+      nodes: [
+        { ...template, id: "concept:reverse", label: "Reverse", referenceIds: ["concept:reverse"] },
+        { ...template, id: "concept:zero", label: "Zero", referenceIds: ["concept:zero"] },
+        { ...template, id: "concept:unset", label: "Unset", referenceIds: ["concept:unset"] },
+        {
+          ...landmarkTemplate,
+          id: "landmark:reverse",
+          label: "Reverse interval",
+          referenceIds: ["geo:reverse"],
+          data: { referenceAxis: "geological-time", startMa: 66, endMa: 100, timeRole: "interval" },
+        },
+        {
+          ...landmarkTemplate,
+          id: "landmark:zero",
+          label: "Present",
+          referenceIds: ["geo:zero"],
+          data: { referenceAxis: "geological-time", startMa: 0, endMa: null, timeRole: "landmark" },
+        },
+        {
+          ...landmarkTemplate,
+          id: "landmark:unknown",
+          label: "Unknown",
+          referenceIds: ["geo:unknown"],
+          data: { referenceAxis: "geological-time", startMa: null, endMa: null, timeRole: "landmark" },
+        },
+        {
+          ...landmarkTemplate,
+          id: "landmark:wide",
+          label: "Wide interval",
+          referenceIds: ["geo:wide"],
+          data: { referenceAxis: "geological-time", startMa: 200, endMa: 0, timeRole: "interval" },
+        },
+      ],
+      edges: [
+        {
+          ...VISUALIZATION_GRAPH_FIXTURE.edges[0],
+          id: "edge:time:reverse",
+          sourceId: "concept:reverse",
+          targetId: "landmark:reverse",
+          type: "OCCURS_DURING",
+        },
+        {
+          ...VISUALIZATION_GRAPH_FIXTURE.edges[0],
+          id: "edge:time:zero",
+          sourceId: "concept:zero",
+          targetId: "landmark:zero",
+          type: "OCCURS_DURING",
+        },
+        {
+          ...VISUALIZATION_GRAPH_FIXTURE.edges[0],
+          id: "edge:time:reverse-wide",
+          sourceId: "concept:reverse",
+          targetId: "landmark:wide",
+          type: "OCCURS_DURING",
+        },
+      ],
+    };
+
+    const layout = timeLayout(graph);
+    const reverse = layout.nodes.find((node) => node.id === "concept:reverse");
+    const zero = layout.nodes.find((node) => node.id === "concept:zero");
+    const unset = layout.nodes.find((node) => node.id === "concept:unset");
+    const reverseGuide = layout.metadata.timeGuides.find((guide) => guide.referenceId === "geo:reverse");
+    const zeroGuide = layout.metadata.timeGuides.find((guide) => guide.referenceId === "geo:zero");
+
+    expect(JSON.stringify(layout)).toBe(JSON.stringify(timeLayout(graph)));
+    expect(layout.nodes.some((node) => node.id.startsWith("landmark:"))).toBe(false);
+    expect(reverse).toMatchObject({
+      zone: "timed",
+      timeRangeMa: { kind: "period", startMa: 100, endMa: 66, referenceId: "geo:reverse" },
+    });
+    expect(reverseGuide.endX).toBeGreaterThan(reverseGuide.startX);
+    expect(zero).toMatchObject({
+      zone: "timed",
+      timeRangeMa: { kind: "point", startMa: 0, endMa: 0, referenceId: "geo:zero" },
+    });
+    expect(zeroGuide.startX).toBe(zeroGuide.endX);
+    expect(unset?.zone).toBe("unset");
+    expect(unset?.x).toBe(layout.metadata.unsetAreaX);
+  });
+
   it("dispatches layoutVisualizationGraph by mode without mutating the graph", () => {
     const before = JSON.stringify(VISUALIZATION_GRAPH_FIXTURE);
 
     expect(layoutVisualizationGraph(VISUALIZATION_GRAPH_FIXTURE, { mode: "home" }).mode).toBe("home");
     expect(layoutVisualizationGraph(VISUALIZATION_GRAPH_FIXTURE, { mode: "relation" }).mode).toBe("relation");
     expect(layoutVisualizationGraph(VISUALIZATION_GRAPH_FIXTURE, { mode: "size" }).mode).toBe("size");
+    expect(layoutVisualizationGraph(VISUALIZATION_GRAPH_FIXTURE, { mode: "time" }).mode).toBe("time");
+    expect(visualizationNodesForLayout(VISUALIZATION_GRAPH_FIXTURE, { mode: "time" }).some((node) => node.kind === "landmark")).toBe(false);
     expect(JSON.stringify(VISUALIZATION_GRAPH_FIXTURE)).toBe(before);
   });
 });
