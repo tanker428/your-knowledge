@@ -1,4 +1,9 @@
 import { resolveMeasurementForLogScale } from "./measurements.js";
+import {
+  normalizeTimelineBounds,
+  timelineNodeGeometry,
+} from "../knowledge-graph/timeline-placement.js";
+import { compareGeologicalTimeNodes } from "../../domain/reference-registry.js";
 
 export const VISUALIZATION_LAYOUT_SCHEMA_VERSION = "1.0.0";
 
@@ -11,6 +16,7 @@ export const SEMANTIC_LAYER_Y = Object.freeze({
 export const DEFAULT_SIZE_QUANTITY_KIND = "body_length";
 export const SIZE_LAYOUT_SCALE = 6;
 export const SIZE_LAYOUT_DEFAULT_UNSET_X = 10;
+export const TIME_LAYOUT_WIDTH = 16;
 
 const HOME_RADIUS_BY_LAYER = Object.freeze({
   experience: 3.5,
@@ -22,7 +28,7 @@ const HOME_RADIUS_BY_LAYER = Object.freeze({
  * @typedef {import('./visualization-graph.js').VisualizationGraphV1} VisualizationGraphV1
  * @typedef {import('./visualization-graph.js').VisualizationNode} VisualizationNode
  * @typedef {import('./visualization-graph.js').VisualizationEdge} VisualizationEdge
- * @typedef {"home"|"relation"|"size"} LayoutMode
+ * @typedef {"home"|"relation"|"size"|"time"} LayoutMode
  */
 
 /**
@@ -37,6 +43,7 @@ const HOME_RADIUS_BY_LAYER = Object.freeze({
  * @property {number} radius
  * @property {number|null} representativeValue
  * @property {{minSI:number, maxSI:number}|null} rangeSI
+ * @property {{kind:string,startMa:number,endMa:number,referenceId:string}|null} timeRangeMa
  */
 
 /**
@@ -58,25 +65,26 @@ const HOME_RADIUS_BY_LAYER = Object.freeze({
  * @property {LayoutMode} mode
  * @property {LayoutNode[]} nodes
  * @property {LayoutEdge[]} edges
- * @property {{sourceGraphSchemaVersion:string, quantityKind:string|null, unsetAreaX:number}} metadata
+ * @property {{sourceGraphSchemaVersion:string, quantityKind:string|null, unsetAreaX:number, [key:string]:any}} metadata
  */
 
 /**
  * @param {VisualizationGraphV1} graph
- * @param {{mode?: LayoutMode, quantityKind?: string, sizeScale?: number, unsetAreaX?: number}} [options]
+ * @param {{mode?: LayoutMode, quantityKind?: string, sizeScale?: number, unsetAreaX?: number, timeWidth?: number}} [options]
  * @returns {VisualizationLayout}
  */
 export function layoutVisualizationGraph(graph, options = {}) {
   const mode = options.mode || "home";
   if (mode === "size") return sizeLayout(graph, options);
+  if (mode === "time") return timeLayout(graph, options);
   if (mode === "relation") return relationLayout(graph);
   return homeLayout(graph);
 }
 
 /**
- * Return exactly the graph nodes represented by the selected layout. Keeping
- * this projection in the layout layer prevents the UI count and selection
- * state from drifting away from what the renderer can actually display.
+ * Return exactly the selectable graph nodes represented by the selected
+ * layout. Geological periods stay out of this set as non-selectable
+ * decorations, keeping UI count and selection aligned with the renderer.
  * @param {VisualizationGraphV1} graph
  * @param {{mode?: LayoutMode}} [options]
  */
@@ -101,7 +109,7 @@ export function homeLayout(graph) {
       }));
     });
   }
-  return buildLayout("home", graph, nodes, null);
+  return buildLayout("home", graph, nodes);
 }
 
 /** @param {VisualizationGraphV1} graph @returns {VisualizationLayout} */
@@ -118,7 +126,7 @@ export function relationLayout(graph) {
       zone: degree > 0 ? "connected" : "isolated",
     });
   });
-  return buildLayout("relation", graph, nodes, null);
+  return buildLayout("relation", graph, nodes);
 }
 
 /**
@@ -166,18 +174,70 @@ export function sizeLayout(graph, options = {}) {
     });
   });
 
-  return buildLayout("size", graph, nodes, quantityKind, unsetAreaX);
+  return buildLayout("size", graph, nodes, { quantityKind, unsetAreaX });
+}
+
+/**
+ * Geological periods are layout decorations. Selectable subjects are projected
+ * to the narrowest linked `OCCURS_DURING` interval; landmark nodes themselves
+ * never enter the node list.
+ * @param {VisualizationGraphV1} graph
+ * @param {{timeWidth?:number, unsetAreaX?:number}} [options]
+ * @returns {VisualizationLayout}
+ */
+export function timeLayout(graph, options = {}) {
+  const width = options.timeWidth ?? TIME_LAYOUT_WIDTH;
+  const axisMinX = -width / 2;
+  const axisMaxX = width / 2;
+  const unsetAreaX = options.unsetAreaX
+    ?? Math.max(SIZE_LAYOUT_DEFAULT_UNSET_X, axisMaxX + 4);
+  const timeGuides = buildTimeGuides(graph, width);
+  const guideByNodeId = new Map(timeGuides.map((guide) => [guide.nodeId, guide]));
+  const candidates = graph.nodes.filter(isTimeComparableNode);
+  let unsetIndex = 0;
+  const nodes = candidates.map((node) => {
+    const guide = timeGuideForNode(node, graph, guideByNodeId);
+    if (!guide) {
+      const next = unsetIndex;
+      unsetIndex += 1;
+      return layoutNode(node, {
+        x: unsetAreaX,
+        y: semanticY(node),
+        z: unsetRowZ(next),
+        zone: "unset",
+      });
+    }
+    return layoutNode(node, {
+      x: guide.centerX,
+      y: semanticY(node),
+      z: round(guide.z + stableJitter(node.id) * 0.9),
+      zone: "timed",
+      representativeValue: round((guide.startMa + guide.endMa) / 2),
+      timeRangeMa: {
+        kind: guide.kind,
+        startMa: guide.startMa,
+        endMa: guide.endMa,
+        referenceId: guide.referenceId,
+      },
+    });
+  });
+  return buildLayout("time", graph, nodes, {
+    unsetAreaX,
+    axisMinX,
+    axisMaxX,
+    axisDirection: "old-to-new",
+    timeGuides,
+  });
 }
 
 /**
  * @param {LayoutMode} mode
  * @param {VisualizationGraphV1} graph
  * @param {LayoutNode[]} nodes
- * @param {string|null} quantityKind
- * @param {number} [unsetAreaX]
+ * @param {{quantityKind?:string|null, unsetAreaX?:number, [key:string]:any}} [metadata]
  * @returns {VisualizationLayout}
  */
-function buildLayout(mode, graph, nodes, quantityKind, unsetAreaX = 14) {
+function buildLayout(mode, graph, nodes, metadata = {}) {
   const nodeIds = new Set(nodes.map((node) => node.id));
   return {
     schemaVersion: VISUALIZATION_LAYOUT_SCHEMA_VERSION,
@@ -189,15 +249,16 @@ function buildLayout(mode, graph, nodes, quantityKind, unsetAreaX = 14) {
       .sort(compareById),
     metadata: {
       sourceGraphSchemaVersion: graph.schemaVersion,
-      quantityKind,
-      unsetAreaX,
+      quantityKind: metadata.quantityKind ?? null,
+      unsetAreaX: metadata.unsetAreaX ?? 14,
+      ...metadata,
     },
   };
 }
 
 /**
  * @param {VisualizationNode} node
- * @param {{x:number, y:number, z:number, zone:string, representativeValue?:number|null, rangeSI?:{minSI:number, maxSI:number}|null}} position
+ * @param {{x:number, y:number, z:number, zone:string, representativeValue?:number|null, rangeSI?:{minSI:number, maxSI:number}|null, timeRangeMa?:{kind:string,startMa:number,endMa:number,referenceId:string}|null}} position
  * @returns {LayoutNode}
  */
 function layoutNode(node, position) {
@@ -212,6 +273,7 @@ function layoutNode(node, position) {
     radius: nodeRadius(node),
     representativeValue: position.representativeValue ?? null,
     rangeSI: position.rangeSI ?? null,
+    timeRangeMa: position.timeRangeMa ?? null,
   };
 }
 
@@ -257,6 +319,103 @@ function buildDegreeMap(graph) {
     degreeByNode.set(edge.targetId, (degreeByNode.get(edge.targetId) || 0) + weight);
   }
   return degreeByNode;
+}
+
+/** @param {VisualizationGraphV1} graph @param {number} width */
+function buildTimeGuides(graph, width) {
+  const axisMinX = -width / 2;
+  const candidates = graph.nodes
+    .filter((node) => node.kind === "landmark" && node.data?.referenceAxis === "geological-time")
+    .map((node) => {
+      const normalized = normalizeTimelineBounds(node.data);
+      return {
+        node,
+        id: node.referenceIds[0] || node.id,
+        label: node.label,
+        startMa: normalized.startMa,
+        endMa: normalized.endMa,
+        kind: normalized.kind,
+      };
+    })
+    .filter((entry) => entry.kind !== "unknown")
+    .sort((left, right) => compareGeologicalTimeNodes(
+      /** @type {any} */ (left),
+      /** @type {any} */ (right),
+    ));
+  const geometryOptions = candidates.map((entry) => ({
+    id: entry.id,
+    startMa: entry.startMa,
+    endMa: entry.endMa,
+  }));
+  return candidates.map((entry, index) => {
+    const geometry = timelineNodeGeometry(geometryOptions[index], geometryOptions);
+    const startX = round(axisMinX + (geometry.left / 100) * width);
+    const endX = round(axisMinX + ((geometry.left + geometry.width) / 100) * width);
+    return {
+      nodeId: entry.node.id,
+      referenceId: entry.id,
+      label: entry.label,
+      kind: entry.kind,
+      startMa: entry.startMa,
+      endMa: entry.endMa,
+      startX,
+      endX,
+      centerX: round((startX + endX) / 2),
+      z: round((index - (candidates.length - 1) / 2) * 1.55),
+      observationIds: [...entry.node.observationIds],
+      entityIds: [...entry.node.entityIds],
+    };
+  });
+}
+
+/**
+ * @param {VisualizationNode} node
+ * @param {VisualizationGraphV1} graph
+ * @param {Map<string, any>} guideByNodeId
+ */
+function timeGuideForNode(node, graph, guideByNodeId) {
+  const candidates = graph.edges
+    .filter((edge) => edge.sourceId === node.id && edge.type === "OCCURS_DURING")
+    .map((edge) => guideByNodeId.get(edge.targetId))
+    .filter(Boolean);
+  if (node.kind === "entity") {
+    for (const guide of guideByNodeId.values()) {
+      if (
+        intersects(node.observationIds, guide.observationIds)
+        || intersects(node.entityIds, guide.entityIds)
+      ) candidates.push(guide);
+    }
+  }
+  return uniqueBy(candidates, (guide) => guide.nodeId)
+    .sort((left, right) => timeGuideDuration(left) - timeGuideDuration(right) || left.referenceId.localeCompare(right.referenceId))[0] || null;
+}
+
+/** @param {{startMa:number,endMa:number}} guide */
+function timeGuideDuration(guide) {
+  return Math.abs(guide.startMa - guide.endMa);
+}
+
+/** @param {VisualizationNode} node */
+function isTimeComparableNode(node) {
+  if (node.kind === "concept" || node.kind === "entity") return true;
+  return node.kind === "experience"
+    && node.sourceNodeIds.some((id) => id.startsWith("Observation:"));
+}
+
+/** @param {string[]} left @param {string[]} right */
+function intersects(left = [], right = []) {
+  const rightIds = new Set(right);
+  return left.some((id) => rightIds.has(id));
+}
+
+/** @template T @param {T[]} items @param {(item:T)=>string} keyFor */
+function uniqueBy(items, keyFor) {
+  return [...new Map(items.map((item) => [keyFor(item), item])).values()];
+}
+
+/** @param {number} index */
+function unsetRowZ(index) {
+  return round((index % 12) - 5.5 + Math.floor(index / 12) * 1.25);
 }
 
 /**

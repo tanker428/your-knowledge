@@ -2175,9 +2175,13 @@ export async function initApp(deps) {
     return state.knowledge3dScope === "activeVisit" ? "activeVisit" : "allVisits";
   }
 
-  /** @returns {"home"|"relation"|"size"} */
+  /** @returns {"home"|"relation"|"size"|"time"} */
   function currentKnowledge3dMode() {
-    if (state.knowledge3dMode === "relation" || state.knowledge3dMode === "size") {
+    if (
+      state.knowledge3dMode === "relation"
+      || state.knowledge3dMode === "size"
+      || state.knowledge3dMode === "time"
+    ) {
       return state.knowledge3dMode;
     }
     return "home";
@@ -2270,7 +2274,7 @@ export async function initApp(deps) {
     $("#knowledgeGraphDetail").innerHTML = renderKnowledge3dDetail(graph, state.knowledge3dSelectedNodeId);
 
     // Home and Relation drift slowly so the space reads as three-dimensional.
-    // An active search pins the view instead, and Size never rotates at all
+    // An active search pins the view, and axis layouts never rotate at all
     // (see shouldAutoRotate in the renderer).
     const autoRotate = !state.knowledgeSearch.trim();
 
@@ -2383,6 +2387,9 @@ export async function initApp(deps) {
     const scale = '<span class="knowledge-3d-legend-note">丸の大きさ = 元になったObservationの数</span><span class="knowledge-3d-legend-note">線の濃さ = 濃い実線は登録した関係、薄い灰色は推測された関係</span>';
     if (mode === "size") {
       return `<span><i class="knowledge-3d-dot kind-concept"></i>Concept（分類などの共通概念）</span><span><i class="knowledge-3d-dot kind-entity"></i>対象（写真に写っていた個体・展示物）</span><span>横軸 = body_length（体長・対数目盛り）</span><span>unset = 体長が未登録の対象</span>${scale}`;
+    }
+    if (mode === "time") {
+      return `<span><i class="knowledge-3d-dot kind-experience"></i>Observation（時代ReferenceFactの対象）</span><span><i class="knowledge-3d-dot kind-entity"></i>対象</span><span><i class="knowledge-3d-dot kind-concept"></i>Concept</span><span>横軸 = 地質時代（古い → 新しい）</span><span>紫の区間 = 選択できない時代ガイド</span><span>unset = 時代が未登録の対象</span>${scale}`;
     }
     return `<span><i class="knowledge-3d-dot kind-experience"></i>体験（訪問・写真）</span><span><i class="knowledge-3d-dot kind-entity"></i>対象（写真に写っていた個体・展示物）</span><span><i class="knowledge-3d-dot kind-concept"></i>Concept（分類などの共通概念）</span><span><i class="knowledge-3d-dot kind-landmark"></i>時代（地質時代の区間）</span>${scale}`;
   }
@@ -2606,7 +2613,7 @@ export async function initApp(deps) {
   function knowledge3dKindLabel(kind) { return KNOWLEDGE_3D_KIND_LABELS[kind] || kind; }
   function knowledge3dStatusLabel(status) { return KNOWLEDGE_3D_STATUS_LABELS[status] || status; }
   function knowledge3dEdgeLabel(type) { return KNOWLEDGE_3D_EDGE_LABELS[type] || type; }
-  function knowledge3dModeLabel(mode) { return { home: "Home Layout", relation: "Relation Layout", size: "Size Layout" }[mode] || mode; }
+  function knowledge3dModeLabel(mode) { return { home: "Home Layout", relation: "Relation Layout", size: "Size Layout", time: "Time Layout" }[mode] || mode; }
   function knowledge3dScopeLabel(scope) { return scope === "activeVisit" ? "現在のVisitのみ" : "すべての体験"; }
   function knowledge3dLayerShortLabel(layer) { return { experience: "E", referent: "R", conceptual: "C" }[layer] || "?"; }
   function knowledge3dKindIcon(kind) { return { experience: "◎", entity: "◇", concept: "C", landmark: "T", cluster: "◆" }[kind] || "•"; }

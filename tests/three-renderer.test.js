@@ -7,6 +7,7 @@ import {
   mountKnowledge3dFixture,
   mountKnowledge3dGraph,
 } from "../src/features/knowledge-3d/three-fixture-renderer.js";
+import { VISUALIZATION_GRAPH_FIXTURE } from "../src/features/knowledge-3d/visualization-graph-fixture.js";
 import {
   isWebGLAvailable,
   THREE_MODULE_URL,
@@ -283,11 +284,12 @@ describe("Three.js fixture renderer", () => {
     controller.updateLayout?.({ mode: "size", selectedNodeId: "concept:test" });
     controller.updateLayout?.({ mode: "home", selectedNodeId: "concept:test" });
     controller.updateLayout?.({ mode: "relation", selectedNodeId: "concept:test" });
+    controller.updateLayout?.({ mode: "time", selectedNodeId: "concept:test" });
     controller.updateLayout?.({ mode: "home", selectedNodeId: "concept:test" });
     controller.dispose();
   });
 
-  it("keeps auto rotation off by default and disables it for Size or reduced motion", async () => {
+  it("keeps auto rotation off by default and disables it for axis layouts or reduced motion", async () => {
     {
       const { jsdom, container } = dom();
       const fake = fakeThree(jsdom.window.document);
@@ -354,6 +356,31 @@ describe("Three.js fixture renderer", () => {
     }
   });
 
+  it("keeps Time static while rendering non-selectable geological guides", async () => {
+    const { jsdom, container } = dom();
+    enableCanvasLabels(jsdom.window.document);
+    const fake = fakeThree(jsdom.window.document);
+    const controller = await mountKnowledge3dGraph(container, {
+      graph: VISUALIZATION_GRAPH_FIXTURE,
+      mode: "time",
+      autoRotate: true,
+      webglAvailable: true,
+      loadThree: async () => fake.THREE,
+      runtime: { window: jsdom.window, document: jsdom.window.document },
+      requestAnimationFrame: () => 0,
+      cancelAnimationFrame: vi.fn(),
+    });
+    const rootGroup = fake.groups[0];
+    const decorationGroup = fake.groups[1];
+
+    expect(rootGroup.rotation.y).toBe(0);
+    expect(rootGroup.children.some((child) => child.userData?.nodeId?.startsWith("landmark:"))).toBe(false);
+    expect(decorationGroup.children.length).toBeGreaterThan(0);
+
+    controller.updateLayout?.({ mode: "home", autoRotate: true });
+    controller.dispose();
+  });
+
   it("keeps text labels to the selected node only", async () => {
     const { jsdom, container } = dom();
     enableCanvasLabels(jsdom.window.document);
@@ -409,6 +436,15 @@ describe("Three.js fixture renderer", () => {
     expect(build).toContain("./src/vendor/three/");
     expect(fs.readFileSync(path.join(root, "tsconfig.json"), "utf8")).toContain("\"src/vendor\"");
     expect(fs.readFileSync(path.join(root, "eslint.config.js"), "utf8")).toContain("src/vendor/**");
+  });
+
+  it("exposes Time controls through the application UI", () => {
+    const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
+    const app = fs.readFileSync(path.join(root, "src/ui/app.js"), "utf8");
+
+    expect(html).toContain('data-knowledge3d-mode="time"');
+    expect(app).toContain('time: "Time Layout"');
+    expect(app).toContain("visualizationNodesForLayout");
   });
 
   it("zooms the camera with the wheel and restores it on camera reset", async () => {
