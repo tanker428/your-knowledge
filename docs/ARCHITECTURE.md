@@ -72,6 +72,36 @@ ReferenceGraphは分類・地質時代の参照構造、ReferenceFactはEntity�
 される確認済み知識であり、Visit KGへReferenceGraph全体を複製しない。必要な参照ノードだけを
 stable IDで接続する。旧`project.facts`はReferenceFactや学習済み状態へ自動変換しない。
 
+### 0.3 3D Visualization Projection
+
+3D知識空間は保存用KnowledgeGraphを置き換えず、専用Adapterで表示用の`VisualizationGraphV1`を
+導出する。
+
+```text
+Project / Visit data
+        ↓
+Cross-Visit Projection
+        ↓
+Concept Resolver
+        ↓
+VisualizationGraphV1
+        ↓
+Layout Engine
+        ↓
+Three.js Renderer
+```
+
+既存2D知識マップは`activeVisit`を維持し、3D知識空間は`allVisits`を初期値にできるようにする。
+Visit単位`buildVisitKnowledgeGraph()`は変更しない。
+
+短期MVPではConceptはprojection-onlyであり、Project JSONへ保存しない。taxonomy ReferenceNodeは
+canonical Concept、geological-time ReferenceNodeはtime landmark / time intervalとして扱う。
+永続Conceptノードとlazy migrationは後続Issueで扱う。
+
+Three.jsは固定バージョンのvendored ESMとして遅延読み込みする。初期Service Worker shell
+precacheには含めず、cache-on-first-useとする。WebGL不可または初回オフライン時は2D fallbackを
+表示する。
+
 ### 1. KnowledgeRepository — 保存先
 
 `src/repositories/knowledge-repository.js` が形だけを宣言し、

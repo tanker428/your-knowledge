@@ -20,13 +20,15 @@ describe("reusable Observation quiz card", () => {
   it("renders the full quiz photo with the Observation rectangle overlay", () => {
     const dom = new JSDOM(renderObservationQuizCard(card, photo, { draggable: true, selected: true, placementLabel: "Old" }));
     const root = dom.window.document.querySelector(".observation-quiz-card");
+    const media = root.querySelector(".quiz-photo-media");
+    const image = media.querySelector("img");
+    const region = media.querySelector(".quiz-photo-region");
     expect(root.dataset.observationCard).toBe("o1");
     expect(root.getAttribute("draggable")).toBe("true");
     expect(root.getAttribute("aria-pressed")).toBe("true");
     expect(root.classList.contains("placed")).toBe(true);
     expect(root.querySelector("svg")).toBeNull();
-    expect(root.querySelector(".quiz-photo-media img").getAttribute("src")).toBe("/photo.jpg");
-    const region = root.querySelector(".quiz-photo-region");
+    expect(image.getAttribute("src")).toBe("/photo.jpg");
     expect(region.style.left).toBe("10%");
     expect(region.style.top).toBe("20%");
     expect(region.style.width).toBe("30%");
