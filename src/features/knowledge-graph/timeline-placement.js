@@ -20,6 +20,35 @@ export function normalizeTimelineBounds(value) {
   };
 }
 
+/**
+ * Format an age in Ma as Japanese "〜年前". `251.9` reads 2億5190万年前 rather
+ * than "251.9 Ma", which is unreadable for anyone outside geology. Kept free of
+ * `toLocaleString` so the output is identical on every runtime.
+ * @param {number|null|undefined} ma
+ */
+export function formatGeologicalAgeJa(ma) {
+  const value = Number(ma);
+  if (!Number.isFinite(value) || value === 0) return "現在";
+  const years = Math.abs(value) * 1_000_000;
+  if (years >= 100_000_000) {
+    let oku = Math.floor(years / 100_000_000);
+    let man = Math.round((years - oku * 100_000_000) / 10_000);
+    if (man >= 10_000) {
+      oku += 1;
+      man = 0;
+    }
+    return man ? `${oku}億${man}万年前` : `${oku}億年前`;
+  }
+  if (years >= 10_000) {
+    // Below 100万年 a whole-man rounding would collapse 1.17万 into 1万.
+    const man = years < 1_000_000
+      ? Math.round((years / 10_000) * 10) / 10
+      : Math.round(years / 10_000);
+    return `${man}万年前`;
+  }
+  return `${Math.round(years)}年前`;
+}
+
 /** Return the displayed timeline span in Ma. */
 export function timelinePeriodSpan(options) {
   const bounds = (options || []).map(normalizeTimelineBounds).filter((value) => value.kind !== "unknown");

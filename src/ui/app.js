@@ -89,7 +89,7 @@ import {
   shouldShowKnowledgeAxisControls,
 } from "../features/knowledge-graph/selectors.js";
 import { buildProjectVisualizationGraph } from "../features/knowledge-3d/project-visualization-adapter.js";
-import { visualizationNodesForLayout } from "../features/knowledge-3d/layout-engine.js";
+import { isAxisLayoutMode, visualizationNodesForLayout } from "../features/knowledge-3d/layout-engine.js";
 import { mountKnowledge3dGraph } from "../features/knowledge-3d/three-fixture-renderer.js";
 import {
   buildQuizResultEntries,
@@ -2260,8 +2260,10 @@ export async function initApp(deps) {
     }
 
     const displayNodes = knowledge3dDisplayNodes(graph, mode);
+    // Nothing is selected until the reader picks a node: an always-on highlight
+    // makes the space look like it has already answered a question nobody asked.
     if (!displayNodes.some((node) => node.id === state.knowledge3dSelectedNodeId)) {
-      state.knowledge3dSelectedNodeId = defaultKnowledge3dNodeId({ nodes: displayNodes });
+      state.knowledge3dSelectedNodeId = null;
     }
 
     const visibleNodes = filterKnowledge3dNodes(graph, displayNodes);
@@ -2269,7 +2271,7 @@ export async function initApp(deps) {
       state.knowledge3dSelectedNodeId = visibleNodes[0].id;
     }
     $("#knowledgeObservationList").innerHTML = visibleNodes.length
-      ? `<div class="knowledge-3d-index-note"><strong>${displayNodes.length} nodes / ${graph.edges.length} edges</strong><small>${escapeHtml(knowledge3dScopeLabel(scope))}・${escapeHtml(knowledge3dModeLabel(mode))}</small></div>${visibleNodes.map((node) => renderKnowledge3dNodeItem(node)).join("")}`
+      ? `<div class="knowledge-3d-index-note"><strong>${displayNodes.length} nodes${isAxisLayoutMode(mode) ? "" : ` / ${graph.edges.length} edges`}</strong><small>${escapeHtml(knowledge3dScopeLabel(scope))}・${escapeHtml(knowledge3dModeLabel(mode))}</small></div>${visibleNodes.map((node) => renderKnowledge3dNodeItem(node)).join("")}`
       : '<div class="empty-state"><strong>検索に一致する3Dノードがありません</strong><p>Concept、Observation、写真メモを別の語句で検索してください。</p></div>';
     $("#knowledgeGraphDetail").innerHTML = renderKnowledge3dDetail(graph, state.knowledge3dSelectedNodeId);
 
@@ -2307,8 +2309,7 @@ export async function initApp(deps) {
             selectedNodeId: state.knowledge3dSelectedNodeId,
             autoRotate,
             onNodeSelect(nodeId) {
-              state.knowledge3dSelectedNodeId = nodeId;
-              renderKnowledge();
+              selectKnowledge3dNode(nodeId);
             },
           });
           if (token !== knowledge3dMountToken) {
@@ -2343,8 +2344,7 @@ export async function initApp(deps) {
         selectedNodeId: state.knowledge3dSelectedNodeId,
         autoRotate,
         onNodeSelect(nodeId) {
-          state.knowledge3dSelectedNodeId = nodeId;
-          renderKnowledge();
+          selectKnowledge3dNode(nodeId);
         },
       });
       if (token !== knowledge3dMountToken) {
@@ -2389,7 +2389,7 @@ export async function initApp(deps) {
       return `<span><i class="knowledge-3d-dot kind-concept"></i>Concept（分類などの共通概念）</span><span><i class="knowledge-3d-dot kind-entity"></i>対象（写真に写っていた個体・展示物）</span><span>横軸 = body_length（体長・対数目盛り）</span><span>unset = 体長が未登録の対象</span>${scale}`;
     }
     if (mode === "time") {
-      return `<span><i class="knowledge-3d-dot kind-experience"></i>Observation（時代ReferenceFactの対象）</span><span><i class="knowledge-3d-dot kind-entity"></i>対象</span><span><i class="knowledge-3d-dot kind-concept"></i>Concept</span><span>横軸 = 地質時代（古い → 新しい）</span><span>紫の区間 = 選択できない時代ガイド</span><span>unset = 時代が未登録の対象</span>${scale}`;
+      return `<span><i class="knowledge-3d-dot kind-experience"></i>Observation（時代ReferenceFactの対象）</span><span><i class="knowledge-3d-dot kind-entity"></i>対象</span><span><i class="knowledge-3d-dot kind-concept"></i>Concept</span><span>横軸 = 地質時代（古い → 新しい）</span><span>帯 = 選択できない時代ガイド（茶 = 古い / 緑 = 新しい）</span><span>unset = 時代が未登録の対象</span>${scale}`;
     }
     return `<span><i class="knowledge-3d-dot kind-experience"></i>体験（訪問・写真）</span><span><i class="knowledge-3d-dot kind-entity"></i>対象（写真に写っていた個体・展示物）</span><span><i class="knowledge-3d-dot kind-concept"></i>Concept（分類などの共通概念）</span><span><i class="knowledge-3d-dot kind-landmark"></i>時代（地質時代の区間）</span>${scale}`;
   }
@@ -2445,12 +2445,6 @@ export async function initApp(deps) {
       || left.id.localeCompare(right.id);
   }
 
-  function defaultKnowledge3dNodeId(graph) {
-    const canonicalConcept = graph.nodes.find((node) => node.kind === "concept" && node.mappingStatus === "canonical");
-    const concept = canonicalConcept || graph.nodes.find((node) => node.kind === "concept");
-    return concept?.id || graph.nodes.find((node) => node.kind === "entity")?.id || graph.nodes[0]?.id || null;
-  }
-
   function renderKnowledge3dNodeItem(node) {
     const selected = node.id === state.knowledge3dSelectedNodeId;
     const counts = [node.observationIds.length ? `Obs ${node.observationIds.length}` : "", node.entityIds.length ? `Entity ${node.entityIds.length}` : ""].filter(Boolean).join(" / ");
@@ -2460,14 +2454,17 @@ export async function initApp(deps) {
   function renderKnowledge3dDetail(graph, nodeId) {
     const node = graph.nodes.find((item) => item.id === nodeId);
     if (!node) {
-      return '<div class="empty-state"><strong>3Dノードを選択してください</strong><p>Conceptを選ぶと元Observation、Entity、Photoへ辿れます。</p></div>';
+      return '<div class="empty-state"><strong>ノードを選択してください</strong><p>3D空間のノードをタップすると、元のObservationや写真、学習状況を表示します。</p></div>';
     }
     const factIds = referenceFactIdsForKnowledge3dNode(graph, node);
     const mastery = state.userKnowledgeStates.filter((item) => factIds.has(item.referenceFactId));
     const observations = node.observationIds.map(knowledge3dObservationEntry).filter(Boolean);
     const entities = node.entityIds.map((id) => entityById(id)).filter(Boolean);
     const visits = node.visitIds.map((id) => visitById(id)).filter(Boolean);
-    return `<div class="kg-detail-header knowledge-3d-detail-header"><span>${escapeHtml(knowledge3dKindLabel(node.kind))} / ${escapeHtml(knowledge3dStatusLabel(node.mappingStatus))}</span><h2>${escapeHtml(node.label)}</h2><div class="knowledge-3d-badges"><span>${escapeHtml(KNOWLEDGE_3D_LAYER_LABELS[node.semanticLayer] || node.semanticLayer)}</span><span>${observations.length} Observation</span><span>${entities.length} Entity</span><span>${factIds.size} ReferenceFact</span></div></div>${renderKnowledge3dSourceSection(observations, entities, visits)}${renderKnowledge3dMeasurementSection(node)}${renderKnowledge3dMasterySection(mastery)}${renderKnowledge3dProvenanceSection(node.provenance)}${renderKnowledge3dReferenceSection(node, factIds)}${renderKnowledge3dConnectionSection(graph, node)}`;
+    const openIn2d = node.observationIds.length
+      ? `<button class="text-button knowledge-3d-open-2d" data-knowledge3d-observation="${escapeHtml(node.observationIds[0])}">2D知識マップで開く</button>`
+      : "";
+    return `<div class="kg-detail-header knowledge-3d-detail-header"><span>${escapeHtml(knowledge3dKindLabel(node.kind))} / ${escapeHtml(knowledge3dStatusLabel(node.mappingStatus))}</span><h2>${escapeHtml(node.label)}</h2>${openIn2d}<div class="knowledge-3d-badges"><span>${escapeHtml(KNOWLEDGE_3D_LAYER_LABELS[node.semanticLayer] || node.semanticLayer)}</span><span>${observations.length} Observation</span><span>${entities.length} Entity</span><span>${factIds.size} ReferenceFact</span></div></div>${renderKnowledge3dSourceSection(observations, entities, visits)}${renderKnowledge3dMeasurementSection(node)}${renderKnowledge3dMasterySection(mastery)}${renderKnowledge3dProvenanceSection(node.provenance)}${renderKnowledge3dReferenceSection(node, factIds)}${renderKnowledge3dConnectionSection(graph, node)}`;
   }
 
   function renderKnowledge3dSourceSection(observations, entities, visits) {
@@ -2582,13 +2579,21 @@ export async function initApp(deps) {
     };
   }
 
+  /** @param {string} nodeId */
+  function selectKnowledge3dNode(nodeId) {
+    state.knowledge3dSelectedNodeId = nodeId;
+    renderKnowledge();
+    // On phone widths the detail panel sits below the fold, so a tap in the 3D
+    // stage would otherwise look like it did nothing.
+    $("#knowledgeGraphDetail")?.scrollIntoView?.({ behavior: "smooth", block: "nearest" });
+  }
+
   function bindKnowledge3dEvents(graph) {
     $$('[data-knowledge3d-node]').forEach((button) =>
       button.onclick = () => {
         const id = button.dataset.knowledge3dNode;
         if (!id || !graph.nodes.some((node) => node.id === id)) return;
-        state.knowledge3dSelectedNodeId = id;
-        renderKnowledge();
+        selectKnowledge3dNode(id);
       },
     );
     $$('[data-knowledge3d-observation]').forEach((button) =>
@@ -2604,7 +2609,15 @@ export async function initApp(deps) {
       },
     );
     const resetButton = $("[data-knowledge3d-reset-camera]");
-    if (resetButton) resetButton.onclick = () => knowledge3dController?.resetCamera?.();
+    if (resetButton) {
+      resetButton.onclick = () => {
+        knowledge3dController?.resetCamera?.();
+        // Returning the camera also returns the space to its unselected state.
+        if (!state.knowledge3dSelectedNodeId) return;
+        state.knowledge3dSelectedNodeId = null;
+        renderKnowledge();
+      };
+    }
     $$('[data-open-photo]').forEach((button) => {
       button.onclick = () => openPhotoModal(button.dataset.openPhoto);
     });

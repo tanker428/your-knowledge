@@ -1,5 +1,6 @@
 import { VISUALIZATION_GRAPH_FIXTURE } from "./visualization-graph-fixture.js";
-import { layoutVisualizationGraph } from "./layout-engine.js";
+import { isAxisLayoutMode, layoutVisualizationGraph } from "./layout-engine.js";
+import { formatGeologicalAgeJa } from "../knowledge-graph/timeline-placement.js";
 import {
   isWebGLAvailable,
   loadThreeModule,
@@ -19,6 +20,14 @@ const LABEL_Y_OFFSET = 0.55;
 const MODE_TRANSITION_MS = 520;
 /** Labels draw on top of nodes and edges instead of being clipped by them. */
 const LABEL_RENDER_ORDER = 900;
+/** Area bands sit under everything else so nodes stay readable on top. */
+const BAND_RENDER_ORDER = -10;
+/** Old-to-new axis colouring: brown for the oldest, green for the newest. */
+const TIME_COLOR_OLD = 0x8a5a2a;
+const TIME_COLOR_NEW = 0x4f7a3a;
+const UNSET_BAND_COLOR = 0x9a9a94;
+/** Slightly under the 1.55 spacing between guides, so bands never touch. */
+const TIME_BAND_DEPTH = 1.4;
 const CAMERA_HOME = Object.freeze({ x: 10, y: 8, z: 14 });
 const CAMERA_TARGET = Object.freeze({ x: 0, y: 1, z: 0 });
 const CAMERA_ZOOM_MIN = 0.35;
@@ -184,11 +193,12 @@ function mountThreeScene(container, THREE, graph, layout, options) {
     root.add(mesh);
     nodeObjectById.set(node.id, mesh);
   }
-  syncSelectedLabel(THREE, container.ownerDocument, root, {
+  syncNodeLabels(THREE, container.ownerDocument, root, {
     graphNodeById,
     layoutNodesById: layoutNodeById(layout),
     labelObjectById,
     selectedNodeId: currentSelectedNodeId,
+    mode: layout.mode,
   });
   for (const edge of layout.edges) {
     const source = layoutNodeById(layout).get(edge.sourceId);
@@ -414,11 +424,12 @@ function reconcileSceneObjects(THREE, document, root, options) {
       options.nodeObjectById.set(node.id, mesh);
     }
   }
-  syncSelectedLabel(THREE, document, root, {
+  syncNodeLabels(THREE, document, root, {
     graphNodeById,
     layoutNodesById,
     labelObjectById: options.labelObjectById,
     selectedNodeId: options.selectedNodeId,
+    mode: options.layout.mode,
   });
 
   for (const [id, line] of [...options.edgeObjectById.entries()]) {
@@ -440,28 +451,46 @@ function reconcileSceneObjects(THREE, document, root, options) {
 }
 
 /**
+ * Axis layouts are read node by node against a scale, so every displayed node
+ * carries its own label. Home and Relation would turn into a wall of text, so
+ * there only the selected node is labelled.
  * @param {any} THREE
  * @param {Document} document
  * @param {any} root
- * @param {{graphNodeById:Map<string, any>, layoutNodesById:Map<string, import('./layout-engine.js').LayoutNode>, labelObjectById:Map<string, any>, selectedNodeId:string|null}} options
+ * @param {{graphNodeById:Map<string, any>, layoutNodesById:Map<string, import('./layout-engine.js').LayoutNode>, labelObjectById:Map<string, any>, selectedNodeId:string|null, mode:string}} options
  */
-function syncSelectedLabel(THREE, document, root, options) {
+function syncNodeLabels(THREE, document, root, options) {
+  /** @type {Map<string, boolean>} id -> emphasised */
+  const wanted = new Map();
+  const ids = isAxisLayoutMode(options.mode)
+    ? [...options.layoutNodesById.keys()]
+    : (options.selectedNodeId && options.layoutNodesById.has(options.selectedNodeId) ? [options.selectedNodeId] : []);
+  for (const id of ids) wanted.set(id, id === options.selectedNodeId);
+
   for (const [id, label] of [...options.labelObjectById.entries()]) {
-    if (id === options.selectedNodeId && options.layoutNodesById.has(id)) continue;
+    // Emphasis is baked into the sprite texture, so a changed selection has to
+    // rebuild the label rather than restyle it.
+    if (wanted.has(id) && label.userData?.emphasis === wanted.get(id)) continue;
     root.remove?.(label);
     disposeObject(label);
     options.labelObjectById.delete(id);
   }
 
-  if (!options.selectedNodeId || options.labelObjectById.has(options.selectedNodeId)) return;
-  const layoutNode = options.layoutNodesById.get(options.selectedNodeId);
-  if (!layoutNode) return;
-  const graphNode = options.graphNodeById.get(options.selectedNodeId);
-  const label = createLabelSprite(THREE, document, graphNode?.label || options.selectedNodeId);
-  if (!label) return;
-  label.position.set(layoutNode.x, layoutNode.y * NODE_Y_SCALE + LABEL_Y_OFFSET, layoutNode.z);
-  root.add(label);
-  options.labelObjectById.set(options.selectedNodeId, label);
+  for (const [id, emphasis] of wanted.entries()) {
+    if (options.labelObjectById.has(id)) continue;
+    const layoutNode = options.layoutNodesById.get(id);
+    if (!layoutNode) continue;
+    const graphNode = options.graphNodeById.get(id);
+    const label = createLabelSprite(THREE, document, graphNode?.label || id, {
+      emphasis,
+      scale: emphasis ? [3.2, 0.8] : [2.4, 0.6],
+    });
+    if (!label) continue;
+    label.userData = { nodeId: id, emphasis };
+    label.position.set(layoutNode.x, layoutNode.y * NODE_Y_SCALE + LABEL_Y_OFFSET, layoutNode.z);
+    root.add(label);
+    options.labelObjectById.set(id, label);
+  }
 }
 
 /**
@@ -759,53 +788,138 @@ function refreshSizeDecorations(THREE, document, decorationRoot, layout) {
  * @param {import('./layout-engine.js').VisualizationLayout} layout
  */
 function refreshTimeDecorations(THREE, document, decorationRoot, layout) {
+  const guides = layout.metadata.timeGuides || [];
   const minX = layout.metadata.axisMinX ?? -8;
   const maxX = layout.metadata.axisMaxX ?? 8;
   const unsetBoundaryX = layout.metadata.unsetAreaX - 1.2;
   const axisY = -0.35;
-  const axisZ = Math.min(-6.8, ...(layout.metadata.timeGuides || []).map((guide) => guide.z - 1.4));
+  const axisZ = Math.min(-6.8, ...guides.map((guide) => guide.z - 1.4));
   decorationRoot.add(createDecorationLine(THREE, [
     { x: minX, y: axisY, z: axisZ },
     { x: maxX, y: axisY, z: axisZ },
-  ], 0x8a4f7d, 0.62));
+  ], TIME_COLOR_OLD, 0.62));
   decorationRoot.add(createDecorationLine(THREE, [
     { x: unsetBoundaryX, y: -0.8, z: axisZ - 0.6 },
     { x: unsetBoundaryX, y: 6.2, z: Math.max(7.4, -axisZ) },
-  ], 0x8a6f2a, 0.42));
-  addDecorationLabel(THREE, document, decorationRoot, "古い", { x: minX, y: axisY + 0.6, z: axisZ });
-  addDecorationLabel(THREE, document, decorationRoot, "新しい", { x: maxX, y: axisY + 0.6, z: axisZ });
+  ], UNSET_BAND_COLOR, 0.42));
+  addDecorationLabel(THREE, document, decorationRoot, "古い", { x: minX, y: axisY + 0.6, z: axisZ }, {
+    accentColor: TIME_COLOR_OLD,
+  });
+  addDecorationLabel(THREE, document, decorationRoot, "新しい", { x: maxX, y: axisY + 0.6, z: axisZ }, {
+    accentColor: TIME_COLOR_NEW,
+  });
   addDecorationLabel(THREE, document, decorationRoot, "unset: no geological time", {
     x: layout.metadata.unsetAreaX + 1.9,
     y: 5.9,
     z: axisZ,
+  }, { accentColor: UNSET_BAND_COLOR });
+
+  // Nodes float above the axis at their semantic layer height, so a flat band
+  // under each period is what ties a cluster of nodes back to its label.
+  addDecorationBand(THREE, decorationRoot, {
+    minX: unsetBoundaryX + 0.4,
+    maxX: layout.metadata.unsetAreaX + 3.4,
+    z: 0,
+    depth: 12,
+    y: axisY,
+    color: UNSET_BAND_COLOR,
+    opacity: 0.12,
   });
-  for (const guide of layout.metadata.timeGuides || []) {
+
+  for (const guide of guides) {
+    const color = timeGuideColor(guide, guides);
     const startX = guide.startX;
     const endX = guide.kind === "period" ? guide.endX : guide.startX;
+    addDecorationBand(THREE, decorationRoot, {
+      minX: startX,
+      maxX: endX,
+      z: guide.z,
+      depth: TIME_BAND_DEPTH,
+      y: axisY,
+      color,
+      opacity: 0.16,
+    });
     decorationRoot.add(createDecorationLine(THREE, [
       { x: startX, y: 0.15, z: guide.z },
       { x: endX, y: 0.15, z: guide.z },
-    ], 0x8a4f7d, 0.48));
+    ], color, 0.62));
     for (const x of new Set([startX, endX])) {
       decorationRoot.add(createDecorationLine(THREE, [
         { x, y: -0.1, z: guide.z },
         { x, y: 0.4, z: guide.z },
-      ], 0x5f3657, 0.58));
+      ], color, 0.72));
     }
-    addDecorationLabel(THREE, document, decorationRoot, timeGuideLabel(guide), {
+    addDecorationLabel(THREE, document, decorationRoot, guide.label, {
       x: guide.centerX,
       y: 0.85,
       z: guide.z,
-    });
+    }, { lines: timeGuideLabelLines(guide), accentColor: color });
   }
 }
 
-/** @param {{label:string,startMa:number,endMa:number,kind:string}} guide */
-function timeGuideLabel(guide) {
-  const formatAge = (value) => `${Number(value).toLocaleString("ja-JP", { maximumFractionDigits: 3 })} Ma`;
-  return guide.kind === "period"
-    ? `${guide.label} ${formatAge(guide.startMa)}–${formatAge(guide.endMa)}`
-    : `${guide.label} ${formatAge(guide.startMa)}`;
+/**
+ * Two lines: the disambiguated period name, then its age in Japanese.
+ * @param {{label:string,startMa:number,endMa:number,kind:string}} guide
+ */
+function timeGuideLabelLines(guide) {
+  const age = guide.kind === "period"
+    ? `${formatGeologicalAgeJa(guide.startMa)} 〜 ${formatGeologicalAgeJa(guide.endMa)}`
+    : formatGeologicalAgeJa(guide.startMa);
+  return [guide.label, age];
+}
+
+/**
+ * Colour a period by where it sits on the displayed timeline: brown for the
+ * oldest, green for the newest. A single guide has no span to be placed on, so
+ * it takes the midpoint colour.
+ * @param {{startMa:number,endMa:number}} guide
+ * @param {{startMa:number,endMa:number}[]} [guides]
+ */
+export function timeGuideColor(guide, guides = []) {
+  const midpoint = (entry) => (Number(entry.startMa) + Number(entry.endMa)) / 2;
+  const midpoints = guides.map(midpoint).filter((value) => Number.isFinite(value));
+  const value = midpoint(guide);
+  if (!midpoints.length || !Number.isFinite(value)) return mixColor(TIME_COLOR_OLD, TIME_COLOR_NEW, 0.5);
+  const oldest = Math.max(...midpoints);
+  const newest = Math.min(...midpoints);
+  if (!(oldest > newest)) return mixColor(TIME_COLOR_OLD, TIME_COLOR_NEW, 0.5);
+  return mixColor(TIME_COLOR_OLD, TIME_COLOR_NEW, clamp((oldest - value) / (oldest - newest), 0, 1));
+}
+
+/** @param {number} from @param {number} to @param {number} amount */
+function mixColor(from, to, amount) {
+  const channel = (shift) => {
+    const start = (from >> shift) & 0xff;
+    const end = (to >> shift) & 0xff;
+    return Math.round(start + (end - start) * amount) & 0xff;
+  };
+  return (channel(16) << 16) | (channel(8) << 8) | channel(0);
+}
+
+/**
+ * @param {any} THREE
+ * @param {any} decorationRoot
+ * @param {{minX:number, maxX:number, z:number, depth:number, y:number, color:number, opacity:number}} options
+ */
+function addDecorationBand(THREE, decorationRoot, options) {
+  if (!THREE.PlaneGeometry || !THREE.MeshBasicMaterial || !THREE.Mesh) return null;
+  // A point in time has no width of its own but still needs a target area.
+  const width = Math.max(0.8, Math.abs(options.maxX - options.minX));
+  const geometry = new THREE.PlaneGeometry(width, options.depth);
+  const material = new THREE.MeshBasicMaterial({
+    color: options.color,
+    transparent: true,
+    opacity: options.opacity,
+    side: THREE.DoubleSide ?? 2,
+    depthWrite: false,
+  });
+  const band = new THREE.Mesh(geometry, material);
+  band.rotation.x = -Math.PI / 2;
+  band.position.set((options.minX + options.maxX) / 2, options.y, options.z);
+  band.renderOrder = BAND_RENDER_ORDER;
+  band.userData = { decoration: "band" };
+  decorationRoot.add(band);
+  return band;
 }
 
 /**
@@ -826,26 +940,38 @@ function createDecorationLine(THREE, points, color, opacity) {
  * @param {any} root
  * @param {string} text
  * @param {{x:number,y:number,z:number}} position
+ * @param {LabelSpriteOptions} [options]
  */
-function addDecorationLabel(THREE, document, root, text, position) {
-  const label = createLabelSprite(THREE, document, text);
+function addDecorationLabel(THREE, document, root, text, position, options = {}) {
+  const label = createLabelSprite(THREE, document, text, options);
   if (!label) return;
   label.position.set(position.x, position.y, position.z);
   root.add(label);
 }
 
 /**
+ * @typedef {object} LabelSpriteOptions
+ * @property {string[]} [lines] Render these lines instead of the plain label.
+ * @property {boolean} [emphasis] Thicker border for the selected node.
+ * @property {number} [accentColor] Border colour, e.g. the period's age colour.
+ * @property {[number, number]} [scale] Sprite width and height in world units.
+ */
+
+/**
  * @param {any} THREE
  * @param {Document} document
  * @param {string} label
+ * @param {LabelSpriteOptions} [options]
  */
-function createLabelSprite(THREE, document, label) {
+function createLabelSprite(THREE, document, label, options = {}) {
   if (!THREE.CanvasTexture || !THREE.SpriteMaterial || !THREE.Sprite) return null;
+  const lines = (options.lines?.length ? options.lines : [label])
+    .map((line) => String(line ?? "").slice(0, 24));
   const canvas = document.createElement("canvas");
   // Drawn at 2x the previous resolution so the label stays sharp instead of
   // being stretched into thin, blurry strokes.
   canvas.width = 512;
-  canvas.height = 128;
+  canvas.height = lines.length > 1 ? 192 : 128;
   let context;
   try {
     context = canvas.getContext("2d");
@@ -853,19 +979,23 @@ function createLabelSprite(THREE, document, label) {
     context = null;
   }
   if (!context) return null;
+  const border = options.emphasis ? 7 : 4;
   context.fillStyle = "rgba(246,244,239,0.95)";
   context.fillRect(0, 0, canvas.width, canvas.height);
   // Four filled bars rather than strokeRect, to keep the 2d context surface
   // this function depends on as small as possible.
-  context.fillStyle = "rgba(47,58,50,0.55)";
-  context.fillRect(0, 0, canvas.width, 4);
-  context.fillRect(0, canvas.height - 4, canvas.width, 4);
-  context.fillRect(0, 0, 4, canvas.height);
-  context.fillRect(canvas.width - 4, 0, 4, canvas.height);
+  context.fillStyle = labelBorderStyle(options);
+  context.fillRect(0, 0, canvas.width, border);
+  context.fillRect(0, canvas.height - border, canvas.width, border);
+  context.fillRect(0, 0, border, canvas.height);
+  context.fillRect(canvas.width - border, 0, border, canvas.height);
   context.fillStyle = "#1f241f";
-  context.font = "700 44px sans-serif";
   context.textBaseline = "middle";
-  context.fillText(label.slice(0, 24), 20, canvas.height / 2);
+  const lineHeight = canvas.height / (lines.length + 0.6);
+  lines.forEach((line, index) => {
+    context.font = index === 0 ? "700 44px sans-serif" : "500 38px sans-serif";
+    context.fillText(line, 20, lineHeight * (index + 0.8));
+  });
   const texture = new THREE.CanvasTexture(canvas);
   const material = new THREE.SpriteMaterial({
     map: texture,
@@ -876,8 +1006,17 @@ function createLabelSprite(THREE, document, label) {
   });
   const sprite = new THREE.Sprite(material);
   sprite.renderOrder = LABEL_RENDER_ORDER;
-  sprite.scale.set(3.2, 0.8, 1);
+  const [scaleX, scaleY] = options.scale || (lines.length > 1 ? [3.6, 1.3] : [3.2, 0.8]);
+  sprite.scale.set(scaleX, scaleY, 1);
   return sprite;
+}
+
+/** @param {LabelSpriteOptions} options */
+function labelBorderStyle(options) {
+  if (!Number.isFinite(options.accentColor)) return "rgba(47,58,50,0.55)";
+  const value = Number(options.accentColor);
+  const channel = (shift) => (value >> shift) & 0xff;
+  return `rgba(${channel(16)},${channel(8)},${channel(0)},0.85)`;
 }
 
 /** @param {any} group */

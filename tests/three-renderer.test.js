@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   mountKnowledge3dFixture,
   mountKnowledge3dGraph,
+  timeGuideColor,
 } from "../src/features/knowledge-3d/three-fixture-renderer.js";
 import { VISUALIZATION_GRAPH_FIXTURE } from "../src/features/knowledge-3d/visualization-graph-fixture.js";
 import {
@@ -106,7 +107,10 @@ function fakeThree(doc = document) {
         this.material = material;
       }
     },
+    MeshBasicMaterial: Material,
     MeshStandardMaterial: Material,
+    PlaneGeometry: Geometry,
+    DoubleSide: 2,
     PerspectiveCamera: class extends Object3D {
       constructor() {
         super();
@@ -429,6 +433,83 @@ describe("Three.js fixture renderer", () => {
     controller.dispose();
   });
 
+  it("labels every node in axis layouts and only the selection elsewhere", async () => {
+    const { jsdom, container } = dom();
+    enableCanvasLabels(jsdom.window.document);
+    const fake = fakeThree(jsdom.window.document);
+
+    const controller = await mountKnowledge3dGraph(container, {
+      graph: VISUALIZATION_GRAPH_FIXTURE,
+      mode: "time",
+      webglAvailable: true,
+      loadThree: async () => fake.THREE,
+      runtime: { window: jsdom.window, document: jsdom.window.document },
+      requestAnimationFrame: () => 0,
+      cancelAnimationFrame: vi.fn(),
+    });
+    const rootGroup = fake.groups[0];
+    const nodeCount = rootGroup.children.filter((child) => child.userData?.nodeId && !child.isSprite).length;
+    const labelCount = () => rootGroup.children.filter((child) => child.isSprite).length;
+
+    expect(nodeCount).toBeGreaterThan(1);
+    expect(labelCount()).toBe(nodeCount);
+
+    // Home would become a wall of text, so it keeps the selected label only.
+    controller.updateLayout?.({ mode: "home", selectedNodeId: null });
+    expect(labelCount()).toBe(0);
+
+    controller.updateLayout?.({ mode: "time", selectedNodeId: null });
+    expect(labelCount()).toBe(nodeCount);
+    controller.dispose();
+  });
+
+  it("draws a coloured area band under each geological period and the unset area", async () => {
+    const { jsdom, container } = dom();
+    enableCanvasLabels(jsdom.window.document);
+    const fake = fakeThree(jsdom.window.document);
+
+    const controller = await mountKnowledge3dGraph(container, {
+      graph: VISUALIZATION_GRAPH_FIXTURE,
+      mode: "time",
+      webglAvailable: true,
+      loadThree: async () => fake.THREE,
+      runtime: { window: jsdom.window, document: jsdom.window.document },
+      requestAnimationFrame: () => 0,
+      cancelAnimationFrame: vi.fn(),
+    });
+    const decorationGroup = fake.groups[1];
+    const bands = () => decorationGroup.children.filter((child) => child.userData?.decoration === "band");
+
+    expect(bands().length).toBeGreaterThan(1);
+    for (const band of bands()) {
+      expect(band.material.transparent).toBe(true);
+      expect(band.material.depthWrite).toBe(false);
+      expect(band.rotation.x).toBeCloseTo(-Math.PI / 2, 5);
+    }
+
+    controller.updateLayout?.({ mode: "home" });
+    expect(bands()).toHaveLength(0);
+    controller.dispose();
+  });
+
+  it("colours geological guides from brown for the oldest to green for the newest", () => {
+    const guides = [
+      { startMa: 251.9, endMa: 201.4 },
+      { startMa: 201.4, endMa: 145 },
+      { startMa: 145, endMa: 66 },
+    ];
+
+    expect(timeGuideColor(guides[0], guides)).toBe(0x8a5a2a);
+    expect(timeGuideColor(guides[2], guides)).toBe(0x4f7a3a);
+
+    const middle = timeGuideColor(guides[1], guides);
+    expect(middle).not.toBe(0x8a5a2a);
+    expect(middle).not.toBe(0x4f7a3a);
+
+    // A lone guide has no span to be placed on, so it takes the midpoint.
+    expect(timeGuideColor(guides[0], [guides[0]])).toBe(timeGuideColor(guides[0], []));
+  });
+
   it("documents generated service worker exclusion for lazy Three.js assets", () => {
     const build = fs.readFileSync(path.join(root, "scripts/build.mjs"), "utf8");
     expect(build).toContain("LAZY_SHELL_ASSET_PREFIXES");
@@ -445,6 +526,25 @@ describe("Three.js fixture renderer", () => {
     expect(html).toContain('data-knowledge3d-mode="time"');
     expect(app).toContain('time: "Time Layout"');
     expect(app).toContain("visualizationNodesForLayout");
+  });
+
+  it("selects 3D nodes only on demand and routes back to the 2D knowledge map", () => {
+    const app = fs.readFileSync(path.join(root, "src/ui/app.js"), "utf8");
+    const styles = fs.readFileSync(path.join(root, "styles.css"), "utf8");
+
+    // No node is highlighted until the reader picks one.
+    expect(app).not.toContain("defaultKnowledge3dNodeId");
+    expect(app).toContain("state.knowledge3dSelectedNodeId = null;");
+    expect(app).toContain("ノードを選択してください");
+    // Returning the camera clears the highlight as well.
+    expect(app).toContain("knowledge3dController?.resetCamera?.()");
+    expect(app).toContain("selectKnowledge3dNode");
+    expect(app).toContain("scrollIntoView");
+    expect(app).toContain("knowledge-3d-open-2d");
+    expect(styles).toContain(".knowledge-3d-open-2d");
+    // Axis layouts report node counts only, since they no longer draw edges.
+    expect(app).toContain("isAxisLayoutMode(mode)");
+    expect(app).toContain("帯 = 選択できない時代ガイド（茶 = 古い / 緑 = 新しい）");
   });
 
   it("zooms the camera with the wheel and restores it on camera reset", async () => {

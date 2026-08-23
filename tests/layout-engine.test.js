@@ -3,6 +3,7 @@ import { VISUALIZATION_GRAPH_FIXTURE } from "../src/features/knowledge-3d/visual
 import {
   DEFAULT_SIZE_QUANTITY_KIND,
   homeLayout,
+  isAxisLayoutMode,
   layoutVisualizationGraph,
   relationLayout,
   SEMANTIC_LAYER_Y,
@@ -216,6 +217,38 @@ describe("knowledge 3D layout engine", () => {
     expect(zeroGuide.startX).toBe(zeroGuide.endX);
     expect(unset?.zone).toBe("unset");
     expect(unset?.x).toBe(layout.metadata.unsetAreaX);
+  });
+
+  it("drops edges in axis layouts and keeps them in Home and Relation", () => {
+    expect(isAxisLayoutMode("size")).toBe(true);
+    expect(isAxisLayoutMode("time")).toBe(true);
+    expect(isAxisLayoutMode("classification")).toBe(true);
+    expect(isAxisLayoutMode("home")).toBe(false);
+    expect(isAxisLayoutMode("relation")).toBe(false);
+
+    // Axis layouts are read against a scale, so relation lines only add noise.
+    expect(layoutVisualizationGraph(VISUALIZATION_GRAPH_FIXTURE, { mode: "size" }).edges).toEqual([]);
+    expect(layoutVisualizationGraph(VISUALIZATION_GRAPH_FIXTURE, { mode: "time" }).edges).toEqual([]);
+    expect(sizeLayout(VISUALIZATION_GRAPH_FIXTURE).edges).toEqual([]);
+    expect(timeLayout(VISUALIZATION_GRAPH_FIXTURE).edges).toEqual([]);
+
+    expect(homeLayout(VISUALIZATION_GRAPH_FIXTURE).edges.length).toBeGreaterThan(0);
+    expect(relationLayout(VISUALIZATION_GRAPH_FIXTURE).edges.length).toBeGreaterThan(0);
+  });
+
+  it("labels time guides with the disambiguated reference label", () => {
+    const graph = {
+      ...VISUALIZATION_GRAPH_FIXTURE,
+      nodes: VISUALIZATION_GRAPH_FIXTURE.nodes.map((node) => (
+        node.kind === "landmark" && node.data?.referenceAxis === "geological-time"
+          ? { ...node, label: "前期", data: { ...node.data, displayLabel: "白亜紀前期" } }
+          : node
+      )),
+    };
+    const guides = timeLayout(graph).metadata.timeGuides;
+
+    expect(guides.length).toBeGreaterThan(0);
+    for (const guide of guides) expect(guide.label).toBe("白亜紀前期");
   });
 
   it("dispatches layoutVisualizationGraph by mode without mutating the graph", () => {

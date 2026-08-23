@@ -4,6 +4,7 @@ import {
   VISUALIZATION_GRAPH_SCHEMA_VERSION,
 } from "./visualization-graph.js";
 import { measurementFromQuantityReferenceFact } from "./measurements.js";
+import { referenceNodeDisplayLabel } from "../../domain/reference-registry.js";
 
 export const REFERENCE_PREDICATE_EDGE_TYPES = Object.freeze({
   represents: "REPRESENTS",
@@ -87,7 +88,7 @@ export function buildConceptVisualizationGraph(input = {}) {
     for (const value of stringValues(fact.value)) {
       const referenceNode = referenceById.get(value);
       const targetNode = referenceNode
-        ? nodeForReference(referenceNode, fact, source)
+        ? nodeForReference(referenceNode, fact, source, input.referenceGraph || null)
         : unresolvedNodeForFact(fact, value, source);
       addNode(nodes, targetNode);
       addConceptEdge(edges, source.nodeId, targetNode.id, fact, referenceNode);
@@ -330,10 +331,11 @@ function visitIdsForObservations(observationIds, observationById) {
  * @param {Record<string, any>} referenceNode
  * @param {Record<string, any>} fact
  * @param {{nodeId:string, entityId:string|null, observationIds:string[], visitIds:string[]}} source
+ * @param {Record<string, any>|null} [referenceGraph]
  * @returns {VisualizationNode}
  */
-function nodeForReference(referenceNode, fact, source) {
-  if (referenceNode.axis === "geological-time") return landmarkNode(referenceNode, fact, source);
+function nodeForReference(referenceNode, fact, source, referenceGraph = null) {
+  if (referenceNode.axis === "geological-time") return landmarkNode(referenceNode, fact, source, referenceGraph);
   if (referenceNode.axis === "taxonomy") return canonicalConceptNode(referenceNode, fact, source);
   return unsupportedReferenceNode(referenceNode, fact, source);
 }
@@ -371,7 +373,7 @@ function canonicalConceptNode(referenceNode, fact, source) {
  * @param {{nodeId:string, entityId:string|null, observationIds:string[], visitIds:string[]}} source
  * @returns {VisualizationNode}
  */
-function landmarkNode(referenceNode, fact, source) {
+function landmarkNode(referenceNode, fact, source, referenceGraph = null) {
   return {
     id: landmarkNodeIdForReference(referenceNode.id),
     label: referenceNode.label || referenceNode.id,
@@ -387,11 +389,24 @@ function landmarkNode(referenceNode, fact, source) {
     referenceIds: [referenceNode.id],
     data: {
       referenceAxis: referenceNode.axis,
+      // Display-side only: 前期 x3 becomes 三畳紀前期 / ジュラ紀前期 / 白亜紀前期
+      // while unique labels stay untouched. Reference JSON is unchanged.
+      displayLabel: geologicalTimeDisplayLabel(referenceNode, referenceGraph),
       startMa: referenceNode.startMa ?? null,
       endMa: referenceNode.endMa ?? null,
       timeRole: referenceNode.startMa != null || referenceNode.endMa != null ? "interval" : "landmark",
     },
   };
+}
+
+/**
+ * @param {Record<string, any>} referenceNode
+ * @param {Record<string, any>|null} referenceGraph
+ */
+function geologicalTimeDisplayLabel(referenceNode, referenceGraph) {
+  const fallback = referenceNode.label || referenceNode.id;
+  if (!referenceGraph || !Array.isArray(referenceGraph.nodes)) return fallback;
+  return referenceNodeDisplayLabel(/** @type {any} */ (referenceGraph), /** @type {any} */ (referenceNode)) || fallback;
 }
 
 /**

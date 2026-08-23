@@ -82,6 +82,16 @@ export function layoutVisualizationGraph(graph, options = {}) {
 }
 
 /**
+ * Axis layouts are read as ordered rows against a scale, so their relation
+ * lines add clutter without adding information. Modes listed here therefore
+ * drop edges entirely and rely on position alone.
+ * @param {LayoutMode|string} mode
+ */
+export function isAxisLayoutMode(mode) {
+  return mode === "size" || mode === "time" || mode === "classification";
+}
+
+/**
  * Return exactly the selectable graph nodes represented by the selected
  * layout. Geological periods stay out of this set as non-selectable
  * decorations, keeping UI count and selection aligned with the renderer.
@@ -243,10 +253,12 @@ function buildLayout(mode, graph, nodes, metadata = {}) {
     schemaVersion: VISUALIZATION_LAYOUT_SCHEMA_VERSION,
     mode,
     nodes: nodes.sort(compareById),
-    edges: graph.edges
-      .filter((edge) => nodeIds.has(edge.sourceId) && nodeIds.has(edge.targetId))
-      .map(layoutEdge)
-      .sort(compareById),
+    edges: isAxisLayoutMode(mode)
+      ? []
+      : graph.edges
+        .filter((edge) => nodeIds.has(edge.sourceId) && nodeIds.has(edge.targetId))
+        .map(layoutEdge)
+        .sort(compareById),
     metadata: {
       sourceGraphSchemaVersion: graph.schemaVersion,
       quantityKind: metadata.quantityKind ?? null,
@@ -331,7 +343,8 @@ function buildTimeGuides(graph, width) {
       return {
         node,
         id: node.referenceIds[0] || node.id,
-        label: node.label,
+        // "前期" alone is ambiguous; the resolver qualifies it as 白亜紀前期.
+        label: node.data?.displayLabel || node.label,
         startMa: normalized.startMa,
         endMa: normalized.endMa,
         kind: normalized.kind,
