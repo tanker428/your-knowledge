@@ -1,4 +1,5 @@
-import { resolveMeasurementForLogScale } from "./measurements.js";
+import { magnitudeValueFromMeasurement, normalizeMagnitudeValue } from "./magnitude.js";
+import { LENGTH_UNIT_SI } from "./measurements.js";
 
 export const VISUALIZATION_LAYOUT_SCHEMA_VERSION = "1.0.0";
 
@@ -136,7 +137,7 @@ export function sizeLayout(graph, options = {}) {
   }));
   const scaledXs = resolvedNodes
     .filter((entry) => entry.resolved)
-    .map((entry) => Math.log10(entry.resolved.representativeValue) * scale);
+    .map((entry) => entry.resolved.normalizedScalar * scale);
   const unsetAreaX = options.unsetAreaX
     ?? round(Math.max(SIZE_LAYOUT_DEFAULT_UNSET_X, ...scaledXs.map((x) => x + 3)));
 
@@ -157,11 +158,11 @@ export function sizeLayout(graph, options = {}) {
     }
 
     return layoutNode(node, {
-      x: round(Math.log10(resolved.representativeValue) * scale),
+      x: round(resolved.normalizedScalar * scale),
       y: semanticY(node),
       z: round(stableJitter(node.id) * 2),
       zone: "scaled",
-      representativeValue: resolved.representativeValue,
+      representativeValue: resolved.representativeValueSI,
       rangeSI: resolved.rangeSI,
     });
   });
@@ -262,12 +263,18 @@ function buildDegreeMap(graph) {
 /**
  * @param {VisualizationNode} node
  * @param {string} quantityKind
- * @returns {{representativeValue:number, rangeSI:{minSI:number, maxSI:number}|null}|null}
+ * @returns {{representativeValueSI:number, normalizedScalar:number, rangeSI:{minSI:number, maxSI:number}|null}|null}
  */
 function resolveMeasurement(node, quantityKind) {
   const measurement = (node.measurements || []).find((item) => item.quantityKind === quantityKind);
   if (!measurement) return null;
-  return resolveMeasurementForLogScale(measurement);
+  return normalizeMagnitudeValue(magnitudeValueFromMeasurement(measurement), {
+    axisKind: "quantity",
+    normalization: "log",
+    quantityKind,
+    unitSI: LENGTH_UNIT_SI,
+    referenceValueSI: 1,
+  });
 }
 
 /** @param {VisualizationNode} node */
