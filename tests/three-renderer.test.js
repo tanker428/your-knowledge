@@ -12,6 +12,7 @@ import {
   THREE_MODULE_URL,
   THREE_VERSION,
 } from "../src/features/knowledge-3d/three-module.js";
+import { VISUALIZATION_GRAPH_FIXTURE } from "../src/features/knowledge-3d/visualization-graph-fixture.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -67,7 +68,8 @@ function fakeThree(doc = document) {
 
   class Geometry {
     dispose = geometryDispose;
-    setFromPoints() {
+    setFromPoints(points) {
+      this.points = points;
       return this;
     }
   }
@@ -129,7 +131,13 @@ function fakeThree(doc = document) {
       }
     },
     SpriteMaterial: Material,
-    Vector3: class {},
+    Vector3: class {
+      constructor(x = 0, y = 0, z = 0) {
+        this.x = x;
+        this.y = y;
+        this.z = z;
+      }
+    },
     WebGLRenderer: class {
       constructor() {
         this.domElement = doc.createElement("canvas");
@@ -284,6 +292,38 @@ describe("Three.js fixture renderer", () => {
     controller.updateLayout?.({ mode: "home", selectedNodeId: "concept:test" });
     controller.updateLayout?.({ mode: "relation", selectedNodeId: "concept:test" });
     controller.updateLayout?.({ mode: "home", selectedNodeId: "concept:test" });
+    controller.dispose();
+  });
+
+  it("draws Size mode as a flat board with number-line guides", async () => {
+    const { jsdom, container } = dom();
+    const fake = fakeThree(jsdom.window.document);
+
+    const controller = await mountKnowledge3dGraph(container, {
+      graph: VISUALIZATION_GRAPH_FIXTURE,
+      mode: "size",
+      webglAvailable: true,
+      loadThree: async () => fake.THREE,
+      runtime: { window: jsdom.window, document: jsdom.window.document },
+      requestAnimationFrame: () => 0,
+      cancelAnimationFrame: vi.fn(),
+    });
+    const rootGroup = fake.groups[0];
+    const decorationRoot = fake.groups[1];
+    const nodeMeshes = rootGroup.children.filter((child) => child.userData?.nodeId);
+    const kinds = decorationRoot.children.map((child) => child.userData?.decorationKind);
+    const guidedNodeIds = new Set(
+      decorationRoot.children
+        .filter((child) => child.userData?.decorationKind === "node-guide")
+        .map((child) => child.userData.nodeId),
+    );
+
+    expect(new Set(nodeMeshes.map((mesh) => mesh.position.z))).toEqual(new Set([0]));
+    expect(kinds).toContain("board-frame");
+    expect(kinds).toContain("number-line");
+    expect(kinds.filter((kind) => kind === "axis-tick").length).toBeGreaterThanOrEqual(3);
+    expect(guidedNodeIds.has("concept:taxon:fukuiraptor")).toBe(true);
+    expect(guidedNodeIds.has("entity:e-fossil")).toBe(true);
     controller.dispose();
   });
 

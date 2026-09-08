@@ -24,6 +24,7 @@ const CAMERA_TARGET = Object.freeze({ x: 0, y: 1, z: 0 });
 const CAMERA_ZOOM_MIN = 0.35;
 const CAMERA_ZOOM_MAX = 2.6;
 const CAMERA_ZOOM_STEP = 1.12;
+const BOARD_LAYER_Y = Object.freeze([0, 1, 2]);
 
 /**
  * @typedef {object} Knowledge3dController
@@ -698,47 +699,93 @@ function createEdgeLine(THREE, edge, source, target) {
  */
 function refreshLayoutDecorations(THREE, document, decorationRoot, layout) {
   clearGroup(decorationRoot);
-  if (layout.mode !== "size") return;
-
-  const scaledXs = layout.nodes.filter((node) => node.zone === "scaled").map((node) => node.x);
-  const minX = Math.min(-6, ...scaledXs);
-  const maxX = Math.max(8, ...scaledXs);
-  const axisY = -0.35;
-  const axisZ = -6.75;
-  const unsetBoundaryX = layout.metadata.unsetAreaX - 1.2;
-
-  decorationRoot.add(createDecorationLine(THREE, [
-    { x: minX, y: axisY, z: axisZ },
-    { x: maxX, y: axisY, z: axisZ },
-  ], 0x58784d, 0.55));
-  decorationRoot.add(createDecorationLine(THREE, [
-    { x: unsetBoundaryX, y: -0.8, z: -7.4 },
-    { x: unsetBoundaryX, y: 6.2, z: 7.4 },
-  ], 0x8a6f2a, 0.42));
-
-  addDecorationLabel(THREE, document, decorationRoot, layout.metadata.quantityKind || "quantity", {
-    x: minX,
-    y: axisY + 0.6,
-    z: axisZ,
-  });
-  addDecorationLabel(THREE, document, decorationRoot, "unset: no body_length", {
-    x: layout.metadata.unsetAreaX + 1.7,
-    y: 5.9,
-    z: -6.9,
-  });
-  for (const value of [0.1, 1, 10]) {
-    const x = Math.log10(value) * 6;
-    if (x < minX || x > maxX) continue;
-    decorationRoot.add(createDecorationLine(THREE, [
-      { x, y: axisY - 0.25, z: axisZ },
-      { x, y: axisY + 0.25, z: axisZ },
-    ], 0x2f3a32, 0.5));
-    addDecorationLabel(THREE, document, decorationRoot, `${value} m`, {
-      x,
-      y: axisY - 0.65,
-      z: axisZ,
-    });
+  const boards = Array.isArray(layout.metadata?.boards) ? layout.metadata.boards : [];
+  for (const board of boards) {
+    renderMagnitudeBoard(THREE, document, decorationRoot, layout, board);
   }
+}
+
+/**
+ * @param {any} THREE
+ * @param {Document} document
+ * @param {any} decorationRoot
+ * @param {import('./layout-engine.js').VisualizationLayout} layout
+ * @param {import('./layout-engine.js').LayoutBoard} board
+ */
+function renderMagnitudeBoard(THREE, document, decorationRoot, layout, board) {
+  const color = board.axisKind === "quantity" ? 0x58784d : 0x8a4f7d;
+  const lineColor = 0x2f3a32;
+  const frameColor = 0xbdb7ac;
+  const axisMinX = finiteNumber(board.axisMinX) ? board.axisMinX : board.xMin;
+  const axisMaxX = finiteNumber(board.axisMaxX) ? board.axisMaxX : board.xMax;
+  const boardId = board.id || "magnitude-board";
+
+  decorationRoot.add(createDecorationLine(THREE, [
+    boardPoint(board, board.xMin, board.yMin),
+    boardPoint(board, board.xMax, board.yMin),
+    boardPoint(board, board.xMax, board.yMax),
+    boardPoint(board, board.xMin, board.yMax),
+    boardPoint(board, board.xMin, board.yMin),
+  ], frameColor, 0.7, { decorationKind: "board-frame", boardId }));
+
+  for (const y of BOARD_LAYER_Y) {
+    if (y <= board.yMin || y >= board.yMax) continue;
+    decorationRoot.add(createDecorationLine(THREE, [
+      boardPoint(board, board.xMin, y),
+      boardPoint(board, board.xMax, y),
+    ], frameColor, 0.24, { decorationKind: "board-layer", boardId }));
+  }
+
+  decorationRoot.add(createDecorationLine(THREE, [
+    boardPoint(board, axisMinX, board.axisY),
+    boardPoint(board, axisMaxX, board.axisY),
+  ], color, 0.72, { decorationKind: "number-line", boardId }));
+
+  for (const tick of board.ticks || []) {
+    const opacity = tick.major ? 0.62 : 0.34;
+    decorationRoot.add(createDecorationLine(THREE, [
+      boardPoint(board, tick.x, board.axisY - 0.12),
+      boardPoint(board, tick.x, board.axisY + 0.2),
+    ], lineColor, opacity, { decorationKind: "axis-tick", boardId }));
+    if (tick.major) {
+      decorationRoot.add(createDecorationLine(THREE, [
+        boardPoint(board, tick.x, board.axisY),
+        boardPoint(board, tick.x, board.yMax),
+      ], lineColor, 0.13, { decorationKind: "axis-major-guide", boardId }));
+    }
+    addDecorationLabel(THREE, document, decorationRoot, tick.label, boardPoint(board, tick.x, board.axisY - 0.36));
+  }
+
+  for (const node of layout.nodes) {
+    if (node.boardId !== board.id || node.zone !== "scaled") continue;
+    decorationRoot.add(createDecorationLine(THREE, [
+      boardPoint(board, node.x, board.axisY),
+      boardPoint(board, node.x, node.y),
+    ], color, 0.24, { decorationKind: "node-guide", boardId, nodeId: node.id }));
+  }
+
+  if (finiteNumber(board.unsetAreaX)) {
+    const unsetBoundaryX = board.unsetAreaX - 1.2;
+    decorationRoot.add(createDecorationLine(THREE, [
+      boardPoint(board, unsetBoundaryX, board.yMin),
+      boardPoint(board, unsetBoundaryX, board.yMax),
+    ], 0x8a6f2a, 0.45, { decorationKind: "unset-boundary", boardId }));
+    if (board.unsetLabel) {
+      addDecorationLabel(THREE, document, decorationRoot, board.unsetLabel, boardPoint(board, board.unsetAreaX + 0.9, board.yMax - 0.22));
+    }
+  }
+
+  addDecorationLabel(THREE, document, decorationRoot, board.axisLabel, boardPoint(board, board.xMin + 0.25, board.yMax + 0.25));
+  addDecorationLabel(THREE, document, decorationRoot, `${board.normalization} ${board.unitLabel}`, boardPoint(board, axisMaxX - 0.1, board.axisY + 0.38));
+}
+
+/**
+ * @param {import('./layout-engine.js').LayoutBoard} board
+ * @param {number} x
+ * @param {number} y
+ */
+function boardPoint(board, x, y) {
+  return { x, y: y * NODE_Y_SCALE, z: board.z };
 }
 
 /**
@@ -746,11 +793,14 @@ function refreshLayoutDecorations(THREE, document, decorationRoot, layout) {
  * @param {{x:number,y:number,z:number}[]} points
  * @param {number} color
  * @param {number} opacity
+ * @param {Record<string, any>} [userData]
  */
-function createDecorationLine(THREE, points, color, opacity) {
+function createDecorationLine(THREE, points, color, opacity, userData = {}) {
   const geometry = new THREE.BufferGeometry().setFromPoints(points.map((point) => new THREE.Vector3(point.x, point.y, point.z)));
   const material = new THREE.LineBasicMaterial({ color, transparent: true, opacity });
-  return new THREE.Line(geometry, material);
+  const line = new THREE.Line(geometry, material);
+  line.userData = userData;
+  return line;
 }
 
 /**

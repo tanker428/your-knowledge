@@ -6,6 +6,8 @@ import {
   layoutVisualizationGraph,
   relationLayout,
   SEMANTIC_LAYER_Y,
+  SIZE_BOARD_ID,
+  SIZE_BOARD_Z,
   sizeLayout,
   SIZE_LAYOUT_DEFAULT_UNSET_X,
   SIZE_LAYOUT_SCALE,
@@ -63,16 +65,43 @@ describe("knowledge 3D layout engine", () => {
     expect(layout.nodes.some((node) => node.id.startsWith("landmark:"))).toBe(false);
     expect(concept).toMatchObject({
       zone: "scaled",
+      boardId: SIZE_BOARD_ID,
       representativeValue: 4.2,
       rangeSI: null,
     });
     expect(concept?.x).toBeCloseTo(Math.log10(4.2) * SIZE_LAYOUT_SCALE, 6);
     expect(ranged).toMatchObject({
       zone: "scaled",
+      boardId: SIZE_BOARD_ID,
       representativeValue: Math.sqrt(4 * 5.5),
       rangeSI: { minSI: 4, maxSI: 5.5 },
     });
     expect(ranged?.x).toBeCloseTo(Math.log10(Math.sqrt(4 * 5.5)) * SIZE_LAYOUT_SCALE, 6);
+  });
+
+  it("projects Size layout as a flat display-only number-line board", () => {
+    const layout = sizeLayout(VISUALIZATION_GRAPH_FIXTURE);
+    const board = layout.metadata.boards[0];
+    const oneMeter = board.ticks.find((tick) => tick.valueSI === 1);
+    const tenMeters = board.ticks.find((tick) => tick.valueSI === 10);
+
+    expect(layout.metadata.boards).toHaveLength(1);
+    expect(board).toMatchObject({
+      id: SIZE_BOARD_ID,
+      axisKind: "quantity",
+      axisLabel: DEFAULT_SIZE_QUANTITY_KIND,
+      normalization: "log",
+      unitSI: "m",
+      scale: SIZE_LAYOUT_SCALE,
+      z: SIZE_BOARD_Z,
+      unsetAreaX: SIZE_LAYOUT_DEFAULT_UNSET_X,
+    });
+    expect(new Set(layout.nodes.map((node) => node.boardId))).toEqual(new Set([SIZE_BOARD_ID]));
+    expect(new Set(layout.nodes.map((node) => node.z))).toEqual(new Set([SIZE_BOARD_Z]));
+    expect(layout.nodes.filter((node) => node.zone === "scaled").every((node) => node.normalizedScalar !== null)).toBe(true);
+    expect(oneMeter).toMatchObject({ normalizedScalar: 0, x: 0, label: "1 m", major: true });
+    expect(tenMeters).toMatchObject({ label: "10 m", major: true });
+    expect(tenMeters?.x).toBeCloseTo(SIZE_LAYOUT_SCALE, 6);
   });
 
   it("keeps unknown or incompatible measurements in the unset area", () => {

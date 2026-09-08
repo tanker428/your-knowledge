@@ -12,18 +12,61 @@ export const SEMANTIC_LAYER_Y = Object.freeze({
 export const DEFAULT_SIZE_QUANTITY_KIND = "body_length";
 export const SIZE_LAYOUT_SCALE = 6;
 export const SIZE_LAYOUT_DEFAULT_UNSET_X = 10;
+export const SIZE_BOARD_ID = "quantity:body_length";
+export const SIZE_BOARD_Z = 0;
 
 const HOME_RADIUS_BY_LAYER = Object.freeze({
   experience: 3.5,
   referent: 5,
   conceptual: 6.5,
 });
+const BOARD_AXIS_Y = -0.55;
+const BOARD_MIN_Y = -0.82;
+const BOARD_MAX_Y = 2.42;
+const BOARD_X_PADDING = 1.2;
+const BOARD_UNSET_PADDING = 2.8;
+const MAGNITUDE_TICK_MULTIPLIERS = Object.freeze([1, 2, 5]);
 
 /**
  * @typedef {import('./visualization-graph.js').VisualizationGraphV1} VisualizationGraphV1
  * @typedef {import('./visualization-graph.js').VisualizationNode} VisualizationNode
  * @typedef {import('./visualization-graph.js').VisualizationEdge} VisualizationEdge
  * @typedef {"home"|"relation"|"size"} LayoutMode
+ */
+
+/**
+ * @typedef {object} LayoutAxisTick
+ * @property {number} valueSI
+ * @property {number} normalizedScalar
+ * @property {number} x
+ * @property {string} label
+ * @property {boolean} major
+ */
+
+/**
+ * Display-only board metadata for renderers. Coordinates describe the derived
+ * visualization surface only; they are not persisted to Project JSON or the KG.
+ *
+ * @typedef {object} LayoutBoard
+ * @property {string} id
+ * @property {"quantity"} axisKind
+ * @property {string} axisLabel
+ * @property {"log"|"linear"} normalization
+ * @property {string} unitSI
+ * @property {string} unitLabel
+ * @property {number} referenceValueSI
+ * @property {number} scale
+ * @property {number} xMin
+ * @property {number} xMax
+ * @property {number} axisMinX
+ * @property {number} axisMaxX
+ * @property {number} yMin
+ * @property {number} yMax
+ * @property {number} axisY
+ * @property {number} z
+ * @property {number|null} unsetAreaX
+ * @property {string|null} unsetLabel
+ * @property {LayoutAxisTick[]} ticks
  */
 
 /**
@@ -35,6 +78,8 @@ const HOME_RADIUS_BY_LAYER = Object.freeze({
  * @property {string} zone
  * @property {string} semanticLayer
  * @property {string} mappingStatus
+ * @property {string|null} boardId
+ * @property {number|null} normalizedScalar
  * @property {number} radius
  * @property {number|null} representativeValue
  * @property {{minSI:number, maxSI:number}|null} rangeSI
@@ -59,7 +104,7 @@ const HOME_RADIUS_BY_LAYER = Object.freeze({
  * @property {LayoutMode} mode
  * @property {LayoutNode[]} nodes
  * @property {LayoutEdge[]} edges
- * @property {{sourceGraphSchemaVersion:string, quantityKind:string|null, unsetAreaX:number}} metadata
+ * @property {{sourceGraphSchemaVersion:string, quantityKind:string|null, unsetAreaX:number, boards:LayoutBoard[]}} metadata
  */
 
 /**
@@ -130,7 +175,7 @@ export function relationLayout(graph) {
 export function sizeLayout(graph, options = {}) {
   const quantityKind = options.quantityKind || DEFAULT_SIZE_QUANTITY_KIND;
   const scale = options.sizeScale ?? SIZE_LAYOUT_SCALE;
-  const sizeNodes = graph.nodes.filter(isSizeComparableNode);
+  const sizeNodes = graph.nodes.filter(isSizeComparableNode).sort(compareById);
   const resolvedNodes = sizeNodes.map((node) => ({
     node,
     resolved: resolveMeasurement(node, quantityKind),
@@ -140,34 +185,45 @@ export function sizeLayout(graph, options = {}) {
     .map((entry) => entry.resolved.normalizedScalar * scale);
   const unsetAreaX = options.unsetAreaX
     ?? round(Math.max(SIZE_LAYOUT_DEFAULT_UNSET_X, ...scaledXs.map((x) => x + 3)));
+  const board = quantityBoard({
+    boardId: SIZE_BOARD_ID,
+    quantityKind,
+    scale,
+    scaledXs,
+    unsetAreaX,
+    z: SIZE_BOARD_Z,
+  });
 
   let unsetIndex = 0;
+  const scaledLaneCounts = new Map();
   const nodes = resolvedNodes.map(({ node, resolved }) => {
     if (!resolved) {
       const next = unsetIndex;
       unsetIndex += 1;
       return layoutNode(node, {
-        // Semantic depth already has its own Y axis. Adding it again to X
-        // pushed conceptual unset nodes off-screen and made the zone appear
-        // empty even though the nodes existed.
         x: unsetAreaX,
-        y: semanticY(node),
-        z: round((next % 12) - 5.5 + Math.floor(next / 12) * 1.25),
+        y: boardLaneY(node, next),
+        z: board.z,
         zone: "unset",
+        boardId: board.id,
       });
     }
 
+    const laneIndex = scaledLaneCounts.get(node.semanticLayer) || 0;
+    scaledLaneCounts.set(node.semanticLayer, laneIndex + 1);
     return layoutNode(node, {
       x: round(resolved.normalizedScalar * scale),
-      y: semanticY(node),
-      z: round(stableJitter(node.id) * 2),
+      y: boardLaneY(node, laneIndex),
+      z: board.z,
       zone: "scaled",
+      boardId: board.id,
+      normalizedScalar: resolved.normalizedScalar,
       representativeValue: resolved.representativeValueSI,
       rangeSI: resolved.rangeSI,
     });
   });
 
-  return buildLayout("size", graph, nodes, quantityKind, unsetAreaX);
+  return buildLayout("size", graph, nodes, quantityKind, unsetAreaX, [board]);
 }
 
 /**
@@ -176,9 +232,10 @@ export function sizeLayout(graph, options = {}) {
  * @param {LayoutNode[]} nodes
  * @param {string|null} quantityKind
  * @param {number} [unsetAreaX]
+ * @param {LayoutBoard[]} [boards]
  * @returns {VisualizationLayout}
  */
-function buildLayout(mode, graph, nodes, quantityKind, unsetAreaX = 14) {
+function buildLayout(mode, graph, nodes, quantityKind, unsetAreaX = 14, boards = []) {
   const nodeIds = new Set(nodes.map((node) => node.id));
   return {
     schemaVersion: VISUALIZATION_LAYOUT_SCHEMA_VERSION,
@@ -192,13 +249,14 @@ function buildLayout(mode, graph, nodes, quantityKind, unsetAreaX = 14) {
       sourceGraphSchemaVersion: graph.schemaVersion,
       quantityKind,
       unsetAreaX,
+      boards,
     },
   };
 }
 
 /**
  * @param {VisualizationNode} node
- * @param {{x:number, y:number, z:number, zone:string, representativeValue?:number|null, rangeSI?:{minSI:number, maxSI:number}|null}} position
+ * @param {{x:number, y:number, z:number, zone:string, boardId?:string|null, normalizedScalar?:number|null, representativeValue?:number|null, rangeSI?:{minSI:number, maxSI:number}|null}} position
  * @returns {LayoutNode}
  */
 function layoutNode(node, position) {
@@ -210,6 +268,8 @@ function layoutNode(node, position) {
     zone: position.zone,
     semanticLayer: node.semanticLayer,
     mappingStatus: node.mappingStatus,
+    boardId: position.boardId ?? null,
+    normalizedScalar: position.normalizedScalar ?? null,
     radius: nodeRadius(node),
     representativeValue: position.representativeValue ?? null,
     rangeSI: position.rangeSI ?? null,
@@ -268,13 +328,7 @@ function buildDegreeMap(graph) {
 function resolveMeasurement(node, quantityKind) {
   const measurement = (node.measurements || []).find((item) => item.quantityKind === quantityKind);
   if (!measurement) return null;
-  return normalizeMagnitudeValue(magnitudeValueFromMeasurement(measurement), {
-    axisKind: "quantity",
-    normalization: "log",
-    quantityKind,
-    unitSI: LENGTH_UNIT_SI,
-    referenceValueSI: 1,
-  });
+  return normalizeMagnitudeValue(magnitudeValueFromMeasurement(measurement), sizeMagnitudeAxis(quantityKind));
 }
 
 /** @param {VisualizationNode} node */
@@ -303,9 +357,104 @@ function stableAngle(id) {
   return stableUnit(id) * Math.PI * 2;
 }
 
-/** @param {string} id */
-function stableJitter(id) {
-  return stableUnit(id) - 0.5;
+/**
+ * @param {{boardId:string, quantityKind:string, scale:number, scaledXs:number[], unsetAreaX:number, z:number}} options
+ * @returns {LayoutBoard}
+ */
+function quantityBoard(options) {
+  const scaledMin = Math.min(-SIZE_LAYOUT_SCALE, ...options.scaledXs);
+  const scaledMax = Math.max(SIZE_LAYOUT_SCALE, ...options.scaledXs);
+  const axisMinX = round(scaledMin - BOARD_X_PADDING);
+  const axisMaxX = round(scaledMax + BOARD_X_PADDING);
+  const xMax = round(Math.max(axisMaxX, options.unsetAreaX + BOARD_UNSET_PADDING));
+  return {
+    id: options.boardId,
+    axisKind: "quantity",
+    axisLabel: options.quantityKind,
+    normalization: "log",
+    unitSI: LENGTH_UNIT_SI,
+    unitLabel: LENGTH_UNIT_SI,
+    referenceValueSI: 1,
+    scale: options.scale,
+    xMin: axisMinX,
+    xMax,
+    axisMinX,
+    axisMaxX,
+    yMin: BOARD_MIN_Y,
+    yMax: BOARD_MAX_Y,
+    axisY: BOARD_AXIS_Y,
+    z: options.z,
+    unsetAreaX: options.unsetAreaX,
+    unsetLabel: `unset: no ${options.quantityKind}`,
+    ticks: magnitudeAxisTicks(sizeMagnitudeAxis(options.quantityKind), {
+      scale: options.scale,
+      minX: axisMinX,
+      maxX: axisMaxX,
+      unitLabel: LENGTH_UNIT_SI,
+    }),
+  };
+}
+
+/**
+ * @param {string} quantityKind
+ * @returns {import('./magnitude.js').MagnitudeAxis}
+ */
+function sizeMagnitudeAxis(quantityKind) {
+  return {
+    axisKind: "quantity",
+    normalization: "log",
+    quantityKind,
+    unitSI: LENGTH_UNIT_SI,
+    referenceValueSI: 1,
+  };
+}
+
+/**
+ * @param {import('./magnitude.js').MagnitudeAxis} axis
+ * @param {{scale:number, minX:number, maxX:number, unitLabel:string}} options
+ * @returns {LayoutAxisTick[]}
+ */
+function magnitudeAxisTicks(axis, options) {
+  const minScalar = Math.floor(options.minX / options.scale);
+  const maxScalar = Math.ceil(options.maxX / options.scale);
+  const ticks = [];
+  for (let exponent = minScalar - 1; exponent <= maxScalar + 1; exponent += 1) {
+    for (const multiplier of MAGNITUDE_TICK_MULTIPLIERS) {
+      const valueSI = multiplier * (10 ** exponent);
+      const normalized = normalizeMagnitudeValue({
+        axisKind: axis.axisKind,
+        quantityKind: axis.quantityKind ?? null,
+        valueSI,
+        minSI: null,
+        maxSI: null,
+        unitSI: axis.unitSI,
+      }, axis);
+      if (!normalized) continue;
+      const x = round(normalized.normalizedScalar * options.scale);
+      if (x < options.minX - 0.000001 || x > options.maxX + 0.000001) continue;
+      ticks.push({
+        valueSI,
+        normalizedScalar: normalized.normalizedScalar,
+        x,
+        label: `${formatMagnitudeTick(valueSI)} ${options.unitLabel}`,
+        major: multiplier === 1,
+      });
+    }
+  }
+  return ticks.sort((left, right) => left.x - right.x || left.valueSI - right.valueSI);
+}
+
+/** @param {VisualizationNode} node @param {number} index */
+function boardLaneY(node, index) {
+  const lane = (index % 5) - 2;
+  const stack = Math.floor(index / 5);
+  return round(semanticY(node) + lane * 0.12 + stack * 0.18);
+}
+
+/** @param {number} value */
+function formatMagnitudeTick(value) {
+  if (value >= 1) return Number(value.toPrecision(4)).toLocaleString("en-US");
+  return Number(value.toPrecision(4)).toString();
 }
 
 /** @param {string} id */
