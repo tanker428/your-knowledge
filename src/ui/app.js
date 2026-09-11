@@ -294,6 +294,7 @@ export async function initApp(deps) {
     knowledgeLayoutMode: "radial",
     knowledge3dMode: "home",
     knowledge3dScope: "activeVisit",
+    magnitudeAxisKind: "quantity",
     knowledge3dSelectedNodeId: null,
     magnitudeRecallScaleId: BODY_LENGTH_LOG_RECALL_SCALE_ID,
     magnitudeRecallSession: null,
@@ -2207,6 +2208,11 @@ export async function initApp(deps) {
     return "home";
   }
 
+  /** @returns {"quantity"|"time"} */
+  function currentMagnitudeAxisKind() {
+    return state.magnitudeAxisKind === "time" ? "time" : "quantity";
+  }
+
   /**
    * @param {string} observationId
    * @returns {Promise<Blob|null>}
@@ -2275,6 +2281,7 @@ export async function initApp(deps) {
     $("#knowledgeAxisControl")?.classList.add("hidden");
     const scope = currentKnowledge3dScope();
     const mode = currentKnowledge3dMode();
+    const magnitudeAxisKind = mode === "magnitude" ? currentMagnitudeAxisKind() : undefined;
 
     if (scope === "activeVisit" && !state.activeVisitId) {
       disposeKnowledge3d();
@@ -2340,6 +2347,7 @@ export async function initApp(deps) {
           mode,
           selectedNodeId: state.knowledge3dSelectedNodeId,
           autoRotate,
+          magnitudeAxisKind,
         });
       } catch {
         releaseKnowledge3dController();
@@ -2357,6 +2365,7 @@ export async function initApp(deps) {
             mode,
             selectedNodeId: state.knowledge3dSelectedNodeId,
             autoRotate,
+            magnitudeAxisKind,
             loadObservationThumbnail: loadKnowledge3dObservationThumbnail,
             onNodeSelect(nodeId) {
               state.knowledge3dSelectedNodeId = nodeId;
@@ -2394,6 +2403,7 @@ export async function initApp(deps) {
         mode,
         selectedNodeId: state.knowledge3dSelectedNodeId,
         autoRotate,
+        magnitudeAxisKind,
         loadObservationThumbnail: loadKnowledge3dObservationThumbnail,
         onNodeSelect(nodeId) {
           state.knowledge3dSelectedNodeId = nodeId;
@@ -2417,7 +2427,7 @@ export async function initApp(deps) {
     const mode = currentKnowledge3dMode();
     const scope = currentKnowledge3dScope();
     const displayNodeCount = knowledge3dDisplayNodes(graph, mode).length;
-    return `<div class="kg-canvas-header"><span>WEB 3D</span><strong>${escapeHtml(knowledge3dModeLabel(mode))}</strong><span class="kg-header-actions"><button class="text-button" data-knowledge3d-reset-camera>カメラを戻す</button></span></div><div id="knowledge3dStage" class="knowledge-3d-stage knowledge-3d-mode-${escapeHtml(mode)}"><div class="knowledge-3d-loading"><strong>3D知識空間を読み込み中</strong><small>${escapeHtml(knowledge3dScopeLabel(scope))}・${displayNodeCount} nodes</small></div></div><div class="knowledge-3d-legend">${renderKnowledge3dLegend(mode)}</div><div id="magnitudeRecallPanelHost">${recall ? renderMagnitudeRecallPanel(recall) : ""}</div>`;
+    return `<div class="kg-canvas-header"><span>WEB 3D</span><strong>${escapeHtml(knowledge3dModeLabel(mode))}</strong><span class="kg-header-actions"><button class="text-button" data-knowledge3d-reset-camera>カメラを戻す</button></span></div><div id="magnitudeAxisSelectorHost">${mode === "magnitude" ? renderMagnitudeAxisSelector() : ""}</div><div id="knowledge3dStage" class="knowledge-3d-stage knowledge-3d-mode-${escapeHtml(mode)}"><div class="knowledge-3d-loading"><strong>3D知識空間を読み込み中</strong><small>${escapeHtml(knowledge3dScopeLabel(scope))}・${displayNodeCount} nodes</small></div></div><div class="knowledge-3d-legend">${renderKnowledge3dLegend(mode)}</div><div id="magnitudeRecallPanelHost">${recall ? renderMagnitudeRecallPanel(recall) : ""}</div>`;
   }
 
   function updateKnowledge3dCanvasChrome(graph, mode, scope, recall = null) {
@@ -2431,8 +2441,18 @@ export async function initApp(deps) {
     }
     const legend = $("#knowledgeGraphCanvas .knowledge-3d-legend");
     if (legend) legend.innerHTML = renderKnowledge3dLegend(mode);
+    const axisHost = $("#magnitudeAxisSelectorHost");
+    if (axisHost) axisHost.innerHTML = mode === "magnitude" ? renderMagnitudeAxisSelector() : "";
     const recallHost = $("#magnitudeRecallPanelHost");
     if (recallHost) recallHost.innerHTML = recall ? renderMagnitudeRecallPanel(recall) : "";
+  }
+
+  function renderMagnitudeAxisSelector() {
+    const active = currentMagnitudeAxisKind();
+    return `<div class="magnitude-axis-selector magnitude-recall-scale-row" aria-label="magnitude axis selector">
+      <button type="button" class="${active === "quantity" ? "active" : ""}" data-knowledge3d-magnitude-axis="quantity">quantity</button>
+      <button type="button" class="${active === "time" ? "active" : ""}" data-knowledge3d-magnitude-axis="time">time</button>
+    </div>`;
   }
 
   function renderKnowledge3dLegend(mode) {
@@ -2444,7 +2464,9 @@ export async function initApp(deps) {
       return `<span><i class="knowledge-3d-dot kind-concept"></i>Concept（分類などの共通概念）</span><span><i class="knowledge-3d-dot kind-entity"></i>対象（写真に写っていた個体・展示物）</span><span>横軸 = body_length（体長・対数目盛り）</span><span>unset = 体長が未登録の対象</span>${scale}`;
     }
     if (mode === "magnitude") {
-      return `<span><i class="knowledge-3d-dot kind-concept"></i>Concept（量）</span><span><i class="knowledge-3d-dot kind-entity"></i>対象（量）</span><span><i class="knowledge-3d-dot kind-landmark"></i>地質時代（期間）</span><span>横軸 = body_length と duration の共通対数目盛り</span><span>unset = 量・期間が未登録の対象</span>${scale}`;
+      return currentMagnitudeAxisKind() === "time"
+        ? `<span><i class="knowledge-3d-dot kind-landmark"></i>地質時代（期間）</span><span>横軸 = duration（期間・対数目盛り）</span><span>unset = 期間が未登録の対象</span>${scale}`
+        : `<span><i class="knowledge-3d-dot kind-concept"></i>Concept（量）</span><span><i class="knowledge-3d-dot kind-entity"></i>対象（量）</span><span>横軸 = body_length（体長・対数目盛り）</span><span>unset = 体長が未登録の対象</span>${scale}`;
     }
     return `<span><i class="knowledge-3d-dot kind-experience"></i>体験（訪問・写真）</span><span><i class="knowledge-3d-dot kind-entity"></i>対象（写真に写っていた個体・展示物）</span><span><i class="knowledge-3d-dot kind-concept"></i>Concept（分類などの共通概念）</span><span><i class="knowledge-3d-dot kind-landmark"></i>時代（地質時代の区間）</span>${scale}`;
   }
@@ -2464,7 +2486,10 @@ export async function initApp(deps) {
   }
 
   function knowledge3dDisplayNodes(graph, mode) {
-    return visualizationNodesForLayout(graph, { mode });
+    return visualizationNodesForLayout(graph, {
+      mode,
+      magnitudeAxisKind: mode === "magnitude" ? currentMagnitudeAxisKind() : undefined,
+    });
   }
 
   function filterKnowledge3dNodes(graph, nodes = graph.nodes) {
@@ -2743,6 +2768,15 @@ export async function initApp(deps) {
     );
     const resetButton = $("[data-knowledge3d-reset-camera]");
     if (resetButton) resetButton.onclick = () => knowledge3dController?.resetCamera?.();
+    $$("[data-knowledge3d-magnitude-axis]").forEach((button) => {
+      button.onclick = () => {
+        const axisKind = button.dataset.knowledge3dMagnitudeAxis;
+        if (axisKind !== "quantity" && axisKind !== "time") return;
+        if (axisKind === currentMagnitudeAxisKind()) return;
+        state.magnitudeAxisKind = axisKind;
+        renderKnowledge();
+      };
+    });
     $$('[data-open-photo]').forEach((button) => {
       button.onclick = () => openPhotoModal(button.dataset.openPhoto);
     });

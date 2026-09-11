@@ -42,6 +42,7 @@ const MAGNITUDE_TICK_MULTIPLIERS = Object.freeze([1, 2, 5]);
  * @typedef {import('./visualization-graph.js').VisualizationNode} VisualizationNode
  * @typedef {import('./visualization-graph.js').VisualizationEdge} VisualizationEdge
  * @typedef {"home"|"relation"|"size"|"magnitude"} LayoutMode
+ * @typedef {"quantity"|"time"} MagnitudeAxisKind
  */
 
 /**
@@ -119,7 +120,7 @@ const MAGNITUDE_TICK_MULTIPLIERS = Object.freeze([1, 2, 5]);
 
 /**
  * @param {VisualizationGraphV1} graph
- * @param {{mode?: LayoutMode, quantityKind?: string, sizeScale?: number, unsetAreaX?: number}} [options]
+ * @param {{mode?: LayoutMode, quantityKind?: string, sizeScale?: number, unsetAreaX?: number, magnitudeAxisKind?: MagnitudeAxisKind}} [options]
  * @returns {VisualizationLayout}
  */
 export function layoutVisualizationGraph(graph, options = {}) {
@@ -135,7 +136,7 @@ export function layoutVisualizationGraph(graph, options = {}) {
  * this projection in the layout layer prevents the UI count and selection
  * state from drifting away from what the renderer can actually display.
  * @param {VisualizationGraphV1} graph
- * @param {{mode?: LayoutMode}} [options]
+ * @param {{mode?: LayoutMode, magnitudeAxisKind?: MagnitudeAxisKind}} [options]
  */
 export function visualizationNodesForLayout(graph, options = {}) {
   const ids = new Set(layoutVisualizationGraph(graph, options).nodes.map((node) => node.id));
@@ -238,17 +239,18 @@ export function sizeLayout(graph, options = {}) {
 }
 
 /**
- * Project body length and geological interval duration onto two juxtaposed
- * magnitude boards. The time board intentionally uses duration magnitude
+ * Project either body length or geological interval duration onto one selected
+ * magnitude board. The time board intentionally uses duration magnitude
  * (interval width) rather than chronological position.
  *
  * @param {VisualizationGraphV1} graph
- * @param {{quantityKind?: string, sizeScale?: number, unsetAreaX?: number}} [options]
+ * @param {{quantityKind?: string, sizeScale?: number, unsetAreaX?: number, magnitudeAxisKind?: MagnitudeAxisKind}} [options]
  * @returns {VisualizationLayout}
  */
 export function magnitudeLayout(graph, options = {}) {
   const quantityKind = options.quantityKind || DEFAULT_SIZE_QUANTITY_KIND;
   const scale = options.sizeScale ?? SIZE_LAYOUT_SCALE;
+  const axisKind = options.magnitudeAxisKind === "time" ? "time" : "quantity";
   const quantityNodes = graph.nodes.filter(isQuantityMagnitudeNode).sort(compareById);
   const timeNodes = graph.nodes.filter(isTimeMagnitudeNode).sort(compareById);
   const quantityEntries = quantityNodes.map((node) => ({
@@ -259,7 +261,8 @@ export function magnitudeLayout(graph, options = {}) {
     node,
     resolved: resolveTimeMagnitude(node),
   }));
-  const scaledXs = [...quantityEntries, ...timeEntries]
+  const entries = axisKind === "time" ? timeEntries : quantityEntries;
+  const scaledXs = entries
     .filter((entry) => entry.resolved)
     .map((entry) => entry.resolved.normalizedScalar * scale);
   const unsetAreaX = options.unsetAreaX
@@ -285,11 +288,9 @@ export function magnitudeLayout(graph, options = {}) {
     axisMaxX,
   });
 
-  const nodes = [
-    ...boardLayoutNodes(quantityEntries, quantity),
-    ...boardLayoutNodes(timeEntries, time),
-  ];
-  return buildLayout("magnitude", graph, nodes, quantityKind, unsetAreaX, [quantity, time]);
+  const board = axisKind === "time" ? time : quantity;
+  const nodes = boardLayoutNodes(entries, board);
+  return buildLayout("magnitude", graph, nodes, quantityKind, unsetAreaX, [board]);
 }
 
 /**

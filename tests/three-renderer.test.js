@@ -429,7 +429,7 @@ describe("Three.js fixture renderer", () => {
     controller.dispose();
   });
 
-  it("draws Magnitude mode as juxtaposed quantity and duration boards", async () => {
+  it("draws Magnitude mode as one selected board and switches axes through updateLayout", async () => {
     const { jsdom, container } = dom();
     const fake = fakeThree(jsdom.window.document);
 
@@ -460,10 +460,37 @@ describe("Three.js fixture renderer", () => {
         .map((child) => child.position.z),
     );
 
-    expect(boardIds).toEqual(new Set([SIZE_BOARD_ID, TIME_MAGNITUDE_BOARD_ID]));
-    expect(zValues).toEqual(new Set([MAGNITUDE_QUANTITY_BOARD_Z, TIME_MAGNITUDE_BOARD_Z]));
+    expect(boardIds).toEqual(new Set([SIZE_BOARD_ID]));
+    expect(zValues).toEqual(new Set([MAGNITUDE_QUANTITY_BOARD_Z]));
     expect(guidedNodeIds.has("concept:taxon:fukuiraptor")).toBe(true);
-    expect(guidedNodeIds.has("landmark:geo:early-cretaceous")).toBe(true);
+    expect(guidedNodeIds.has("landmark:geo:early-cretaceous")).toBe(false);
+
+    controller.updateLayout?.({
+      graph: VISUALIZATION_GRAPH_FIXTURE,
+      mode: "magnitude",
+      magnitudeAxisKind: "time",
+    });
+
+    const switchedBoardIds = new Set(
+      decorationRoot.children
+        .filter((child) => child.userData?.decorationKind === "board-frame")
+        .map((child) => child.userData.boardId),
+    );
+    const switchedGuidedNodeIds = new Set(
+      decorationRoot.children
+        .filter((child) => child.userData?.decorationKind === "node-guide")
+        .map((child) => child.userData.nodeId),
+    );
+    const switchedZValues = new Set(
+      rootGroup.children
+        .filter((child) => child.userData?.nodeId)
+        .map((child) => child.position.z),
+    );
+
+    expect(switchedBoardIds).toEqual(new Set([TIME_MAGNITUDE_BOARD_ID]));
+    expect(switchedZValues).toEqual(new Set([TIME_MAGNITUDE_BOARD_Z]));
+    expect(switchedGuidedNodeIds.has("concept:taxon:fukuiraptor")).toBe(false);
+    expect(switchedGuidedNodeIds.has("landmark:geo:early-cretaceous")).toBe(true);
     controller.dispose();
   });
 

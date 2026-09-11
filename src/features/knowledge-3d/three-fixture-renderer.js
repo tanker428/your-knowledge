@@ -39,7 +39,7 @@ const BOARD_LAYER_Y = Object.freeze([0, 1, 2]);
  * @property {string|null} reason
  * @property {() => void} dispose
  * @property {() => void} [resetCamera]
- * @property {(options:{graph?: any, mode?: "home"|"relation"|"size"|"magnitude", selectedNodeId?: string|null, autoRotate?: boolean}) => void} [updateLayout]
+ * @property {(options:{graph?: any, mode?: "home"|"relation"|"size"|"magnitude", selectedNodeId?: string|null, autoRotate?: boolean, magnitudeAxisKind?: "quantity"|"time"}) => void} [updateLayout]
  */
 
 /**
@@ -75,7 +75,7 @@ export function selectMagnitudeNodeRepresentativeObservationId(graph, node) {
  * this function is called and WebGL has been confirmed available.
  *
  * @param {HTMLElement} container
- * @param {{mode?: "home"|"relation"|"size"|"magnitude", loadThree?: () => Promise<any>, runtime?: any, webglAvailable?: boolean, requestAnimationFrame?: FrameRequestCallback, cancelAnimationFrame?: (id:number) => void, graph?: any, selectedNodeId?: string|null, onNodeSelect?: (nodeId:string) => void, autoRotate?: boolean, loadObservationThumbnail?: (observationId:string) => Promise<Blob|null>}} [options]
+ * @param {{mode?: "home"|"relation"|"size"|"magnitude", loadThree?: () => Promise<any>, runtime?: any, webglAvailable?: boolean, requestAnimationFrame?: FrameRequestCallback, cancelAnimationFrame?: (id:number) => void, graph?: any, selectedNodeId?: string|null, onNodeSelect?: (nodeId:string) => void, autoRotate?: boolean, magnitudeAxisKind?: "quantity"|"time", loadObservationThumbnail?: (observationId:string) => Promise<Blob|null>}} [options]
  * @returns {Promise<Knowledge3dController>}
  */
 export async function mountKnowledge3dFixture(container, options = {}) {
@@ -90,7 +90,7 @@ export async function mountKnowledge3dFixture(container, options = {}) {
  * lifecycle as the fixture preview.
  *
  * @param {HTMLElement} container
- * @param {{mode?: "home"|"relation"|"size"|"magnitude", loadThree?: () => Promise<any>, runtime?: any, webglAvailable?: boolean, requestAnimationFrame?: FrameRequestCallback, cancelAnimationFrame?: (id:number) => void, graph?: any, selectedNodeId?: string|null, onNodeSelect?: (nodeId:string) => void, autoRotate?: boolean, loadObservationThumbnail?: (observationId:string) => Promise<Blob|null>}} [options]
+ * @param {{mode?: "home"|"relation"|"size"|"magnitude", loadThree?: () => Promise<any>, runtime?: any, webglAvailable?: boolean, requestAnimationFrame?: FrameRequestCallback, cancelAnimationFrame?: (id:number) => void, graph?: any, selectedNodeId?: string|null, onNodeSelect?: (nodeId:string) => void, autoRotate?: boolean, magnitudeAxisKind?: "quantity"|"time", loadObservationThumbnail?: (observationId:string) => Promise<Blob|null>}} [options]
  * @returns {Promise<Knowledge3dController>}
  */
 export async function mountKnowledge3dGraph(container, options = {}) {
@@ -109,7 +109,10 @@ export async function mountKnowledge3dGraph(container, options = {}) {
   }
 
   const graph = options.graph || VISUALIZATION_GRAPH_FIXTURE;
-  const layout = layoutVisualizationGraph(graph, { mode: options.mode || "home" });
+  const layout = layoutVisualizationGraph(graph, {
+    mode: options.mode || "home",
+    magnitudeAxisKind: options.magnitudeAxisKind,
+  });
   return mountThreeScene(container, THREE, graph, layout, {
     runtime,
     requestAnimationFrame: options.requestAnimationFrame,
@@ -316,7 +319,10 @@ function mountThreeScene(container, THREE, graph, layout, options) {
     const nextSelectedNodeId = updateOptions.selectedNodeId || null;
     if ("autoRotate" in updateOptions) autoRotateRequested = updateOptions.autoRotate === true;
     currentAutoRotate = shouldAutoRotate(autoRotateRequested, nextMode, reducedMotion);
-    const nextLayout = layoutVisualizationGraph(nextGraph, { mode: nextMode });
+    const nextLayout = layoutVisualizationGraph(nextGraph, {
+      mode: nextMode,
+      magnitudeAxisKind: updateOptions.magnitudeAxisKind,
+    });
     reconcileSceneObjects(THREE, container.ownerDocument, root, {
       graph: nextGraph,
       layout: nextLayout,
