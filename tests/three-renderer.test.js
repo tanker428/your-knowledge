@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   mountKnowledge3dFixture,
   mountKnowledge3dGraph,
+  selectMagnitudeNodeRepresentativeObservationId,
 } from "../src/features/knowledge-3d/three-fixture-renderer.js";
 import {
   isWebGLAvailable,
@@ -40,6 +41,7 @@ function fakeThree(doc = document) {
   const groups = [];
   const sprites = [];
   const cameras = [];
+  const textureLoadCalls = [];
 
   class Object3D {
     constructor() {
@@ -127,6 +129,9 @@ function fakeThree(doc = document) {
     SphereGeometry: Geometry,
     CanvasTexture: class {
       dispose = textureDispose;
+      constructor(image) {
+        this.image = image;
+      }
     },
     Sprite: class extends Object3D {
       constructor(material) {
@@ -137,6 +142,11 @@ function fakeThree(doc = document) {
       }
     },
     SpriteMaterial: Material,
+    TextureLoader: class {
+      load(url, onLoad, onProgress, onError) {
+        textureLoadCalls.push({ url, onLoad, onProgress, onError });
+      }
+    },
     Vector3: class {
       constructor(x = 0, y = 0, z = 0) {
         this.x = x;
@@ -157,7 +167,7 @@ function fakeThree(doc = document) {
     },
   };
 
-  return { THREE, cameras, rendererDispose, renderListsDispose, forceContextLoss, geometryDispose, materialDispose, textureDispose, groups, sprites };
+  return { THREE, cameras, rendererDispose, renderListsDispose, forceContextLoss, geometryDispose, materialDispose, textureDispose, groups, sprites, textureLoadCalls };
 }
 
 function enableCanvasLabels(document) {
@@ -205,7 +215,83 @@ function singleConceptGraph(id = "concept:test") {
   };
 }
 
+function magnitudePhotoGraph(observationIds = ["o-b", "o-a"]) {
+  return {
+    schemaVersion: "1.0.0",
+    nodes: [{
+      id: "entity:e-a",
+      label: "Entity A",
+      kind: "entity",
+      semanticLayer: "referent",
+      mappingStatus: "canonical",
+      provenance: { verificationStatus: "verified", createdByType: "user", confidence: 1, sourceType: "upload", sourceNote: null },
+      sourceNodeIds: ["Entity:e-a"],
+      observationIds,
+      entityIds: ["e-a"],
+      visitIds: ["visit-a"],
+      domainIds: [],
+      referenceIds: [],
+      measurements: [{
+        quantityKind: "body_length",
+        valueSI: 1.8,
+        minSI: null,
+        maxSI: null,
+        unitSI: "m",
+        estimated: false,
+        confidence: 1,
+        source: "test",
+      }],
+    }],
+    edges: [],
+    metadata: {
+      schemaVersion: "1.0.0",
+      scope: "fixture",
+      source: "test",
+      createdAt: "1970-01-01T00:00:00.000Z",
+      mappingStats: { canonical: 1 },
+    },
+  };
+}
+
+function installObjectUrlMocks(window) {
+  const createObjectURL = vi.fn(() => "blob:thumbnail");
+  const revokeObjectURL = vi.fn();
+  Object.defineProperty(window.URL, "createObjectURL", {
+    value: createObjectURL,
+    configurable: true,
+  });
+  Object.defineProperty(window.URL, "revokeObjectURL", {
+    value: revokeObjectURL,
+    configurable: true,
+  });
+  return { createObjectURL, revokeObjectURL };
+}
+
+async function flushPromises() {
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
 describe("Three.js fixture renderer", () => {
+  it("selects a deterministic representative Observation for magnitude thumbnails", () => {
+    const graph = {
+      nodes: [
+        { id: "entity:e-a", entityIds: ["e-a"], observationIds: ["o-z", "o-a"] },
+        { id: "concept:a", entityIds: ["e-a"], observationIds: [] },
+      ],
+    };
+
+    expect(selectMagnitudeNodeRepresentativeObservationId(graph, {
+      observationIds: ["o-c", " o-a ", "", "o-b"],
+      entityIds: ["e-a"],
+    })).toBe("o-a");
+    expect(selectMagnitudeNodeRepresentativeObservationId(graph, graph.nodes[1])).toBe("o-a");
+    expect(selectMagnitudeNodeRepresentativeObservationId(graph, {
+      observationIds: [],
+      entityIds: ["missing"],
+    })).toBeNull();
+  });
+
   it("keeps Three.js as a fixed vendored lazy module", () => {
     expect(THREE_VERSION).toBe("0.185.1");
     expect(THREE_MODULE_URL.href).toContain("/src/vendor/three/0.185.1/three.module.js");
@@ -370,6 +456,105 @@ describe("Three.js fixture renderer", () => {
     expect(guidedNodeIds.has("concept:taxon:fukuiraptor")).toBe(true);
     expect(guidedNodeIds.has("landmark:geo:early-cretaceous")).toBe(true);
     controller.dispose();
+  });
+
+  it("renders Magnitude nodes as representative Observation thumbnails", async () => {
+    const { jsdom, container } = dom();
+    enableCanvasLabels(jsdom.window.document);
+    const urls = installObjectUrlMocks(jsdom.window);
+    const fake = fakeThree(jsdom.window.document);
+    const thumbnailBlob = new Blob(["thumbnail"], { type: "image/jpeg" });
+    const loadObservationThumbnail = vi.fn(async () => thumbnailBlob);
+
+    const controller = await mountKnowledge3dGraph(container, {
+      graph: magnitudePhotoGraph(),
+      mode: "magnitude",
+      webglAvailable: true,
+      loadThree: async () => fake.THREE,
+      runtime: { window: jsdom.window, document: jsdom.window.document },
+      requestAnimationFrame: () => 0,
+      cancelAnimationFrame: vi.fn(),
+      loadObservationThumbnail,
+    });
+    await flushPromises();
+
+    expect(loadObservationThumbnail).toHaveBeenCalledWith("o-a");
+    expect(urls.createObjectURL).toHaveBeenCalledWith(thumbnailBlob);
+    expect(fake.textureLoadCalls).toHaveLength(1);
+
+    fake.textureLoadCalls[0].onLoad({
+      image: { width: 320, height: 240 },
+      dispose: fake.textureDispose,
+    });
+
+    const rootGroup = fake.groups[0];
+    const nodeObject = rootGroup.children.find((child) => child.userData?.nodeId === "entity:e-a");
+    expect(nodeObject?.userData.renderMode).toBe("magnitude-thumbnail");
+    expect(nodeObject?.children.some((child) => child.userData?.magnitudeThumbnail)).toBe(true);
+    expect(nodeObject?.children.some((child) => child.userData?.magnitudeFallback)).toBe(false);
+    expect(urls.revokeObjectURL).toHaveBeenCalledWith("blob:thumbnail");
+
+    controller.dispose();
+    expect(fake.textureDispose).toHaveBeenCalled();
+  });
+
+  it("keeps a clear label fallback for Magnitude nodes without a photo", async () => {
+    const { jsdom, container } = dom();
+    enableCanvasLabels(jsdom.window.document);
+    const fake = fakeThree(jsdom.window.document);
+    const loadObservationThumbnail = vi.fn(async () => null);
+
+    const controller = await mountKnowledge3dGraph(container, {
+      graph: singleConceptGraph("concept:photo-less"),
+      mode: "magnitude",
+      webglAvailable: true,
+      loadThree: async () => fake.THREE,
+      runtime: { window: jsdom.window, document: jsdom.window.document },
+      requestAnimationFrame: () => 0,
+      cancelAnimationFrame: vi.fn(),
+      loadObservationThumbnail,
+    });
+    await flushPromises();
+
+    const rootGroup = fake.groups[0];
+    const nodeObject = rootGroup.children.find((child) => child.userData?.nodeId === "concept:photo-less");
+    const fallback = nodeObject?.children.find((child) => child.userData?.magnitudeFallback);
+    expect(loadObservationThumbnail).not.toHaveBeenCalled();
+    expect(fallback).toBeTruthy();
+    expect(fallback?.children.some((child) => child.userData?.magnitudeFallbackLabel)).toBe(true);
+
+    controller.dispose();
+  });
+
+  it("does not apply a Magnitude thumbnail after the scene is disposed", async () => {
+    const { jsdom, container } = dom();
+    const urls = installObjectUrlMocks(jsdom.window);
+    const fake = fakeThree(jsdom.window.document);
+    /** @type {(blob: Blob) => void} */
+    let resolveThumbnail = () => {};
+    const thumbnailPromise = new Promise((resolve) => {
+      resolveThumbnail = resolve;
+    });
+    const loadObservationThumbnail = vi.fn(() => thumbnailPromise);
+
+    const controller = await mountKnowledge3dGraph(container, {
+      graph: magnitudePhotoGraph(["o-a"]),
+      mode: "magnitude",
+      webglAvailable: true,
+      loadThree: async () => fake.THREE,
+      runtime: { window: jsdom.window, document: jsdom.window.document },
+      requestAnimationFrame: () => 0,
+      cancelAnimationFrame: vi.fn(),
+      loadObservationThumbnail,
+    });
+    await flushPromises();
+    controller.dispose();
+
+    resolveThumbnail(new Blob(["thumbnail"], { type: "image/jpeg" }));
+    await flushPromises();
+
+    expect(urls.createObjectURL).not.toHaveBeenCalled();
+    expect(fake.textureLoadCalls).toHaveLength(0);
   });
 
   it("keeps auto rotation off by default and disables it for Size or reduced motion", async () => {

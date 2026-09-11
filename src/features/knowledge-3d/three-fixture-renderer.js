@@ -19,6 +19,10 @@ const LABEL_Y_OFFSET = 0.55;
 const MODE_TRANSITION_MS = 520;
 /** Labels draw on top of nodes and edges instead of being clipped by them. */
 const LABEL_RENDER_ORDER = 900;
+const MAGNITUDE_THUMBNAIL_RENDER_ORDER = 520;
+const MAGNITUDE_FALLBACK_RENDER_ORDER = 510;
+const MAGNITUDE_THUMBNAIL_MIN_SIZE = 0.92;
+const MAGNITUDE_THUMBNAIL_MAX_SIZE = 1.72;
 const CAMERA_HOME = Object.freeze({ x: 10, y: 8, z: 14 });
 const CAMERA_TARGET = Object.freeze({ x: 0, y: 1, z: 0 });
 const CAMERA_ZOOM_MIN = 0.35;
@@ -36,11 +40,39 @@ const BOARD_LAYER_Y = Object.freeze([0, 1, 2]);
  */
 
 /**
+ * Pick one Observation to visually represent a magnitude node.
+ *
+ * Selection is deterministic: use the lexicographically smallest non-empty
+ * `node.observationIds` value. If the node has no direct Observation trace,
+ * collect Observation ids from graph nodes that share any of its `entityIds`,
+ * sort those ids, and use the smallest.
+ *
+ * @param {{nodes?: any[]}|null|undefined} graph
+ * @param {{observationIds?: unknown[], entityIds?: unknown[]}|null|undefined} node
+ * @returns {string|null}
+ */
+export function selectMagnitudeNodeRepresentativeObservationId(graph, node) {
+  const direct = sortedUniqueStrings(node?.observationIds);
+  if (direct.length) return direct[0];
+
+  const entityIds = new Set(sortedUniqueStrings(node?.entityIds));
+  if (!entityIds.size || !Array.isArray(graph?.nodes)) return null;
+
+  const derived = [];
+  for (const candidate of graph.nodes) {
+    if (!Array.isArray(candidate?.entityIds)) continue;
+    const sharesEntity = sortedUniqueStrings(candidate.entityIds).some((id) => entityIds.has(id));
+    if (sharesEntity) derived.push(...sortedUniqueStrings(candidate.observationIds));
+  }
+  return sortedUniqueStrings(derived)[0] || null;
+}
+
+/**
  * Mount the fixture 3D renderer. The Three.js module is imported only after
  * this function is called and WebGL has been confirmed available.
  *
  * @param {HTMLElement} container
- * @param {{mode?: "home"|"relation"|"size"|"magnitude", loadThree?: () => Promise<any>, runtime?: any, webglAvailable?: boolean, requestAnimationFrame?: FrameRequestCallback, cancelAnimationFrame?: (id:number) => void, graph?: any, selectedNodeId?: string|null, onNodeSelect?: (nodeId:string) => void, autoRotate?: boolean}} [options]
+ * @param {{mode?: "home"|"relation"|"size"|"magnitude", loadThree?: () => Promise<any>, runtime?: any, webglAvailable?: boolean, requestAnimationFrame?: FrameRequestCallback, cancelAnimationFrame?: (id:number) => void, graph?: any, selectedNodeId?: string|null, onNodeSelect?: (nodeId:string) => void, autoRotate?: boolean, loadObservationThumbnail?: (observationId:string) => Promise<Blob|null>}} [options]
  * @returns {Promise<Knowledge3dController>}
  */
 export async function mountKnowledge3dFixture(container, options = {}) {
@@ -55,7 +87,7 @@ export async function mountKnowledge3dFixture(container, options = {}) {
  * lifecycle as the fixture preview.
  *
  * @param {HTMLElement} container
- * @param {{mode?: "home"|"relation"|"size"|"magnitude", loadThree?: () => Promise<any>, runtime?: any, webglAvailable?: boolean, requestAnimationFrame?: FrameRequestCallback, cancelAnimationFrame?: (id:number) => void, graph?: any, selectedNodeId?: string|null, onNodeSelect?: (nodeId:string) => void, autoRotate?: boolean}} [options]
+ * @param {{mode?: "home"|"relation"|"size"|"magnitude", loadThree?: () => Promise<any>, runtime?: any, webglAvailable?: boolean, requestAnimationFrame?: FrameRequestCallback, cancelAnimationFrame?: (id:number) => void, graph?: any, selectedNodeId?: string|null, onNodeSelect?: (nodeId:string) => void, autoRotate?: boolean, loadObservationThumbnail?: (observationId:string) => Promise<Blob|null>}} [options]
  * @returns {Promise<Knowledge3dController>}
  */
 export async function mountKnowledge3dGraph(container, options = {}) {
@@ -82,6 +114,7 @@ export async function mountKnowledge3dGraph(container, options = {}) {
     selectedNodeId: options.selectedNodeId,
     onNodeSelect: options.onNodeSelect,
     autoRotate: options.autoRotate,
+    loadObservationThumbnail: options.loadObservationThumbnail,
   });
 }
 
@@ -114,7 +147,7 @@ function mountFallback(container, reason) {
  * @param {any} THREE
  * @param {any} graph
  * @param {import('./layout-engine.js').VisualizationLayout} layout
- * @param {{runtime:any, requestAnimationFrame?: FrameRequestCallback, cancelAnimationFrame?: (id:number) => void, selectedNodeId?: string|null, onNodeSelect?: (nodeId:string) => void, autoRotate?: boolean}} options
+ * @param {{runtime:any, requestAnimationFrame?: FrameRequestCallback, cancelAnimationFrame?: (id:number) => void, selectedNodeId?: string|null, onNodeSelect?: (nodeId:string) => void, autoRotate?: boolean, loadObservationThumbnail?: (observationId:string) => Promise<Blob|null>}} options
  * @returns {Knowledge3dController}
  */
 function mountThreeScene(container, THREE, graph, layout, options) {
@@ -167,6 +200,7 @@ function mountThreeScene(container, THREE, graph, layout, options) {
   scene.add(keyLight);
   scene.add(root);
 
+  const thumbnailManager = createMagnitudeThumbnailManager(THREE, runtime, options.loadObservationThumbnail);
   let currentGraph = graph;
   let currentLayout = layout;
   let currentMode = layout.mode;
@@ -181,7 +215,11 @@ function mountThreeScene(container, THREE, graph, layout, options) {
   const graphNodeById = new Map(graph.nodes.map((node) => [node.id, node]));
   for (const node of layout.nodes) {
     const graphNode = graphNodeById.get(node.id);
-    const mesh = createNodeMesh(THREE, graphNode, node, node.id === currentSelectedNodeId);
+    const mesh = createNodeObject(THREE, container.ownerDocument, graph, graphNode, node, {
+      mode: currentMode,
+      selected: node.id === currentSelectedNodeId,
+      thumbnailManager,
+    });
     root.add(mesh);
     nodeObjectById.set(node.id, mesh);
   }
@@ -282,6 +320,7 @@ function mountThreeScene(container, THREE, graph, layout, options) {
       labelObjectById,
       edgeObjectById,
       selectedNodeId: nextSelectedNodeId,
+      thumbnailManager,
     });
     const animate = nextMode !== currentMode || !sameLayoutPositions(currentLayout, nextLayout);
     if (animate) {
@@ -336,6 +375,7 @@ function mountThreeScene(container, THREE, graph, layout, options) {
       if (disposed) return;
       disposed = true;
       if (frameId && cancelFrame) cancelFrame(frameId);
+      thumbnailManager.dispose();
       hostWindow.removeEventListener?.("resize", resize);
       container.removeEventListener("pointerdown", pointerDown);
       container.removeEventListener("pointermove", pointerMove);
@@ -352,6 +392,27 @@ function mountThreeScene(container, THREE, graph, layout, options) {
       container.replaceChildren();
     },
   };
+}
+
+/**
+ * @param {any} THREE
+ * @param {Document} document
+ * @param {any} graph
+ * @param {any} graphNode
+ * @param {import('./layout-engine.js').LayoutNode} node
+ * @param {{mode:"home"|"relation"|"size"|"magnitude", selected:boolean, thumbnailManager:ReturnType<typeof createMagnitudeThumbnailManager>}} options
+ */
+function createNodeObject(THREE, document, graph, graphNode, node, options) {
+  if (options.mode === "magnitude") {
+    return createMagnitudeNodeObject(THREE, document, graph, graphNode, node, options);
+  }
+  const mesh = createNodeMesh(THREE, graphNode, node, options.selected);
+  mesh.userData = {
+    ...mesh.userData,
+    renderMode: "standard",
+    renderKey: nodeRenderKey(graph, graphNode, node, options.mode),
+  };
+  return mesh;
 }
 
 /**
@@ -378,6 +439,72 @@ function createNodeMesh(THREE, graphNode, node, selected) {
   return mesh;
 }
 
+/**
+ * @param {any} THREE
+ * @param {Document} document
+ * @param {any} graph
+ * @param {any} graphNode
+ * @param {import('./layout-engine.js').LayoutNode} node
+ * @param {{selected:boolean, thumbnailManager:ReturnType<typeof createMagnitudeThumbnailManager>}} options
+ */
+function createMagnitudeNodeObject(THREE, document, graph, graphNode, node, options) {
+  const group = new THREE.Group();
+  const representativeObservationId = selectMagnitudeNodeRepresentativeObservationId(graph, graphNode);
+  group.position.set(node.x, node.y * NODE_Y_SCALE, node.z);
+  if (options.selected) group.scale?.set?.(1.28, 1.28, 1.28);
+  group.userData = {
+    nodeId: node.id,
+    renderMode: "magnitude-thumbnail",
+    renderKey: nodeRenderKey(graph, graphNode, node, "magnitude"),
+    thumbnailObservationId: representativeObservationId,
+  };
+
+  const fallback = createMagnitudeFallbackNode(THREE, document, graphNode, node);
+  if (fallback) group.add(fallback);
+
+  if (representativeObservationId) {
+    options.thumbnailManager.request({
+      nodeObject: group,
+      layoutNode: node,
+      observationId: representativeObservationId,
+    });
+  }
+  return group;
+}
+
+/**
+ * @param {any} THREE
+ * @param {Document} document
+ * @param {any} graphNode
+ * @param {import('./layout-engine.js').LayoutNode} node
+ */
+function createMagnitudeFallbackNode(THREE, document, graphNode, node) {
+  const fallback = new THREE.Group();
+  fallback.userData = { nodeId: node.id, magnitudeFallback: true };
+
+  const markerGeometry = new THREE.SphereGeometry(Math.max(0.22, node.radius * 0.64), 16, 10);
+  const markerMaterial = new THREE.MeshStandardMaterial({
+    color: NODE_COLORS[graphNode?.kind] || 0x555555,
+    roughness: 0.78,
+    metalness: 0.04,
+    transparent: true,
+    opacity: node.mappingStatus === "unresolved" ? 0.48 : 0.86,
+  });
+  const marker = new THREE.Mesh(markerGeometry, markerMaterial);
+  marker.userData = { nodeId: node.id, magnitudeFallbackMarker: true };
+  fallback.add(marker);
+
+  const label = createLabelSprite(THREE, document, graphNode?.label || node.id);
+  if (label) {
+    label.position.set(0, Math.max(0.55, node.radius + 0.24), 0);
+    label.scale.set(2.8, 0.7, 1);
+    label.renderOrder = MAGNITUDE_FALLBACK_RENDER_ORDER;
+    label.userData = { nodeId: node.id, magnitudeFallbackLabel: true };
+    fallback.add(label);
+  }
+  return fallback;
+}
+
 /** @param {import('./layout-engine.js').VisualizationLayout} layout */
 function layoutNodeById(layout) {
   return new Map(layout.nodes.map((node) => [node.id, node]));
@@ -387,7 +514,7 @@ function layoutNodeById(layout) {
  * @param {any} THREE
  * @param {Document} document
  * @param {any} root
- * @param {{graph:any, layout:import('./layout-engine.js').VisualizationLayout, nodeObjectById:Map<string, any>, labelObjectById:Map<string, any>, edgeObjectById:Map<string, any>, selectedNodeId:string|null}} options
+ * @param {{graph:any, layout:import('./layout-engine.js').VisualizationLayout, nodeObjectById:Map<string, any>, labelObjectById:Map<string, any>, edgeObjectById:Map<string, any>, selectedNodeId:string|null, thumbnailManager:ReturnType<typeof createMagnitudeThumbnailManager>}} options
  */
 function reconcileSceneObjects(THREE, document, root, options) {
   const graphNodeById = new Map(options.graph.nodes.map((node) => [node.id, node]));
@@ -395,7 +522,14 @@ function reconcileSceneObjects(THREE, document, root, options) {
   const layoutEdgeIds = new Set(options.layout.edges.map((edge) => edge.id));
 
   for (const [id, mesh] of [...options.nodeObjectById.entries()]) {
-    if (layoutNodesById.has(id)) continue;
+    const layoutNode = layoutNodesById.get(id);
+    const graphNode = graphNodeById.get(id);
+    if (
+      layoutNode &&
+      mesh.userData?.renderKey === nodeRenderKey(options.graph, graphNode, layoutNode, options.layout.mode)
+    ) {
+      continue;
+    }
     root.remove?.(mesh);
     disposeObject(mesh);
     options.nodeObjectById.delete(id);
@@ -410,7 +544,11 @@ function reconcileSceneObjects(THREE, document, root, options) {
   for (const node of options.layout.nodes) {
     if (!options.nodeObjectById.has(node.id)) {
       const graphNode = graphNodeById.get(node.id);
-      const mesh = createNodeMesh(THREE, graphNode, node, node.id === options.selectedNodeId);
+      const mesh = createNodeObject(THREE, document, options.graph, graphNode, node, {
+        mode: options.layout.mode,
+        selected: node.id === options.selectedNodeId,
+        thumbnailManager: options.thumbnailManager,
+      });
       root.add(mesh);
       options.nodeObjectById.set(node.id, mesh);
     }
@@ -539,6 +677,22 @@ function updateSelection(nodeObjectById, selectedNodeId) {
     }
     mesh.scale?.set?.(selected ? 1.28 : 1, selected ? 1.28 : 1, selected ? 1.28 : 1);
   }
+}
+
+/**
+ * @param {any} graph
+ * @param {any} graphNode
+ * @param {import('./layout-engine.js').LayoutNode} layoutNode
+ * @param {"home"|"relation"|"size"|"magnitude"} mode
+ */
+function nodeRenderKey(graph, graphNode, layoutNode, mode) {
+  if (mode !== "magnitude") return "standard";
+  return [
+    "magnitude-thumbnail",
+    layoutNode.id,
+    graphNode?.label || layoutNode.id,
+    selectMagnitudeNodeRepresentativeObservationId(graph, graphNode) || "",
+  ].join("|");
 }
 
 /**
@@ -863,6 +1017,150 @@ function createLabelSprite(THREE, document, label) {
   return sprite;
 }
 
+/**
+ * @param {any} THREE
+ * @param {any} runtime
+ * @param {((observationId:string) => Promise<Blob|null>)|undefined} loadObservationThumbnail
+ */
+function createMagnitudeThumbnailManager(THREE, runtime, loadObservationThumbnail) {
+  const objectUrls = new Set();
+  const pendingTextures = new Set();
+  const urlApi = objectUrlApi(runtime);
+  let active = true;
+
+  /** @param {string} objectUrl */
+  const revokeObjectUrl = (objectUrl) => {
+    if (!objectUrls.delete(objectUrl)) return;
+    try {
+      urlApi?.revokeObjectURL?.(objectUrl);
+    } catch {
+      // Best-effort cleanup; the texture itself is still disposed below.
+    }
+  };
+
+  /**
+   * @param {{nodeObject:any, layoutNode:import('./layout-engine.js').LayoutNode, observationId:string}} options
+   */
+  const request = (options) => {
+    if (typeof loadObservationThumbnail !== "function" || !THREE.TextureLoader || !urlApi?.createObjectURL) return;
+    const token = Symbol(options.observationId);
+    options.nodeObject.userData.thumbnailRequestToken = token;
+
+    Promise.resolve()
+      .then(() => loadObservationThumbnail(options.observationId))
+      .then((blob) => {
+        if (!isMagnitudeThumbnailRequestLive(active, options.nodeObject, token) || !blob) return;
+        const objectUrl = urlApi.createObjectURL(blob);
+        objectUrls.add(objectUrl);
+        let loader;
+        let pendingTexture = null;
+        try {
+          loader = new THREE.TextureLoader();
+          pendingTexture = loader.load(
+            objectUrl,
+            (texture) => {
+              pendingTextures.delete(texture);
+              revokeObjectUrl(objectUrl);
+              if (!isMagnitudeThumbnailRequestLive(active, options.nodeObject, token)) {
+                texture?.dispose?.();
+                return;
+              }
+              applyMagnitudeThumbnailTexture(THREE, options.nodeObject, options.layoutNode, texture, options.observationId);
+            },
+            undefined,
+            () => {
+              if (pendingTexture) pendingTextures.delete(pendingTexture);
+              pendingTexture?.dispose?.();
+              revokeObjectUrl(objectUrl);
+            },
+          );
+          if (pendingTexture) pendingTextures.add(pendingTexture);
+        } catch {
+          pendingTexture?.dispose?.();
+          revokeObjectUrl(objectUrl);
+        }
+      })
+      .catch(() => {});
+  };
+
+  return {
+    request,
+    dispose() {
+      active = false;
+      for (const objectUrl of [...objectUrls]) revokeObjectUrl(objectUrl);
+      for (const texture of [...pendingTextures]) texture?.dispose?.();
+      pendingTextures.clear();
+    },
+  };
+}
+
+/**
+ * @param {boolean} managerActive
+ * @param {any} nodeObject
+ * @param {symbol} token
+ */
+function isMagnitudeThumbnailRequestLive(managerActive, nodeObject, token) {
+  return managerActive
+    && nodeObject?.userData?.disposed !== true
+    && nodeObject?.userData?.thumbnailRequestToken === token;
+}
+
+/**
+ * @param {any} THREE
+ * @param {any} nodeObject
+ * @param {import('./layout-engine.js').LayoutNode} layoutNode
+ * @param {any} texture
+ * @param {string} observationId
+ */
+function applyMagnitudeThumbnailTexture(THREE, nodeObject, layoutNode, texture, observationId) {
+  if (!THREE.SpriteMaterial || !THREE.Sprite) {
+    texture?.dispose?.();
+    return;
+  }
+  if (THREE.SRGBColorSpace) texture.colorSpace = THREE.SRGBColorSpace;
+  texture.needsUpdate = true;
+
+  for (const child of [...(nodeObject.children || [])]) {
+    if (!child.userData?.magnitudeFallback) continue;
+    nodeObject.remove?.(child);
+    disposeObject(child);
+  }
+
+  const material = new THREE.SpriteMaterial({
+    map: texture,
+    transparent: true,
+    depthWrite: false,
+  });
+  const sprite = new THREE.Sprite(material);
+  const baseSize = clamp(layoutNode.radius * 2.35, MAGNITUDE_THUMBNAIL_MIN_SIZE, MAGNITUDE_THUMBNAIL_MAX_SIZE);
+  const aspect = thumbnailTextureAspect(texture);
+  sprite.scale.set(baseSize * aspect, baseSize, 1);
+  sprite.renderOrder = MAGNITUDE_THUMBNAIL_RENDER_ORDER;
+  sprite.userData = {
+    nodeId: layoutNode.id,
+    magnitudeThumbnail: true,
+    observationId,
+  };
+  nodeObject.add(sprite);
+}
+
+/** @param {any} texture */
+function thumbnailTextureAspect(texture) {
+  const width = finiteNumber(texture?.image?.naturalWidth)
+    ? texture.image.naturalWidth
+    : texture?.image?.width;
+  const height = finiteNumber(texture?.image?.naturalHeight)
+    ? texture.image.naturalHeight
+    : texture?.image?.height;
+  if (!finiteNumber(width) || !finiteNumber(height) || height <= 0) return 1;
+  return clamp(width / height, 0.72, 1.5);
+}
+
+/** @param {any} runtime */
+function objectUrlApi(runtime) {
+  return runtime?.URL || runtime?.window?.URL || globalThis.URL;
+}
+
 /** @param {any} group */
 function clearGroup(group) {
   for (const child of [...(group.children || [])]) {
@@ -874,7 +1172,9 @@ function clearGroup(group) {
 
 /** @param {any} object */
 function disposeObject(object) {
+  markObjectDisposed(object);
   object.traverse?.((child) => {
+    markObjectDisposed(child);
     child.geometry?.dispose?.();
     const materials = Array.isArray(child.material) ? child.material : [child.material].filter(Boolean);
     for (const material of materials) {
@@ -884,4 +1184,32 @@ function disposeObject(object) {
       material.dispose?.();
     }
   });
+}
+
+/** @param {any} object */
+function markObjectDisposed(object) {
+  if (!object) return;
+  object.userData = {
+    ...(object.userData || {}),
+    disposed: true,
+  };
+}
+
+/** @param {unknown[]|undefined} values */
+function sortedUniqueStrings(values) {
+  if (!Array.isArray(values)) return [];
+  const strings = [];
+  for (const value of values) {
+    if (typeof value !== "string") continue;
+    const trimmed = value.trim();
+    if (trimmed) strings.push(trimmed);
+  }
+  return [...new Set(strings)].sort(compareStrings);
+}
+
+/** @param {string} left @param {string} right */
+function compareStrings(left, right) {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
 }

@@ -2187,6 +2187,35 @@ export async function initApp(deps) {
     return "home";
   }
 
+  /**
+   * @param {string} observationId
+   * @returns {Promise<Blob|null>}
+   */
+  async function loadKnowledge3dObservationThumbnail(observationId) {
+    const entry = observationById(observationId);
+    const photo = entry?.photo;
+    if (!photo) return null;
+
+    if (photo.source === "upload") {
+      try {
+        const binary = await repository.loadPhotoBinary(photo.id);
+        return binary?.thumbnail || null;
+      } catch {
+        return null;
+      }
+    }
+
+    const source = photo.thumbSrc || photo.src;
+    if (!source || source === MISSING_PHOTO_SRC || typeof fetch !== "function") return null;
+    try {
+      const response = await fetch(source);
+      if (!response.ok) return null;
+      return await response.blob();
+    } catch {
+      return null;
+    }
+  }
+
   // Core 4's old knowledge screen remains above for compatibility with
   // older markup, but this later declaration is the active ReferenceFact view.
   function renderKnowledge() {
@@ -2306,6 +2335,7 @@ export async function initApp(deps) {
             mode,
             selectedNodeId: state.knowledge3dSelectedNodeId,
             autoRotate,
+            loadObservationThumbnail: loadKnowledge3dObservationThumbnail,
             onNodeSelect(nodeId) {
               state.knowledge3dSelectedNodeId = nodeId;
               renderKnowledge();
@@ -2342,6 +2372,7 @@ export async function initApp(deps) {
         mode,
         selectedNodeId: state.knowledge3dSelectedNodeId,
         autoRotate,
+        loadObservationThumbnail: loadKnowledge3dObservationThumbnail,
         onNodeSelect(nodeId) {
           state.knowledge3dSelectedNodeId = nodeId;
           renderKnowledge();
