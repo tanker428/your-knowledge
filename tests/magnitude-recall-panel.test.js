@@ -76,6 +76,8 @@ describe("magnitude recall panel", () => {
     expect(document.querySelector("[data-magnitude-recall-submit]")?.hasAttribute("disabled")).toBe(true);
     expect(document.querySelector("[data-magnitude-recall-scale]")?.hasAttribute("disabled")).toBe(true);
     expect(document.querySelector("[data-magnitude-recall-axis]")?.getAttribute("aria-valuetext")).toBe("未入力");
+    expect(document.querySelector("[data-magnitude-recall-pointer]")?.getAttribute("style")).toContain("--recall-left:50%");
+    expect(document.querySelector("[data-magnitude-recall-pointer]")?.classList.contains("unset")).toBe(true);
   });
 
   it("renders numeric reconfirmation and feedback TrialResult JSON", () => {
@@ -98,6 +100,7 @@ describe("magnitude recall panel", () => {
 
     expect(confirming.querySelector("[data-magnitude-recall-submit]")?.hasAttribute("disabled")).toBe(true);
     expect(confirming.querySelector("[data-magnitude-recall-confirm-numeric]")?.textContent).toContain("この数値で回答");
+    expect(confirming.querySelector("[data-magnitude-recall-pointer]")?.getAttribute("aria-label")).toContain("あなたの回答：4.1 m");
 
     const feedback = docFor({
       session: {

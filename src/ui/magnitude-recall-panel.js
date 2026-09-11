@@ -69,6 +69,7 @@ function renderStudy(item) {
 function renderAnswerAxis(item, scale, session, answerU, correctU) {
   const answerLabel = session.answerValueSI == null ? "未入力" : formatMeters(session.answerValueSI);
   const disabled = session.phase === "feedback" ? "true" : "false";
+  const pointerU = answerU ?? 0.5;
   const ticks = scale.tickValuesSI.map((value) => {
     const u = normalizeScaleBoundedValue(value, scale);
     if (u === null) return "";
@@ -84,7 +85,7 @@ function renderAnswerAxis(item, scale, session, answerU, correctU) {
       <div class="magnitude-recall-axis" data-magnitude-recall-axis role="slider" tabindex="0" aria-disabled="${disabled}" aria-valuemin="0" aria-valuemax="1" aria-valuenow="${answerU ?? 0}" aria-valuetext="${escapeHtml(answerLabel)}">
         <div class="magnitude-recall-rail"></div>
         ${ticks}
-        ${answerU === null ? "" : `<span class="magnitude-recall-marker answer" style="--recall-left:${answerU * 100}%"><i></i><small>あなたの回答</small></span>`}
+        <button type="button" class="magnitude-recall-pointer answer ${answerU === null ? "unset" : ""}" data-magnitude-recall-pointer style="--recall-left:${pointerU * 100}%" aria-label="あなたの回答：${escapeHtml(answerLabel)}" ${session.phase === "feedback" ? "disabled" : ""}><i></i><small>あなたの回答</small></button>
         ${correctU === null ? "" : `<span class="magnitude-recall-marker correct" style="--recall-left:${correctU * 100}%"><i></i><small>正解</small></span>`}
       </div>
       <div class="magnitude-recall-answer-readout"><span>あなたの回答</span><strong>${escapeHtml(answerLabel)}</strong></div>

@@ -193,6 +193,59 @@ describe("body_length magnitude recall core", () => {
     });
   });
 
+  it("routes pointer u answers through the same draft, commit, and scoring path", () => {
+    const answering = enterMagnitudeRecallAnswerMode(startMagnitudeRecallTrial({
+      itemId: "concept:pointer",
+      scaleId: BODY_LENGTH_LOG_RECALL_SCALE_ID,
+      startedAtMs: 10_000,
+    }));
+    const pointerU = 0.42;
+    const pointerValueSI = denormalizeScaleUnitPosition(pointerU, LOG_SCALE);
+    const pointerDraft = updateMagnitudeRecallDraftAnswer(answering, {
+      scale: LOG_SCALE,
+      answerU: pointerU,
+      inputMethod: "drag",
+    });
+    const numericDraft = updateMagnitudeRecallDraftAnswer(answering, {
+      scale: LOG_SCALE,
+      answerValue: pointerValueSI,
+      unit: "m",
+      inputMethod: "numeric",
+    });
+
+    expect(pointerValueSI).not.toBeNull();
+    expect(pointerDraft?.answerValueSI).toBeCloseTo(pointerValueSI, 12);
+    expect(pointerDraft?.answerU).toBeCloseTo(pointerU, 12);
+    expect(pointerDraft?.inputMethod).toBe("drag");
+    expect(numericDraft?.answerValueSI).toBeCloseTo(pointerDraft?.answerValueSI || 0, 12);
+    expect(numericDraft?.answerU).toBeCloseTo(pointerDraft?.answerU || 0, 12);
+
+    const pointerFeedback = commitMagnitudeRecallAnswer(pointerDraft, {
+      correctValueSI: 4.2,
+      nowMs: 12_500,
+    });
+    const numericFeedback = commitMagnitudeRecallAnswer(numericDraft, {
+      correctValueSI: 4.2,
+      nowMs: 12_500,
+    });
+    const expectedPointerScore = scoreMagnitudeRecallAnswer({
+      itemId: "concept:pointer",
+      scaleId: BODY_LENGTH_LOG_RECALL_SCALE_ID,
+      answerValueSI: pointerValueSI,
+      correctValueSI: 4.2,
+      elapsedMs: 2_500,
+      inputMethod: "drag",
+    });
+
+    expect(pointerFeedback?.result).toEqual(expectedPointerScore);
+    expect(pointerFeedback?.result?.answerValueSI).toBe(numericFeedback?.result?.answerValueSI);
+    expect(pointerFeedback?.result?.error).toBe(numericFeedback?.result?.error);
+    expect(commitMagnitudeRecallAnswer(pointerFeedback, {
+      correctValueSI: 4.2,
+      nowMs: 13_000,
+    })).toBe(pointerFeedback);
+  });
+
   it("builds a reusable normalization fixture while excluding unset body_length", () => {
     const items = buildMagnitudeRecallItems(VISUALIZATION_GRAPH_FIXTURE);
     const itemIds = items.map((item) => item.itemId);

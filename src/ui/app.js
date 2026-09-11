@@ -144,7 +144,7 @@ import { buildVerifiedReferenceFact, renderReferenceFactEditor } from "./referen
 import { quizAttemptContextKey, reconcileQuizQuestionTypes, renderQuizQuestionTypeControls, updateQuizQuestionTypeSelection } from "./quiz-setup.js";
 import { MISSING_PHOTO_SRC } from "./photo-assets.js";
 import { escapeHtml } from "./html.js";
-import { renderMagnitudeRecallPanel } from "./magnitude-recall-panel.js";
+import { formatMeters, renderMagnitudeRecallPanel } from "./magnitude-recall-panel.js";
 
 const MAX_UPLOAD_BATCH = 120;
 const STATUS_LABELS = {
@@ -2822,24 +2822,9 @@ export async function initApp(deps) {
       if (u !== null) updateMagnitudeRecallAnswerDraft(recall, { answerU: u, inputMethod: "drag" });
     });
     axis?.addEventListener("keydown", (event) => {
-      if (recall.session?.phase !== "answer") return;
-      if (!["ArrowLeft", "ArrowDown", "ArrowRight", "ArrowUp", "Home", "End", "Enter"].includes(event.key)) return;
-      event.preventDefault();
-      if (event.key === "Enter") {
-        if (!state.magnitudeRecallNumericNeedsConfirm) commitMagnitudeRecallFromUi(recall);
-        return;
-      }
-      const current = Number.isFinite(state.magnitudeRecallSession?.answerU)
-        ? state.magnitudeRecallSession.answerU
-        : 0.5;
-      const step = event.shiftKey ? 0.1 : 0.02;
-      const next = event.key === "Home"
-        ? 0
-        : event.key === "End"
-          ? 1
-          : Math.max(0, Math.min(1, current + (event.key === "ArrowLeft" || event.key === "ArrowDown" ? -step : step)));
-      updateMagnitudeRecallAnswerDraft(recall, { answerU: next, inputMethod: "keyboard" });
+      handleMagnitudeRecallKeyboard(event, recall);
     });
+    bindMagnitudeRecallPointer(recall, axis);
 
     $("[data-magnitude-recall-card]")?.addEventListener("dragstart", (event) => {
       event.dataTransfer?.setData("text/plain", recall.item?.itemId || "");
@@ -2887,14 +2872,99 @@ export async function initApp(deps) {
     });
   }
 
-  function updateMagnitudeRecallAnswerDraft(recall, input) {
+  function bindMagnitudeRecallPointer(recall, axis) {
+    const pointer = $("[data-magnitude-recall-pointer]");
+    if (!axis || !pointer) return;
+
+    pointer.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      state.magnitudeRecallSuppressAxisClickUntil = Date.now() + 350;
+    });
+    pointer.addEventListener("keydown", (event) => {
+      if (handleMagnitudeRecallKeyboard(event, recall)) event.stopPropagation();
+    });
+    pointer.addEventListener("pointerdown", (event) => {
+      if (state.magnitudeRecallSession?.phase !== "answer") return;
+      event.preventDefault();
+      event.stopPropagation();
+      pointer.focus?.();
+      pointer.setPointerCapture?.(event.pointerId);
+      state.magnitudeRecallSuppressAxisClickUntil = Date.now() + 350;
+      updateMagnitudeRecallAnswerFromPointer(recall, axis, event, { render: false });
+
+      const onPointerMove = (moveEvent) => {
+        moveEvent.preventDefault?.();
+        updateMagnitudeRecallAnswerFromPointer(recall, axis, moveEvent, { render: false });
+      };
+      const onPointerUp = (upEvent) => {
+        window.removeEventListener("pointermove", onPointerMove);
+        window.removeEventListener("pointerup", onPointerUp);
+        window.removeEventListener("pointercancel", onPointerUp);
+        pointer.releasePointerCapture?.(upEvent.pointerId);
+        state.magnitudeRecallSuppressAxisClickUntil = Date.now() + 350;
+        updateMagnitudeRecallAnswerFromPointer(recall, axis, upEvent, { render: true });
+      };
+      window.addEventListener("pointermove", onPointerMove);
+      window.addEventListener("pointerup", onPointerUp);
+      window.addEventListener("pointercancel", onPointerUp);
+    });
+  }
+
+  function handleMagnitudeRecallKeyboard(event, recall) {
+    if (state.magnitudeRecallSession?.phase !== "answer") return false;
+    if (!["ArrowLeft", "ArrowDown", "ArrowRight", "ArrowUp", "Home", "End", "Enter"].includes(event.key)) return false;
+    event.preventDefault();
+    if (event.key === "Enter") {
+      if (!state.magnitudeRecallNumericNeedsConfirm) commitMagnitudeRecallFromUi(recall);
+      return true;
+    }
+    const current = Number.isFinite(state.magnitudeRecallSession?.answerU)
+      ? state.magnitudeRecallSession.answerU
+      : 0.5;
+    const step = event.shiftKey ? 0.1 : 0.02;
+    const next = event.key === "Home"
+      ? 0
+      : event.key === "End"
+        ? 1
+        : Math.max(0, Math.min(1, current + (event.key === "ArrowLeft" || event.key === "ArrowDown" ? -step : step)));
+    updateMagnitudeRecallAnswerDraft(recall, { answerU: next, inputMethod: "keyboard" });
+    return true;
+  }
+
+  function updateMagnitudeRecallAnswerFromPointer(recall, axis, event, options = {}) {
+    const u = magnitudeRecallAxisU(event, axis);
+    if (u === null) return;
+    updateMagnitudeRecallAnswerDraft(recall, { answerU: u, inputMethod: "drag" }, options);
+    if (options.render === false) syncMagnitudeRecallPointerUi(axis, u);
+  }
+
+  function syncMagnitudeRecallPointerUi(axis, u) {
+    const value = Number.isFinite(state.magnitudeRecallSession?.answerValueSI)
+      ? state.magnitudeRecallSession.answerValueSI
+      : null;
+    const label = value === null ? "未入力" : formatMeters(value);
+    const axisWrap = axis.closest(".magnitude-recall-axis-wrap") || document;
+    const pointer = $("[data-magnitude-recall-pointer]", axis);
+    if (pointer) {
+      pointer.style.setProperty("--recall-left", `${u * 100}%`);
+      pointer.classList.toggle("unset", value === null);
+      pointer.setAttribute("aria-label", `あなたの回答：${label}`);
+    }
+    axis.setAttribute("aria-valuenow", String(u));
+    axis.setAttribute("aria-valuetext", label);
+    const readout = $(".magnitude-recall-answer-readout strong", axisWrap);
+    if (readout) readout.textContent = label;
+  }
+
+  function updateMagnitudeRecallAnswerDraft(recall, input, options = {}) {
     if (!recall?.scale || recall.session?.phase !== "answer") return;
     state.magnitudeRecallSession = updateMagnitudeRecallDraftAnswer(state.magnitudeRecallSession, {
       scale: recall.scale,
       ...input,
     });
     state.magnitudeRecallNumericNeedsConfirm = false;
-    renderKnowledge();
+    if (options.render !== false) renderKnowledge();
   }
 
   function commitMagnitudeRecallFromUi(recall) {
