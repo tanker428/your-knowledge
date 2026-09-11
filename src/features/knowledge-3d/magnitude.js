@@ -77,6 +77,29 @@ export const FUTURE_SPACE_MAGNITUDE_AXIS_KIND = "space";
  */
 
 /**
+ * @typedef {"drag"|"axis-click"|"keyboard"|"numeric"} MagnitudeRecallInputMethod
+ */
+
+/**
+ * Renderer-independent record of one magnitude recall trial.
+ *
+ * The `correct` flag currently follows a provisional teaching rule:
+ * body-length recall is treated as correct when the answer is within +/-10%
+ * of the representative correct value. That threshold is a curriculum rule,
+ * not a property of the ATOM magnitude model.
+ *
+ * @typedef {object} TrialResult
+ * @property {string} itemId
+ * @property {string} scaleId
+ * @property {number} answerValueSI
+ * @property {number} correctValueSI
+ * @property {boolean} correct
+ * @property {number} error Relative absolute error: abs(answer-correct)/correct.
+ * @property {number} elapsedMs
+ * @property {MagnitudeRecallInputMethod} inputMethod
+ */
+
+/**
  * Convert a VisualizationGraphV1 quantity measurement into the common
  * display-only magnitude value shape.
  *
