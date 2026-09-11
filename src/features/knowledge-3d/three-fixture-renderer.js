@@ -16,6 +16,9 @@ const NODE_COLORS = Object.freeze({
 });
 const NODE_Y_SCALE = 2.6;
 const LABEL_Y_OFFSET = 0.55;
+const LABEL_SPRITE_HEIGHT = 0.8;
+const SELECTED_NODE_SCALE = 1.28;
+const MAGNITUDE_LABEL_THUMBNAIL_GAP = 0.14;
 const MODE_TRANSITION_MS = 520;
 /** Labels draw on top of nodes and edges instead of being clipped by them. */
 const LABEL_RENDER_ORDER = 900;
@@ -228,6 +231,7 @@ function mountThreeScene(container, THREE, graph, layout, options) {
     layoutNodesById: layoutNodeById(layout),
     labelObjectById,
     selectedNodeId: currentSelectedNodeId,
+    mode: currentMode,
   });
   for (const edge of layout.edges) {
     const source = layoutNodeById(layout).get(edge.sourceId);
@@ -434,7 +438,7 @@ function createNodeMesh(THREE, graphNode, node, selected) {
   });
   const mesh = new THREE.Mesh(geometry, material);
   mesh.position.set(node.x, node.y * NODE_Y_SCALE, node.z);
-  if (selected) mesh.scale?.set?.(1.28, 1.28, 1.28);
+  if (selected) mesh.scale?.set?.(SELECTED_NODE_SCALE, SELECTED_NODE_SCALE, SELECTED_NODE_SCALE);
   mesh.userData = { nodeId: node.id };
   return mesh;
 }
@@ -451,7 +455,7 @@ function createMagnitudeNodeObject(THREE, document, graph, graphNode, node, opti
   const group = new THREE.Group();
   const representativeObservationId = selectMagnitudeNodeRepresentativeObservationId(graph, graphNode);
   group.position.set(node.x, node.y * NODE_Y_SCALE, node.z);
-  if (options.selected) group.scale?.set?.(1.28, 1.28, 1.28);
+  if (options.selected) group.scale?.set?.(SELECTED_NODE_SCALE, SELECTED_NODE_SCALE, SELECTED_NODE_SCALE);
   group.userData = {
     nodeId: node.id,
     renderMode: "magnitude-thumbnail",
@@ -558,6 +562,7 @@ function reconcileSceneObjects(THREE, document, root, options) {
     layoutNodesById,
     labelObjectById: options.labelObjectById,
     selectedNodeId: options.selectedNodeId,
+    mode: options.layout.mode,
   });
 
   for (const [id, line] of [...options.edgeObjectById.entries()]) {
@@ -582,7 +587,7 @@ function reconcileSceneObjects(THREE, document, root, options) {
  * @param {any} THREE
  * @param {Document} document
  * @param {any} root
- * @param {{graphNodeById:Map<string, any>, layoutNodesById:Map<string, import('./layout-engine.js').LayoutNode>, labelObjectById:Map<string, any>, selectedNodeId:string|null}} options
+ * @param {{graphNodeById:Map<string, any>, layoutNodesById:Map<string, import('./layout-engine.js').LayoutNode>, labelObjectById:Map<string, any>, selectedNodeId:string|null, mode:"home"|"relation"|"size"|"magnitude"}} options
  */
 function syncSelectedLabel(THREE, document, root, options) {
   for (const [id, label] of [...options.labelObjectById.entries()]) {
@@ -598,7 +603,7 @@ function syncSelectedLabel(THREE, document, root, options) {
   const graphNode = options.graphNodeById.get(options.selectedNodeId);
   const label = createLabelSprite(THREE, document, graphNode?.label || options.selectedNodeId);
   if (!label) return;
-  label.position.set(layoutNode.x, layoutNode.y * NODE_Y_SCALE + LABEL_Y_OFFSET, layoutNode.z);
+  label.position.set(layoutNode.x, layoutNode.y * NODE_Y_SCALE + labelYOffsetForMode(options.mode, layoutNode), layoutNode.z);
   root.add(label);
   options.labelObjectById.set(options.selectedNodeId, label);
 }
@@ -618,8 +623,8 @@ function buildLayoutTransition(currentLayout, nextLayout, options) {
     const from = readPosition(mesh, positionFromLayoutNode(previous));
     const to = positionFromLayoutNode(node);
     const label = options.labelObjectById.get(node.id);
-    const labelFrom = label ? readPosition(label, labelPosition(previous)) : null;
-    const labelTo = label ? labelPosition(node) : null;
+    const labelFrom = label ? readPosition(label, labelPosition(previous, currentLayout.mode)) : null;
+    const labelTo = label ? labelPosition(node, nextLayout.mode) : null;
     nodes.set(node.id, { mesh, label, from, to, labelFrom, labelTo });
   }
   return {
@@ -649,7 +654,7 @@ function applyLayoutTransition(transition, now) {
 function applyLayoutPositions(layout, options) {
   for (const node of layout.nodes) {
     setObjectPosition(options.nodeObjectById.get(node.id), positionFromLayoutNode(node));
-    setObjectPosition(options.labelObjectById.get(node.id), labelPosition(node));
+    setObjectPosition(options.labelObjectById.get(node.id), labelPosition(node, layout.mode));
   }
 }
 
@@ -675,7 +680,11 @@ function updateSelection(nodeObjectById, selectedNodeId) {
       if (typeof mesh.material.emissive === "number") mesh.material.emissive = selected ? 0xe86f36 : 0x000000;
       mesh.material.emissiveIntensity = selected ? 0.38 : 0;
     }
-    mesh.scale?.set?.(selected ? 1.28 : 1, selected ? 1.28 : 1, selected ? 1.28 : 1);
+    mesh.scale?.set?.(
+      selected ? SELECTED_NODE_SCALE : 1,
+      selected ? SELECTED_NODE_SCALE : 1,
+      selected ? SELECTED_NODE_SCALE : 1,
+    );
   }
 }
 
@@ -721,9 +730,23 @@ function positionFromLayoutNode(node) {
   return { x: node.x, y: node.y * NODE_Y_SCALE, z: node.z };
 }
 
-/** @param {import('./layout-engine.js').LayoutNode} node */
-function labelPosition(node) {
-  return { x: node.x, y: node.y * NODE_Y_SCALE + LABEL_Y_OFFSET, z: node.z };
+/**
+ * @param {"home"|"relation"|"size"|"magnitude"} mode
+ * @param {import('./layout-engine.js').LayoutNode} node
+ */
+function labelYOffsetForMode(mode, node) {
+  if (mode !== "magnitude") return LABEL_Y_OFFSET;
+  const thumbnailHeight = clamp(node.radius * 2.35, MAGNITUDE_THUMBNAIL_MIN_SIZE, MAGNITUDE_THUMBNAIL_MAX_SIZE)
+    * SELECTED_NODE_SCALE;
+  return (thumbnailHeight / 2) + (LABEL_SPRITE_HEIGHT / 2) + MAGNITUDE_LABEL_THUMBNAIL_GAP;
+}
+
+/**
+ * @param {import('./layout-engine.js').LayoutNode} node
+ * @param {"home"|"relation"|"size"|"magnitude"} mode
+ */
+function labelPosition(node, mode) {
+  return { x: node.x, y: node.y * NODE_Y_SCALE + labelYOffsetForMode(mode, node), z: node.z };
 }
 
 /** @param {any} object @param {{x:number, y:number, z:number}} fallback */
@@ -1013,7 +1036,7 @@ function createLabelSprite(THREE, document, label) {
   });
   const sprite = new THREE.Sprite(material);
   sprite.renderOrder = LABEL_RENDER_ORDER;
-  sprite.scale.set(3.2, 0.8, 1);
+  sprite.scale.set(3.2, LABEL_SPRITE_HEIGHT, 1);
   return sprite;
 }
 

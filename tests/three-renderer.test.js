@@ -57,7 +57,16 @@ function fakeThree(doc = document) {
         }),
       };
       this.rotation = { y: 0 };
-      this.scale = { set: vi.fn() };
+      this.scale = {
+        x: 1,
+        y: 1,
+        z: 1,
+        set: vi.fn((x, y, z) => {
+          this.scale.x = x;
+          this.scale.y = y;
+          this.scale.z = z;
+        }),
+      };
       this.userData = {};
     }
     add(child) {
@@ -496,6 +505,45 @@ describe("Three.js fixture renderer", () => {
 
     controller.dispose();
     expect(fake.textureDispose).toHaveBeenCalled();
+  });
+
+  it("positions the selected Magnitude label above loaded thumbnails", async () => {
+    const { jsdom, container } = dom();
+    enableCanvasLabels(jsdom.window.document);
+    installObjectUrlMocks(jsdom.window);
+    const fake = fakeThree(jsdom.window.document);
+    const loadObservationThumbnail = vi.fn(async () => new Blob(["thumbnail"], { type: "image/jpeg" }));
+
+    const controller = await mountKnowledge3dGraph(container, {
+      graph: magnitudePhotoGraph(),
+      mode: "magnitude",
+      selectedNodeId: "entity:e-a",
+      webglAvailable: true,
+      loadThree: async () => fake.THREE,
+      runtime: { window: jsdom.window, document: jsdom.window.document },
+      requestAnimationFrame: () => 0,
+      cancelAnimationFrame: vi.fn(),
+      loadObservationThumbnail,
+    });
+    await flushPromises();
+
+    fake.textureLoadCalls[0].onLoad({
+      image: { width: 320, height: 240 },
+      dispose: fake.textureDispose,
+    });
+
+    const rootGroup = fake.groups[0];
+    const nodeObject = rootGroup.children.find((child) => child.userData?.nodeId === "entity:e-a");
+    const thumbnail = nodeObject?.children.find((child) => child.userData?.magnitudeThumbnail);
+    const selectedLabel = rootGroup.children.find((child) => child.isSprite);
+    if (!nodeObject || !thumbnail || !selectedLabel) throw new Error("missing selected thumbnail label test objects");
+
+    const thumbnailTop = nodeObject.position.y + (thumbnail.scale.y * nodeObject.scale.y) / 2;
+    const labelBottom = selectedLabel.position.y - selectedLabel.scale.y / 2;
+    expect(labelBottom).toBeGreaterThan(thumbnailTop);
+    expect(selectedLabel.position.y - nodeObject.position.y).toBeGreaterThan(0.55);
+
+    controller.dispose();
   });
 
   it("keeps a clear label fallback for Magnitude nodes without a photo", async () => {
