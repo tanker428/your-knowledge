@@ -13,6 +13,12 @@ import {
   THREE_VERSION,
 } from "../src/features/knowledge-3d/three-module.js";
 import { VISUALIZATION_GRAPH_FIXTURE } from "../src/features/knowledge-3d/visualization-graph-fixture.js";
+import {
+  MAGNITUDE_QUANTITY_BOARD_Z,
+  SIZE_BOARD_ID,
+  TIME_MAGNITUDE_BOARD_ID,
+  TIME_MAGNITUDE_BOARD_Z,
+} from "../src/features/knowledge-3d/layout-engine.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -289,6 +295,7 @@ describe("Three.js fixture renderer", () => {
     controller.resetCamera?.();
     expect(fake.groups[0].rotation.y).toBe(0);
     controller.updateLayout?.({ mode: "size", selectedNodeId: "concept:test" });
+    controller.updateLayout?.({ mode: "magnitude", selectedNodeId: "concept:test" });
     controller.updateLayout?.({ mode: "home", selectedNodeId: "concept:test" });
     controller.updateLayout?.({ mode: "relation", selectedNodeId: "concept:test" });
     controller.updateLayout?.({ mode: "home", selectedNodeId: "concept:test" });
@@ -324,6 +331,44 @@ describe("Three.js fixture renderer", () => {
     expect(kinds.filter((kind) => kind === "axis-tick").length).toBeGreaterThanOrEqual(3);
     expect(guidedNodeIds.has("concept:taxon:fukuiraptor")).toBe(true);
     expect(guidedNodeIds.has("entity:e-fossil")).toBe(true);
+    controller.dispose();
+  });
+
+  it("draws Magnitude mode as juxtaposed quantity and duration boards", async () => {
+    const { jsdom, container } = dom();
+    const fake = fakeThree(jsdom.window.document);
+
+    const controller = await mountKnowledge3dGraph(container, {
+      graph: VISUALIZATION_GRAPH_FIXTURE,
+      mode: "magnitude",
+      webglAvailable: true,
+      loadThree: async () => fake.THREE,
+      runtime: { window: jsdom.window, document: jsdom.window.document },
+      requestAnimationFrame: () => 0,
+      cancelAnimationFrame: vi.fn(),
+    });
+    const rootGroup = fake.groups[0];
+    const decorationRoot = fake.groups[1];
+    const boardIds = new Set(
+      decorationRoot.children
+        .filter((child) => child.userData?.decorationKind === "board-frame")
+        .map((child) => child.userData.boardId),
+    );
+    const guidedNodeIds = new Set(
+      decorationRoot.children
+        .filter((child) => child.userData?.decorationKind === "node-guide")
+        .map((child) => child.userData.nodeId),
+    );
+    const zValues = new Set(
+      rootGroup.children
+        .filter((child) => child.userData?.nodeId)
+        .map((child) => child.position.z),
+    );
+
+    expect(boardIds).toEqual(new Set([SIZE_BOARD_ID, TIME_MAGNITUDE_BOARD_ID]));
+    expect(zValues).toEqual(new Set([MAGNITUDE_QUANTITY_BOARD_Z, TIME_MAGNITUDE_BOARD_Z]));
+    expect(guidedNodeIds.has("concept:taxon:fukuiraptor")).toBe(true);
+    expect(guidedNodeIds.has("landmark:geo:early-cretaceous")).toBe(true);
     controller.dispose();
   });
 
@@ -365,6 +410,23 @@ describe("Three.js fixture renderer", () => {
       const controller = await mountKnowledge3dGraph(container, {
         graph: singleConceptGraph(),
         mode: "size",
+        autoRotate: true,
+        webglAvailable: true,
+        loadThree: async () => fake.THREE,
+        runtime: { window: jsdom.window, document: jsdom.window.document },
+        requestAnimationFrame: () => 0,
+        cancelAnimationFrame: vi.fn(),
+      });
+      expect(fake.groups[0].rotation.y).toBe(0);
+      controller.dispose();
+    }
+
+    {
+      const { jsdom, container } = dom();
+      const fake = fakeThree(jsdom.window.document);
+      const controller = await mountKnowledge3dGraph(container, {
+        graph: singleConceptGraph(),
+        mode: "magnitude",
         autoRotate: true,
         webglAvailable: true,
         loadThree: async () => fake.THREE,

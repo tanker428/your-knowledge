@@ -32,7 +32,7 @@ const BOARD_LAYER_Y = Object.freeze([0, 1, 2]);
  * @property {string|null} reason
  * @property {() => void} dispose
  * @property {() => void} [resetCamera]
- * @property {(options:{graph?: any, mode?: "home"|"relation"|"size", selectedNodeId?: string|null, autoRotate?: boolean}) => void} [updateLayout]
+ * @property {(options:{graph?: any, mode?: "home"|"relation"|"size"|"magnitude", selectedNodeId?: string|null, autoRotate?: boolean}) => void} [updateLayout]
  */
 
 /**
@@ -40,7 +40,7 @@ const BOARD_LAYER_Y = Object.freeze([0, 1, 2]);
  * this function is called and WebGL has been confirmed available.
  *
  * @param {HTMLElement} container
- * @param {{mode?: "home"|"relation"|"size", loadThree?: () => Promise<any>, runtime?: any, webglAvailable?: boolean, requestAnimationFrame?: FrameRequestCallback, cancelAnimationFrame?: (id:number) => void, graph?: any, selectedNodeId?: string|null, onNodeSelect?: (nodeId:string) => void, autoRotate?: boolean}} [options]
+ * @param {{mode?: "home"|"relation"|"size"|"magnitude", loadThree?: () => Promise<any>, runtime?: any, webglAvailable?: boolean, requestAnimationFrame?: FrameRequestCallback, cancelAnimationFrame?: (id:number) => void, graph?: any, selectedNodeId?: string|null, onNodeSelect?: (nodeId:string) => void, autoRotate?: boolean}} [options]
  * @returns {Promise<Knowledge3dController>}
  */
 export async function mountKnowledge3dFixture(container, options = {}) {
@@ -55,7 +55,7 @@ export async function mountKnowledge3dFixture(container, options = {}) {
  * lifecycle as the fixture preview.
  *
  * @param {HTMLElement} container
- * @param {{mode?: "home"|"relation"|"size", loadThree?: () => Promise<any>, runtime?: any, webglAvailable?: boolean, requestAnimationFrame?: FrameRequestCallback, cancelAnimationFrame?: (id:number) => void, graph?: any, selectedNodeId?: string|null, onNodeSelect?: (nodeId:string) => void, autoRotate?: boolean}} [options]
+ * @param {{mode?: "home"|"relation"|"size"|"magnitude", loadThree?: () => Promise<any>, runtime?: any, webglAvailable?: boolean, requestAnimationFrame?: FrameRequestCallback, cancelAnimationFrame?: (id:number) => void, graph?: any, selectedNodeId?: string|null, onNodeSelect?: (nodeId:string) => void, autoRotate?: boolean}} [options]
  * @returns {Promise<Knowledge3dController>}
  */
 export async function mountKnowledge3dGraph(container, options = {}) {
@@ -616,11 +616,11 @@ function clamp(value, min, max) {
 
 /**
  * @param {boolean} requested
- * @param {"home"|"relation"|"size"} mode
+ * @param {"home"|"relation"|"size"|"magnitude"} mode
  * @param {boolean} reducedMotion
  */
 function shouldAutoRotate(requested, mode, reducedMotion) {
-  return requested && mode !== "size" && !reducedMotion;
+  return requested && mode !== "size" && mode !== "magnitude" && !reducedMotion;
 }
 
 /** @param {any} hostWindow */
