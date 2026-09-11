@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { JSDOM } from "jsdom";
 import { describe, expect, it, vi } from "vitest";
 import {
+  computeMagnitudeFitCameraPlacement,
   mountKnowledge3dFixture,
   mountKnowledge3dGraph,
   selectMagnitudeNodeRepresentativeObservationId,
@@ -16,6 +17,7 @@ import {
 import { VISUALIZATION_GRAPH_FIXTURE } from "../src/features/knowledge-3d/visualization-graph-fixture.js";
 import {
   MAGNITUDE_QUANTITY_BOARD_Z,
+  magnitudeLayout,
   SIZE_BOARD_ID,
   TIME_MAGNITUDE_BOARD_ID,
   TIME_MAGNITUDE_BOARD_Z,
@@ -126,9 +128,12 @@ function fakeThree(doc = document) {
     },
     MeshStandardMaterial: Material,
     PerspectiveCamera: class extends Object3D {
-      constructor() {
+      constructor(fov = 50, aspect = 1, near = 0.1, far = 2000) {
         super();
-        this.aspect = 1;
+        this.fov = fov;
+        this.aspect = aspect;
+        this.near = near;
+        this.far = far;
         this.updateProjectionMatrix = vi.fn();
         this.lookAt = vi.fn();
         cameras.push(this);
@@ -281,6 +286,52 @@ async function flushPromises() {
   await Promise.resolve();
 }
 
+function expectPlacementContainsCorners(placement) {
+  const view = normalize(testSubtract(placement.target, placement.position));
+  const right = normalize(testCross(view, { x: 0, y: 1, z: 0 }));
+  const up = normalize(testCross(right, view));
+  const verticalFov = placement.verticalFovDegrees * Math.PI / 180;
+  const horizontalFov = placement.horizontalFovDegrees * Math.PI / 180;
+  for (const corner of placement.corners) {
+    const relative = testSubtract(corner, placement.position);
+    const depth = testDot(relative, view);
+    const x = Math.abs(testDot(relative, right));
+    const y = Math.abs(testDot(relative, up));
+    expect(depth).toBeGreaterThan(0);
+    expect(x).toBeLessThanOrEqual(depth * Math.tan(horizontalFov / 2) + 1e-9);
+    expect(y).toBeLessThanOrEqual(depth * Math.tan(verticalFov / 2) + 1e-9);
+  }
+}
+
+function testSubtract(left, right) {
+  return { x: left.x - right.x, y: left.y - right.y, z: left.z - right.z };
+}
+
+function testDot(left, right) {
+  return left.x * right.x + left.y * right.y + left.z * right.z;
+}
+
+function testCross(left, right) {
+  return {
+    x: left.y * right.z - left.z * right.y,
+    y: left.z * right.x - left.x * right.z,
+    z: left.x * right.y - left.y * right.x,
+  };
+}
+
+function normalize(vector) {
+  const length = Math.hypot(vector.x, vector.y, vector.z);
+  if (!length) throw new Error("zero-length vector");
+  return { x: vector.x / length, y: vector.y / length, z: vector.z / length };
+}
+
+function expectCameraAtPlacement(camera, placement) {
+  expect(camera.position.x).toBeCloseTo(placement.position.x, 5);
+  expect(camera.position.y).toBeCloseTo(placement.position.y, 5);
+  expect(camera.position.z).toBeCloseTo(placement.position.z, 5);
+  expect(camera.lookAt).toHaveBeenLastCalledWith(placement.target.x, placement.target.y, placement.target.z);
+}
+
 describe("Three.js fixture renderer", () => {
   it("selects a deterministic representative Observation for magnitude thumbnails", () => {
     const graph = {
@@ -307,6 +358,23 @@ describe("Three.js fixture renderer", () => {
     expect(fs.existsSync(path.join(root, "src/vendor/three/0.185.1/three.module.js"))).toBe(true);
     expect(fs.existsSync(path.join(root, "src/vendor/three/0.185.1/three.core.js"))).toBe(true);
     expect(fs.existsSync(path.join(root, "src/vendor/three/0.185.1/LICENSE"))).toBe(true);
+  });
+
+  it("computes a magnitude fit camera whose frustum contains board and node bounds", () => {
+    const quantityFit = computeMagnitudeFitCameraPlacement(
+      magnitudeLayout(VISUALIZATION_GRAPH_FIXTURE),
+      { width: 640, height: 420 },
+    );
+    const timeFit = computeMagnitudeFitCameraPlacement(
+      magnitudeLayout(VISUALIZATION_GRAPH_FIXTURE, { magnitudeAxisKind: "time" }),
+      { width: 360, height: 640 },
+    );
+
+    expect(quantityFit).not.toBeNull();
+    expect(timeFit).not.toBeNull();
+    expectPlacementContainsCorners(quantityFit);
+    expectPlacementContainsCorners(timeFit);
+    expect(computeMagnitudeFitCameraPlacement(magnitudeLayout(VISUALIZATION_GRAPH_FIXTURE), { width: 0, height: 0 })?.aspect).toBeCloseTo(640 / 420, 6);
   });
 
   it("does not import Three.js when WebGL is unavailable", async () => {
@@ -491,6 +559,56 @@ describe("Three.js fixture renderer", () => {
     expect(switchedZValues).toEqual(new Set([TIME_MAGNITUDE_BOARD_Z]));
     expect(switchedGuidedNodeIds.has("concept:taxon:fukuiraptor")).toBe(false);
     expect(switchedGuidedNodeIds.has("landmark:geo:early-cretaceous")).toBe(true);
+    controller.dispose();
+  });
+
+  it("fits the Magnitude camera on enter, reset, and axis switch only", async () => {
+    const { jsdom, container } = dom();
+    const fake = fakeThree(jsdom.window.document);
+    const quantityFit = computeMagnitudeFitCameraPlacement(
+      magnitudeLayout(VISUALIZATION_GRAPH_FIXTURE),
+      { width: 640, height: 420 },
+    );
+    const timeFit = computeMagnitudeFitCameraPlacement(
+      magnitudeLayout(VISUALIZATION_GRAPH_FIXTURE, { magnitudeAxisKind: "time" }),
+      { width: 640, height: 420 },
+    );
+    if (!quantityFit || !timeFit) throw new Error("missing fit placement");
+
+    const controller = await mountKnowledge3dGraph(container, {
+      graph: VISUALIZATION_GRAPH_FIXTURE,
+      mode: "magnitude",
+      webglAvailable: true,
+      loadThree: async () => fake.THREE,
+      runtime: { window: jsdom.window, document: jsdom.window.document },
+      requestAnimationFrame: () => 0,
+      cancelAnimationFrame: vi.fn(),
+    });
+
+    const camera = fake.cameras[0];
+    expectCameraAtPlacement(camera, quantityFit);
+
+    container.dispatchEvent(new jsdom.window.WheelEvent("wheel", { deltaY: -100, cancelable: true }));
+    expect(camera.position.x).not.toBeCloseTo(quantityFit.position.x, 5);
+    fake.groups[0].rotation.y = 1.2;
+    controller.resetCamera?.();
+    expect(fake.groups[0].rotation.y).toBe(0);
+    expectCameraAtPlacement(camera, quantityFit);
+
+    controller.updateLayout?.({
+      graph: VISUALIZATION_GRAPH_FIXTURE,
+      mode: "magnitude",
+      magnitudeAxisKind: "time",
+    });
+    expectCameraAtPlacement(camera, timeFit);
+
+    controller.updateLayout?.({
+      graph: VISUALIZATION_GRAPH_FIXTURE,
+      mode: "home",
+    });
+    expect(camera.position.x).toBeCloseTo(10, 5);
+    expect(camera.position.y).toBeCloseTo(8, 5);
+    expect(camera.position.z).toBeCloseTo(14, 5);
     controller.dispose();
   });
 

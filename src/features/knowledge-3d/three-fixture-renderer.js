@@ -26,11 +26,19 @@ const MAGNITUDE_THUMBNAIL_RENDER_ORDER = 520;
 const MAGNITUDE_FALLBACK_RENDER_ORDER = 510;
 const MAGNITUDE_THUMBNAIL_MIN_SIZE = 0.92;
 const MAGNITUDE_THUMBNAIL_MAX_SIZE = 1.72;
+const CAMERA_FOV_DEGREES = 52;
 const CAMERA_HOME = Object.freeze({ x: 10, y: 8, z: 14 });
 const CAMERA_TARGET = Object.freeze({ x: 0, y: 1, z: 0 });
 const CAMERA_ZOOM_MIN = 0.35;
 const CAMERA_ZOOM_MAX = 2.6;
 const CAMERA_ZOOM_STEP = 1.12;
+const MAGNITUDE_FIT_MARGIN = 1.18;
+const MAGNITUDE_FIT_EXTRA_DISTANCE = 0.65;
+const MAGNITUDE_FIT_BOARD_X_PADDING = 1.9;
+const MAGNITUDE_FIT_BOARD_Y_PADDING = 0.95;
+const MAGNITUDE_FIT_BOARD_Z_PADDING = 0.85;
+const MAGNITUDE_FIT_NODE_X_PADDING = 1.45;
+const MAGNITUDE_FIT_NODE_Z_PADDING = 0.9;
 const BOARD_LAYER_Y = Object.freeze([0, 1, 2]);
 
 /**
@@ -68,6 +76,57 @@ export function selectMagnitudeNodeRepresentativeObservationId(graph, node) {
     if (sharesEntity) derived.push(...sortedUniqueStrings(candidate.observationIds));
   }
   return sortedUniqueStrings(derived)[0] || null;
+}
+
+/**
+ * Compute a magnitude-only fit-to-view camera frame without depending on
+ * Three.js objects. The returned camera frame uses the renderer's established
+ * home viewing direction, but targets the selected board's layout bounds.
+ *
+ * @param {import('./layout-engine.js').VisualizationLayout} layout
+ * @param {{width?: number, height?: number}} [viewport]
+ * @returns {{position:{x:number,y:number,z:number}, target:{x:number,y:number,z:number}, bounds:{min:{x:number,y:number,z:number}, max:{x:number,y:number,z:number}}, corners:{x:number,y:number,z:number}[], verticalFovDegrees:number, horizontalFovDegrees:number, aspect:number}|null}
+ */
+export function computeMagnitudeFitCameraPlacement(layout, viewport = {}) {
+  if (layout?.mode !== "magnitude") return null;
+  const bounds = magnitudeLayoutSceneBounds(layout);
+  if (!bounds) return null;
+  const width = positiveFiniteNumber(viewport.width) || 640;
+  const height = positiveFiniteNumber(viewport.height) || 420;
+  const aspect = width / height;
+  const verticalFovRadians = degreesToRadians(CAMERA_FOV_DEGREES);
+  const horizontalFovRadians = 2 * Math.atan(Math.tan(verticalFovRadians / 2) * aspect);
+  const target = boxCenter(bounds);
+  const cameraDirection = normalizeVector(subtractVector(CAMERA_HOME, CAMERA_TARGET)) || { x: 0.52, y: 0.36, z: 0.77 };
+  const viewDirection = scaleVector(cameraDirection, -1);
+  const right = normalizeVector(crossVector(viewDirection, { x: 0, y: 1, z: 0 })) || { x: 1, y: 0, z: 0 };
+  const up = normalizeVector(crossVector(right, viewDirection)) || { x: 0, y: 1, z: 0 };
+  const corners = boxCorners(bounds);
+  let halfWidth = 0;
+  let halfHeight = 0;
+  let halfDepth = 0;
+  for (const corner of corners) {
+    const relative = subtractVector(corner, target);
+    halfWidth = Math.max(halfWidth, Math.abs(dotVector(relative, right)));
+    halfHeight = Math.max(halfHeight, Math.abs(dotVector(relative, up)));
+    halfDepth = Math.max(halfDepth, Math.abs(dotVector(relative, viewDirection)));
+  }
+  halfWidth = Math.max(halfWidth, 0.5);
+  halfHeight = Math.max(halfHeight, 0.5);
+  const distance = Math.max(
+    halfHeight / Math.tan(verticalFovRadians / 2),
+    halfWidth / Math.tan(horizontalFovRadians / 2),
+  ) * MAGNITUDE_FIT_MARGIN + halfDepth + MAGNITUDE_FIT_EXTRA_DISTANCE;
+
+  return {
+    position: addVector(target, scaleVector(cameraDirection, distance)),
+    target,
+    bounds,
+    corners,
+    verticalFovDegrees: CAMERA_FOV_DEGREES,
+    horizontalFovDegrees: radiansToDegrees(horizontalFovRadians),
+    aspect,
+  };
 }
 
 /**
@@ -172,17 +231,31 @@ function mountThreeScene(container, THREE, graph, layout, options) {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0xf6f4ef);
 
-  const camera = new THREE.PerspectiveCamera(52, 1, 0.1, 1000);
+  const camera = new THREE.PerspectiveCamera(CAMERA_FOV_DEGREES, 1, 0.1, 1000);
   let cameraZoom = 1;
-  /** Place the camera along the home-to-target ray. Smaller zoom = closer. */
+  /** @type {{x:number,y:number,z:number}} */
+  let cameraBasePosition = { ...CAMERA_HOME };
+  /** @type {{x:number,y:number,z:number}} */
+  let cameraTarget = { ...CAMERA_TARGET };
+  /** Place the camera along the active frame-to-target ray. Smaller zoom = closer. */
   const applyCameraZoom = () => {
     camera.position.set(
-      CAMERA_TARGET.x + (CAMERA_HOME.x - CAMERA_TARGET.x) * cameraZoom,
-      CAMERA_TARGET.y + (CAMERA_HOME.y - CAMERA_TARGET.y) * cameraZoom,
-      CAMERA_TARGET.z + (CAMERA_HOME.z - CAMERA_TARGET.z) * cameraZoom,
+      cameraTarget.x + (cameraBasePosition.x - cameraTarget.x) * cameraZoom,
+      cameraTarget.y + (cameraBasePosition.y - cameraTarget.y) * cameraZoom,
+      cameraTarget.z + (cameraBasePosition.z - cameraTarget.z) * cameraZoom,
     );
-    camera.lookAt(CAMERA_TARGET.x, CAMERA_TARGET.y, CAMERA_TARGET.z);
+    camera.lookAt(cameraTarget.x, cameraTarget.y, cameraTarget.z);
     camera.updateProjectionMatrix?.();
+  };
+  /** @param {{position:{x:number,y:number,z:number}, target:{x:number,y:number,z:number}}} frame */
+  const setCameraFrame = (frame) => {
+    cameraBasePosition = { ...frame.position };
+    cameraTarget = { ...frame.target };
+    cameraZoom = 1;
+    applyCameraZoom();
+  };
+  const applyHomeCamera = () => {
+    setCameraFrame({ position: CAMERA_HOME, target: CAMERA_TARGET });
   };
   /** @param {number} factor */
   const zoomBy = (factor) => {
@@ -190,15 +263,9 @@ function mountThreeScene(container, THREE, graph, layout, options) {
     cameraZoom = clamp(cameraZoom * factor, CAMERA_ZOOM_MIN, CAMERA_ZOOM_MAX);
     applyCameraZoom();
   };
-  applyCameraZoom();
   const root = new THREE.Group();
   const decorationRoot = new THREE.Group();
   root.add(decorationRoot);
-  const resetCamera = () => {
-    root.rotation.y = 0;
-    cameraZoom = 1;
-    applyCameraZoom();
-  };
 
   scene.add(new THREE.AmbientLight(0xffffff, 0.7));
   const keyLight = new THREE.DirectionalLight(0xffffff, 1.2);
@@ -215,6 +282,28 @@ function mountThreeScene(container, THREE, graph, layout, options) {
   const reducedMotion = prefersReducedMotion(hostWindow);
   let currentAutoRotate = shouldAutoRotate(autoRotateRequested, currentMode, reducedMotion);
   let activeTransition = null;
+  /** @param {import('./layout-engine.js').VisualizationLayout} targetLayout */
+  const fitMagnitudeCamera = (targetLayout) => {
+    root.rotation.y = 0;
+    const fit = computeMagnitudeFitCameraPlacement(targetLayout, {
+      width: Math.max(1, container.clientWidth || 640),
+      height: Math.max(1, container.clientHeight || 420),
+    });
+    if (fit) {
+      setCameraFrame(fit);
+    } else {
+      applyHomeCamera();
+    }
+  };
+  const resetCamera = () => {
+    root.rotation.y = 0;
+    if (currentMode === "magnitude") {
+      fitMagnitudeCamera(currentLayout);
+    } else {
+      applyHomeCamera();
+    }
+  };
+  applyHomeCamera();
   const nodeObjectById = new Map();
   const labelObjectById = new Map();
   const edgeObjectById = new Map();
@@ -252,6 +341,7 @@ function mountThreeScene(container, THREE, graph, layout, options) {
     renderer.setSize(width, height, false);
     camera.aspect = width / height;
     camera.updateProjectionMatrix();
+    if (currentMode === "magnitude") fitMagnitudeCamera(currentLayout);
   };
 
   let dragging = false;
@@ -333,6 +423,8 @@ function mountThreeScene(container, THREE, graph, layout, options) {
       thumbnailManager,
     });
     const animate = nextMode !== currentMode || !sameLayoutPositions(currentLayout, nextLayout);
+    const shouldFitMagnitude = nextMode === "magnitude" && (currentMode !== "magnitude" || animate);
+    const shouldRestoreHomeCamera = currentMode === "magnitude" && nextMode !== "magnitude";
     if (animate) {
       activeTransition = buildLayoutTransition(currentLayout, nextLayout, {
         nodeObjectById,
@@ -350,6 +442,11 @@ function mountThreeScene(container, THREE, graph, layout, options) {
     updateSelection(nodeObjectById, currentSelectedNodeId);
     updateEdgeGeometry(THREE, currentLayout, edgeObjectById, nodeObjectById);
     refreshLayoutDecorations(THREE, container.ownerDocument, decorationRoot, currentLayout);
+    if (shouldFitMagnitude) {
+      fitMagnitudeCamera(currentLayout);
+    } else if (shouldRestoreHomeCamera) {
+      applyHomeCamera();
+    }
   };
 
   container.addEventListener("pointerdown", pointerDown);
@@ -513,6 +610,49 @@ function createMagnitudeFallbackNode(THREE, document, graphNode, node) {
     fallback.add(label);
   }
   return fallback;
+}
+
+/** @param {import('./layout-engine.js').VisualizationLayout} layout */
+function magnitudeLayoutSceneBounds(layout) {
+  const points = [];
+  const boards = Array.isArray(layout.metadata?.boards) ? layout.metadata.boards : [];
+  for (const board of boards) {
+    includeSceneBox(points, {
+      x: board.xMin - MAGNITUDE_FIT_BOARD_X_PADDING,
+      y: (board.yMin - MAGNITUDE_FIT_BOARD_Y_PADDING) * NODE_Y_SCALE,
+      z: board.z - MAGNITUDE_FIT_BOARD_Z_PADDING,
+    }, {
+      x: board.xMax + MAGNITUDE_FIT_BOARD_X_PADDING,
+      y: (board.yMax + MAGNITUDE_FIT_BOARD_Y_PADDING) * NODE_Y_SCALE,
+      z: board.z + MAGNITUDE_FIT_BOARD_Z_PADDING,
+    });
+    const axisMinX = finiteNumber(board.axisMinX) ? board.axisMinX : board.xMin;
+    const axisMaxX = finiteNumber(board.axisMaxX) ? board.axisMaxX : board.xMax;
+    includeSceneBox(points, boardPoint(board, axisMinX, board.axisY - 0.2), boardPoint(board, axisMaxX, board.axisY + 0.25));
+    for (const tick of board.ticks || []) {
+      includeSceneBox(points, boardPoint(board, tick.x, board.axisY - 0.8), boardPoint(board, tick.x, board.axisY + 0.25));
+    }
+  }
+
+  for (const node of layout.nodes || []) {
+    const position = positionFromLayoutNode(node);
+    const nodeHalfWidth = Math.max(node.radius, MAGNITUDE_FIT_NODE_X_PADDING);
+    const nodeHalfHeight = Math.max(
+      node.radius,
+      labelYOffsetForMode("magnitude", node) + (LABEL_SPRITE_HEIGHT / 2),
+    );
+    includeSceneBox(points, {
+      x: position.x - nodeHalfWidth,
+      y: position.y - node.radius,
+      z: position.z - MAGNITUDE_FIT_NODE_Z_PADDING,
+    }, {
+      x: position.x + nodeHalfWidth,
+      y: position.y + nodeHalfHeight,
+      z: position.z + MAGNITUDE_FIT_NODE_Z_PADDING,
+    });
+  }
+
+  return boundsFromPoints(points);
 }
 
 /** @param {import('./layout-engine.js').VisualizationLayout} layout */
@@ -755,6 +895,101 @@ function labelPosition(node, mode) {
   return { x: node.x, y: node.y * NODE_Y_SCALE + labelYOffsetForMode(mode, node), z: node.z };
 }
 
+/**
+ * @param {{x:number,y:number,z:number}[]} points
+ * @param {{x:number,y:number,z:number}} min
+ * @param {{x:number,y:number,z:number}} max
+ */
+function includeSceneBox(points, min, max) {
+  points.push(min, max);
+}
+
+/** @param {{x:number,y:number,z:number}[]} points */
+function boundsFromPoints(points) {
+  if (!points.length) return null;
+  const min = { x: Infinity, y: Infinity, z: Infinity };
+  const max = { x: -Infinity, y: -Infinity, z: -Infinity };
+  for (const point of points) {
+    if (!finiteNumber(point.x) || !finiteNumber(point.y) || !finiteNumber(point.z)) continue;
+    min.x = Math.min(min.x, point.x);
+    min.y = Math.min(min.y, point.y);
+    min.z = Math.min(min.z, point.z);
+    max.x = Math.max(max.x, point.x);
+    max.y = Math.max(max.y, point.y);
+    max.z = Math.max(max.z, point.z);
+  }
+  if (!Number.isFinite(min.x + min.y + min.z + max.x + max.y + max.z)) return null;
+  return { min, max };
+}
+
+/** @param {{min:{x:number,y:number,z:number}, max:{x:number,y:number,z:number}}} box */
+function boxCenter(box) {
+  return {
+    x: (box.min.x + box.max.x) / 2,
+    y: (box.min.y + box.max.y) / 2,
+    z: (box.min.z + box.max.z) / 2,
+  };
+}
+
+/** @param {{min:{x:number,y:number,z:number}, max:{x:number,y:number,z:number}}} box */
+function boxCorners(box) {
+  return [
+    { x: box.min.x, y: box.min.y, z: box.min.z },
+    { x: box.min.x, y: box.min.y, z: box.max.z },
+    { x: box.min.x, y: box.max.y, z: box.min.z },
+    { x: box.min.x, y: box.max.y, z: box.max.z },
+    { x: box.max.x, y: box.min.y, z: box.min.z },
+    { x: box.max.x, y: box.min.y, z: box.max.z },
+    { x: box.max.x, y: box.max.y, z: box.min.z },
+    { x: box.max.x, y: box.max.y, z: box.max.z },
+  ];
+}
+
+/** @param {{x:number,y:number,z:number}} left @param {{x:number,y:number,z:number}} right */
+function addVector(left, right) {
+  return { x: left.x + right.x, y: left.y + right.y, z: left.z + right.z };
+}
+
+/** @param {{x:number,y:number,z:number}} left @param {{x:number,y:number,z:number}} right */
+function subtractVector(left, right) {
+  return { x: left.x - right.x, y: left.y - right.y, z: left.z - right.z };
+}
+
+/** @param {{x:number,y:number,z:number}} vector @param {number} amount */
+function scaleVector(vector, amount) {
+  return { x: vector.x * amount, y: vector.y * amount, z: vector.z * amount };
+}
+
+/** @param {{x:number,y:number,z:number}} left @param {{x:number,y:number,z:number}} right */
+function dotVector(left, right) {
+  return left.x * right.x + left.y * right.y + left.z * right.z;
+}
+
+/** @param {{x:number,y:number,z:number}} left @param {{x:number,y:number,z:number}} right */
+function crossVector(left, right) {
+  return {
+    x: left.y * right.z - left.z * right.y,
+    y: left.z * right.x - left.x * right.z,
+    z: left.x * right.y - left.y * right.x,
+  };
+}
+
+/** @param {{x:number,y:number,z:number}} vector */
+function normalizeVector(vector) {
+  const length = Math.hypot(vector.x, vector.y, vector.z);
+  return length > 0 ? scaleVector(vector, 1 / length) : null;
+}
+
+/** @param {number} value */
+function degreesToRadians(value) {
+  return value * Math.PI / 180;
+}
+
+/** @param {number} value */
+function radiansToDegrees(value) {
+  return value * 180 / Math.PI;
+}
+
 /** @param {any} object @param {{x:number, y:number, z:number}} fallback */
 function readPosition(object, fallback) {
   return {
@@ -818,6 +1053,11 @@ function prefersReducedMotion(hostWindow) {
 /** @param {unknown} value */
 function finiteNumber(value) {
   return typeof value === "number" && Number.isFinite(value);
+}
+
+/** @param {unknown} value */
+function positiveFiniteNumber(value) {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : null;
 }
 
 /**
