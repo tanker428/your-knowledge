@@ -92,6 +92,19 @@ import { buildProjectVisualizationGraph } from "../features/knowledge-3d/project
 import { visualizationNodesForLayout } from "../features/knowledge-3d/layout-engine.js";
 import { mountKnowledge3dGraph } from "../features/knowledge-3d/three-fixture-renderer.js";
 import {
+  BODY_LENGTH_LOG_RECALL_SCALE_ID,
+  BODY_LENGTH_RECALL_SCALES,
+  buildMagnitudeRecallItems,
+  canCommitMagnitudeRecallAnswer,
+  commitMagnitudeRecallAnswer,
+  denormalizeScaleUnitPosition,
+  enterMagnitudeRecallAnswerMode,
+  findMagnitudeRecallScale,
+  startMagnitudeRecallTrial,
+  startNextMagnitudeRecallTrial,
+  updateMagnitudeRecallDraftAnswer,
+} from "../features/knowledge-3d/magnitude-recall.js";
+import {
   buildQuizResultEntries,
   describeQuizAvailability,
   getQuizCards,
@@ -131,6 +144,7 @@ import { buildVerifiedReferenceFact, renderReferenceFactEditor } from "./referen
 import { quizAttemptContextKey, reconcileQuizQuestionTypes, renderQuizQuestionTypeControls, updateQuizQuestionTypeSelection } from "./quiz-setup.js";
 import { MISSING_PHOTO_SRC } from "./photo-assets.js";
 import { escapeHtml } from "./html.js";
+import { renderMagnitudeRecallPanel } from "./magnitude-recall-panel.js";
 
 const MAX_UPLOAD_BATCH = 120;
 const STATUS_LABELS = {
@@ -281,6 +295,12 @@ export async function initApp(deps) {
     knowledge3dMode: "home",
     knowledge3dScope: "activeVisit",
     knowledge3dSelectedNodeId: null,
+    magnitudeRecallScaleId: BODY_LENGTH_LOG_RECALL_SCALE_ID,
+    magnitudeRecallSession: null,
+    magnitudeRecallItemCursor: 0,
+    magnitudeRecallNumericValue: "",
+    magnitudeRecallNumericNeedsConfirm: false,
+    magnitudeRecallSuppressAxisClickUntil: 0,
     knowledgeZoom: 1,
     knowledgeAxis: "all",
     knowledgeExpanded: new Set(),
@@ -2288,33 +2308,35 @@ export async function initApp(deps) {
       return;
     }
 
-    const displayNodes = knowledge3dDisplayNodes(graph, mode);
+    const recall = mode === "magnitude" ? prepareMagnitudeRecall(graph) : null;
+    const displayGraph = recall ? graphForMagnitudeRecallDisplay(graph, recall) : graph;
+    const displayNodes = knowledge3dDisplayNodes(displayGraph, mode);
     if (!displayNodes.some((node) => node.id === state.knowledge3dSelectedNodeId)) {
       state.knowledge3dSelectedNodeId = defaultKnowledge3dNodeId({ nodes: displayNodes });
     }
 
-    const visibleNodes = filterKnowledge3dNodes(graph, displayNodes);
+    const visibleNodes = filterKnowledge3dNodes(displayGraph, displayNodes);
     if (state.knowledgeSearch.trim() && visibleNodes.length === 1) {
       state.knowledge3dSelectedNodeId = visibleNodes[0].id;
     }
     $("#knowledgeObservationList").innerHTML = visibleNodes.length
-      ? `<div class="knowledge-3d-index-note"><strong>${displayNodes.length} nodes / ${graph.edges.length} edges</strong><small>${escapeHtml(knowledge3dScopeLabel(scope))}・${escapeHtml(knowledge3dModeLabel(mode))}</small></div>${visibleNodes.map((node) => renderKnowledge3dNodeItem(node)).join("")}`
+      ? `<div class="knowledge-3d-index-note"><strong>${displayNodes.length} nodes / ${displayGraph.edges.length} edges</strong><small>${escapeHtml(knowledge3dScopeLabel(scope))}・${escapeHtml(knowledge3dModeLabel(mode))}</small></div>${visibleNodes.map((node) => renderKnowledge3dNodeItem(node)).join("")}`
       : '<div class="empty-state"><strong>検索に一致する3Dノードがありません</strong><p>Concept、Observation、写真メモを別の語句で検索してください。</p></div>';
-    $("#knowledgeGraphDetail").innerHTML = renderKnowledge3dDetail(graph, state.knowledge3dSelectedNodeId);
+    $("#knowledgeGraphDetail").innerHTML = renderKnowledge3dDetail(displayGraph, state.knowledge3dSelectedNodeId);
 
     // Home and Relation drift slowly so the space reads as three-dimensional.
     // An active search pins the view instead, and board modes never rotate
     // (see shouldAutoRotate in the renderer).
     const autoRotate = !state.knowledgeSearch.trim();
 
-    const nextGraphKey = knowledge3dGraphSignature(graph, scope);
+    const nextGraphKey = knowledge3dGraphSignature(displayGraph, scope);
     const stage = $("#knowledge3dStage");
     const shouldRemount = !stage || !knowledge3dController || knowledge3dGraphKey !== nextGraphKey;
     if (!shouldRemount) {
-      updateKnowledge3dCanvasChrome(graph, mode, scope);
+      updateKnowledge3dCanvasChrome(displayGraph, mode, scope, recall);
       try {
         knowledge3dController.updateLayout?.({
-          graph,
+          graph: displayGraph,
           mode,
           selectedNodeId: state.knowledge3dSelectedNodeId,
           autoRotate,
@@ -2322,8 +2344,8 @@ export async function initApp(deps) {
       } catch {
         releaseKnowledge3dController();
         knowledge3dGraphKey = null;
-        $("#knowledgeGraphCanvas").innerHTML = renderKnowledge3dCanvas(graph);
-        bindKnowledge3dEvents(graph);
+        $("#knowledgeGraphCanvas").innerHTML = renderKnowledge3dCanvas(displayGraph, recall);
+        bindKnowledge3dEvents(displayGraph, recall);
         const retryStage = $("#knowledge3dStage");
         if (!retryStage) return;
         const token = knowledge3dMountToken + 1;
@@ -2331,7 +2353,7 @@ export async function initApp(deps) {
         knowledge3dGraphKey = nextGraphKey;
         try {
           const controller = await mountKnowledge3dGraph(retryStage, {
-            graph,
+            graph: displayGraph,
             mode,
             selectedNodeId: state.knowledge3dSelectedNodeId,
             autoRotate,
@@ -2353,12 +2375,12 @@ export async function initApp(deps) {
           retryStage.innerHTML = renderKnowledge3dError(retryError);
         }
       }
-      bindKnowledge3dEvents(graph);
+      bindKnowledge3dEvents(displayGraph, recall);
       return;
     }
 
-    $("#knowledgeGraphCanvas").innerHTML = renderKnowledge3dCanvas(graph);
-    bindKnowledge3dEvents(graph);
+    $("#knowledgeGraphCanvas").innerHTML = renderKnowledge3dCanvas(displayGraph, recall);
+    bindKnowledge3dEvents(displayGraph, recall);
 
     const nextStage = $("#knowledge3dStage");
     if (!nextStage) return;
@@ -2368,7 +2390,7 @@ export async function initApp(deps) {
     knowledge3dGraphKey = nextGraphKey;
     try {
       const controller = await mountKnowledge3dGraph(nextStage, {
-        graph,
+        graph: displayGraph,
         mode,
         selectedNodeId: state.knowledge3dSelectedNodeId,
         autoRotate,
@@ -2391,14 +2413,14 @@ export async function initApp(deps) {
     }
   }
 
-  function renderKnowledge3dCanvas(graph) {
+  function renderKnowledge3dCanvas(graph, recall = null) {
     const mode = currentKnowledge3dMode();
     const scope = currentKnowledge3dScope();
     const displayNodeCount = knowledge3dDisplayNodes(graph, mode).length;
-    return `<div class="kg-canvas-header"><span>WEB 3D</span><strong>${escapeHtml(knowledge3dModeLabel(mode))}</strong><span class="kg-header-actions"><button class="text-button" data-knowledge3d-reset-camera>カメラを戻す</button></span></div><div id="knowledge3dStage" class="knowledge-3d-stage knowledge-3d-mode-${escapeHtml(mode)}"><div class="knowledge-3d-loading"><strong>3D知識空間を読み込み中</strong><small>${escapeHtml(knowledge3dScopeLabel(scope))}・${displayNodeCount} nodes</small></div></div><div class="knowledge-3d-legend">${renderKnowledge3dLegend(mode)}</div>`;
+    return `<div class="kg-canvas-header"><span>WEB 3D</span><strong>${escapeHtml(knowledge3dModeLabel(mode))}</strong><span class="kg-header-actions"><button class="text-button" data-knowledge3d-reset-camera>カメラを戻す</button></span></div><div id="knowledge3dStage" class="knowledge-3d-stage knowledge-3d-mode-${escapeHtml(mode)}"><div class="knowledge-3d-loading"><strong>3D知識空間を読み込み中</strong><small>${escapeHtml(knowledge3dScopeLabel(scope))}・${displayNodeCount} nodes</small></div></div><div class="knowledge-3d-legend">${renderKnowledge3dLegend(mode)}</div><div id="magnitudeRecallPanelHost">${recall ? renderMagnitudeRecallPanel(recall) : ""}</div>`;
   }
 
-  function updateKnowledge3dCanvasChrome(graph, mode, scope) {
+  function updateKnowledge3dCanvasChrome(graph, mode, scope, recall = null) {
     const title = $("#knowledgeGraphCanvas .kg-canvas-header strong");
     if (title) title.textContent = knowledge3dModeLabel(mode);
     const stage = $("#knowledge3dStage");
@@ -2409,6 +2431,8 @@ export async function initApp(deps) {
     }
     const legend = $("#knowledgeGraphCanvas .knowledge-3d-legend");
     if (legend) legend.innerHTML = renderKnowledge3dLegend(mode);
+    const recallHost = $("#magnitudeRecallPanelHost");
+    if (recallHost) recallHost.innerHTML = recall ? renderMagnitudeRecallPanel(recall) : "";
   }
 
   function renderKnowledge3dLegend(mode) {
@@ -2613,7 +2637,90 @@ export async function initApp(deps) {
     };
   }
 
-  function bindKnowledge3dEvents(graph) {
+  function prepareMagnitudeRecall(graph) {
+    const items = buildMagnitudeRecallItems(graph);
+    const resultCount = state.quizResults.filter((result) => result.quizType === "magnitude-recall").length;
+    if (!items.length) {
+      state.magnitudeRecallSession = null;
+      return {
+        scales: BODY_LENGTH_RECALL_SCALES,
+        scale: findMagnitudeRecallScale(state.magnitudeRecallScaleId),
+        items,
+        item: null,
+        session: null,
+        canCommit: false,
+        numericValue: state.magnitudeRecallNumericValue,
+        numericNeedsConfirm: state.magnitudeRecallNumericNeedsConfirm,
+        resultCount,
+      };
+    }
+
+    if (state.magnitudeRecallItemCursor < 0 || state.magnitudeRecallItemCursor >= items.length) {
+      state.magnitudeRecallItemCursor = 0;
+    }
+
+    const sessionItem = items.find((item) => item.itemId === state.magnitudeRecallSession?.itemId);
+    const cursorItem = items[state.magnitudeRecallItemCursor] || items[0];
+    const item = sessionItem || cursorItem;
+    const lockedScaleId = state.magnitudeRecallSession && state.magnitudeRecallSession.phase !== "study"
+      ? state.magnitudeRecallSession.scaleId
+      : state.magnitudeRecallScaleId;
+    const scale = findMagnitudeRecallScale(lockedScaleId) || BODY_LENGTH_RECALL_SCALES[0];
+
+    if (
+      !state.magnitudeRecallSession
+      || state.magnitudeRecallSession.itemId !== item.itemId
+      || (state.magnitudeRecallSession.phase === "study" && state.magnitudeRecallSession.scaleId !== scale.id)
+    ) {
+      state.magnitudeRecallSession = startMagnitudeRecallTrial({
+        itemId: item.itemId,
+        scaleId: scale.id,
+        startedAtMs: Date.now(),
+      });
+      resetMagnitudeRecallNumericState();
+    }
+
+    return {
+      scales: BODY_LENGTH_RECALL_SCALES,
+      scale,
+      items,
+      item,
+      session: state.magnitudeRecallSession,
+      canCommit: canCommitMagnitudeRecallAnswer(state.magnitudeRecallSession),
+      numericValue: state.magnitudeRecallNumericValue,
+      numericNeedsConfirm: state.magnitudeRecallNumericNeedsConfirm,
+      resultCount,
+    };
+  }
+
+  function graphForMagnitudeRecallDisplay(graph, recall) {
+    if (!recall?.item || recall.session?.phase === "feedback") return graph;
+    return {
+      ...graph,
+      metadata: {
+        ...graph.metadata,
+        magnitudeRecall: {
+          phase: recall.session?.phase,
+          itemId: recall.item.itemId,
+          scaleId: recall.scale?.id,
+        },
+      },
+      nodes: graph.nodes.map((node) => {
+        if (node.id !== recall.item.itemId) return node;
+        return {
+          ...node,
+          measurements: (node.measurements || []).filter((measurement) => measurement.quantityKind !== "body_length"),
+        };
+      }),
+    };
+  }
+
+  function resetMagnitudeRecallNumericState() {
+    state.magnitudeRecallNumericValue = "";
+    state.magnitudeRecallNumericNeedsConfirm = false;
+  }
+
+  function bindKnowledge3dEvents(graph, recall = null) {
     $$('[data-knowledge3d-node]').forEach((button) =>
       button.onclick = () => {
         const id = button.dataset.knowledge3dNode;
@@ -2639,6 +2746,164 @@ export async function initApp(deps) {
     $$('[data-open-photo]').forEach((button) => {
       button.onclick = () => openPhotoModal(button.dataset.openPhoto);
     });
+    bindMagnitudeRecallEvents(recall);
+  }
+
+  function bindMagnitudeRecallEvents(recall) {
+    if (!recall?.item || !recall.scale || !recall.session) return;
+
+    $$("[data-magnitude-recall-scale]").forEach((button) => {
+      button.onclick = () => {
+        if (recall.session?.phase !== "study") return;
+        const scaleId = button.dataset.magnitudeRecallScale;
+        if (!findMagnitudeRecallScale(scaleId)) return;
+        state.magnitudeRecallScaleId = scaleId;
+        state.magnitudeRecallSession = startMagnitudeRecallTrial({
+          itemId: recall.item.itemId,
+          scaleId,
+          startedAtMs: Date.now(),
+        });
+        resetMagnitudeRecallNumericState();
+        renderKnowledge();
+      };
+    });
+
+    $("[data-magnitude-recall-start]")?.addEventListener("click", () => {
+      state.magnitudeRecallSession = enterMagnitudeRecallAnswerMode(state.magnitudeRecallSession);
+      resetMagnitudeRecallNumericState();
+      renderKnowledge();
+    });
+
+    const axis = $("[data-magnitude-recall-axis]");
+    axis?.addEventListener("click", (event) => {
+      if (Date.now() < state.magnitudeRecallSuppressAxisClickUntil) return;
+      const u = magnitudeRecallAxisU(event, axis);
+      if (u !== null) updateMagnitudeRecallAnswerDraft(recall, { answerU: u, inputMethod: "axis-click" });
+    });
+    axis?.addEventListener("dragover", (event) => event.preventDefault());
+    axis?.addEventListener("drop", (event) => {
+      event.preventDefault();
+      state.magnitudeRecallSuppressAxisClickUntil = Date.now() + 350;
+      const u = magnitudeRecallAxisU(event, axis);
+      if (u !== null) updateMagnitudeRecallAnswerDraft(recall, { answerU: u, inputMethod: "drag" });
+    });
+    axis?.addEventListener("keydown", (event) => {
+      if (recall.session?.phase !== "answer") return;
+      if (!["ArrowLeft", "ArrowDown", "ArrowRight", "ArrowUp", "Home", "End", "Enter"].includes(event.key)) return;
+      event.preventDefault();
+      if (event.key === "Enter") {
+        if (!state.magnitudeRecallNumericNeedsConfirm) commitMagnitudeRecallFromUi(recall);
+        return;
+      }
+      const current = Number.isFinite(state.magnitudeRecallSession?.answerU)
+        ? state.magnitudeRecallSession.answerU
+        : 0.5;
+      const step = event.shiftKey ? 0.1 : 0.02;
+      const next = event.key === "Home"
+        ? 0
+        : event.key === "End"
+          ? 1
+          : Math.max(0, Math.min(1, current + (event.key === "ArrowLeft" || event.key === "ArrowDown" ? -step : step)));
+      updateMagnitudeRecallAnswerDraft(recall, { answerU: next, inputMethod: "keyboard" });
+    });
+
+    $("[data-magnitude-recall-card]")?.addEventListener("dragstart", (event) => {
+      event.dataTransfer?.setData("text/plain", recall.item?.itemId || "");
+      event.dataTransfer?.setDragImage?.(event.currentTarget, 12, 12);
+    });
+
+    const numericInput = $("[data-magnitude-recall-numeric-input]");
+    numericInput?.addEventListener("input", (event) => {
+      state.magnitudeRecallNumericValue = event.target.value;
+      state.magnitudeRecallNumericNeedsConfirm = false;
+    });
+    $("[data-magnitude-recall-numeric]")?.addEventListener("click", () => {
+      const value = numericInput?.value ?? state.magnitudeRecallNumericValue;
+      state.magnitudeRecallNumericValue = value;
+      const updated = updateMagnitudeRecallDraftAnswer(state.magnitudeRecallSession, {
+        scale: recall.scale,
+        answerValue: value,
+        unit: "m",
+        inputMethod: "numeric",
+      });
+      state.magnitudeRecallSession = updated;
+      state.magnitudeRecallNumericNeedsConfirm = canCommitMagnitudeRecallAnswer(updated);
+      renderKnowledge();
+    });
+    $("[data-magnitude-recall-confirm-numeric]")?.addEventListener("click", () => {
+      if (!state.magnitudeRecallNumericNeedsConfirm) return;
+      state.magnitudeRecallNumericNeedsConfirm = false;
+      commitMagnitudeRecallFromUi(recall);
+    });
+    $("[data-magnitude-recall-submit]")?.addEventListener("click", () => {
+      if (state.magnitudeRecallNumericNeedsConfirm) return;
+      commitMagnitudeRecallFromUi(recall);
+    });
+    $("[data-magnitude-recall-next]")?.addEventListener("click", () => {
+      const currentIndex = Math.max(0, recall.items.findIndex((item) => item.itemId === recall.item?.itemId));
+      state.magnitudeRecallItemCursor = (currentIndex + 1) % recall.items.length;
+      const nextItem = recall.items[state.magnitudeRecallItemCursor];
+      state.magnitudeRecallSession = startNextMagnitudeRecallTrial(state.magnitudeRecallSession, {
+        itemId: nextItem.itemId,
+        scaleId: state.magnitudeRecallScaleId,
+        startedAtMs: Date.now(),
+      });
+      resetMagnitudeRecallNumericState();
+      renderKnowledge();
+    });
+  }
+
+  function updateMagnitudeRecallAnswerDraft(recall, input) {
+    if (!recall?.scale || recall.session?.phase !== "answer") return;
+    state.magnitudeRecallSession = updateMagnitudeRecallDraftAnswer(state.magnitudeRecallSession, {
+      scale: recall.scale,
+      ...input,
+    });
+    state.magnitudeRecallNumericNeedsConfirm = false;
+    renderKnowledge();
+  }
+
+  function commitMagnitudeRecallFromUi(recall) {
+    if (!recall?.item || !state.magnitudeRecallSession) return;
+    const committed = commitMagnitudeRecallAnswer(state.magnitudeRecallSession, {
+      correctValueSI: recall.item.correctValueSI,
+      nowMs: Date.now(),
+    });
+    if (!committed?.result || committed === state.magnitudeRecallSession) return;
+    state.magnitudeRecallSession = committed;
+    const completedAt = new Date(committed.answeredAtMs || Date.now()).toISOString();
+    const answerValueSI = committed.result.answerValueSI;
+    const answerU = state.magnitudeRecallSession.answerU;
+    state.quizResults.push({
+      id: uid("magnitude-recall-result"),
+      quizType: "magnitude-recall",
+      quizId: `magnitude-recall:${committed.itemId}`,
+      attemptId: uid("magnitude-recall-attempt"),
+      completedAt,
+      answeredAt: completedAt,
+      ...committed.result,
+      answer: {
+        itemId: committed.itemId,
+        scaleId: committed.scaleId,
+        u: answerU,
+        valueSI: answerValueSI,
+      },
+    });
+    resetMagnitudeRecallNumericState();
+    persist();
+    renderKnowledge();
+  }
+
+  function magnitudeRecallAxisU(event, axis) {
+    if (state.magnitudeRecallSession?.phase !== "answer") return null;
+    const rect = axis.getBoundingClientRect();
+    if (!rect.width) return null;
+    const clientX = event.clientX ?? event.changedTouches?.[0]?.clientX;
+    if (!Number.isFinite(clientX)) return null;
+    const u = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    return denormalizeScaleUnitPosition(u, findMagnitudeRecallScale(state.magnitudeRecallSession.scaleId) || BODY_LENGTH_RECALL_SCALES[0]) === null
+      ? null
+      : u;
   }
 
   function knowledge3dKindLabel(kind) { return KNOWLEDGE_3D_KIND_LABELS[kind] || kind; }
