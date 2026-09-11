@@ -1,0 +1,37 @@
+{
+  "format": "your-knowledge-domain-packs",
+  "schemaVersion": "1.0.0",
+  "note": "Domain-specific classification lives here only. Never inline a domain id into shared UI or the core data model.",
+  "packs": [
+    {
+      "id": "paleontology",
+      "file": "paleontology.json",
+      "label": "自然史・古生物",
+      "categoryCount": 19
+    },
+    {
+      "id": "cultural",
+      "file": "cultural.json",
+      "label": "美術・文化財",
+      "categoryCount": 18
+    },
+    {
+      "id": "nature",
+      "file": "nature.json",
+      "label": "自然・生態",
+      "categoryCount": 18
+    },
+    {
+      "id": "history",
+      "file": "history.json",
+      "label": "歴史・考古",
+      "categoryCount": 23
+    },
+    {
+      "id": "other",
+      "file": "other.json",
+      "label": "その他",
+      "categoryCount": 1
+    }
+  ]
+}
