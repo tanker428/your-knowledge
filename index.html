@@ -23,6 +23,7 @@
         <button class="nav-link" data-view="photos">写真</button>
         <button class="nav-link" data-view="organize">写真を整理</button>
         <button class="nav-link" data-view="knowledge">知識マップ</button>
+        <button class="nav-link" data-view="taxonomy">分類マップ</button>
         <button class="nav-link" data-view="learn">学ぶ</button>
         <button class="nav-link" data-view="collection">コレクション</button>
       </nav>
@@ -250,6 +251,34 @@
         </div>
       </section>
 
+      <section class="view" id="view-taxonomy" aria-labelledby="taxonomyTitle">
+        <div class="page-hero compact taxonomy-map-hero">
+          <div>
+            <p class="section-kicker">REFERENCE TAXONOMY</p>
+            <h1 id="taxonomyTitle">分類マップ</h1>
+            <p>四足類を起点に、恐竜・翼竜・ワニ・哺乳類までの確認済み分類をたどります。</p>
+          </div>
+          <div class="taxonomy-map-actions">
+            <span class="source-badge" id="taxonomyDataBadge">verified</span>
+            <button class="ghost-button dark" id="taxonomyCollapseButton" type="button">折りたたむ</button>
+            <button class="primary-button" id="taxonomyResetButton" type="button">上位階層</button>
+          </div>
+        </div>
+        <div class="taxonomy-map-layout">
+          <section class="taxonomy-map-panel" aria-label="分類ツリー">
+            <div class="taxonomy-map-search">
+              <input id="taxonomySearch" type="search" placeholder="分類名・学名を検索" />
+              <div class="taxonomy-search-results" id="taxonomySearchResults"></div>
+            </div>
+            <div class="taxonomy-map-stats" id="taxonomyStats"></div>
+            <div class="taxonomy-tree-scroll">
+              <div class="taxonomy-tree" id="taxonomyTree" role="tree"></div>
+            </div>
+          </section>
+          <aside class="taxonomy-detail-panel" id="taxonomyDetail" aria-live="polite"></aside>
+        </div>
+      </section>
+
       <section class="view" id="view-learn" aria-labelledby="learnTitle">
         <div class="page-hero compact">
           <div><p class="section-kicker">LEARN & REVIEW</p><h1 id="learnTitle">知識グラフから問題を作る</h1><p>この訪問で確認した対象と参照知識から、分類・時代の配置問題を生成します。</p></div>
@@ -298,6 +327,7 @@
     <button data-view="photos"><span>▣</span>写真</button>
     <button data-view="organize"><span>◎</span>整理</button>
     <button data-view="knowledge"><span>⌘</span>知識</button>
+    <button data-view="taxonomy"><span>▥</span>分類</button>
     <button data-view="learn"><span>✦</span>学ぶ</button>
     <button data-view="collection"><span>◇</span>収集</button>
   </nav>
