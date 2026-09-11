@@ -246,6 +246,36 @@ describe("body_length magnitude recall core", () => {
     })).toBe(pointerFeedback);
   });
 
+  it("round-trips pointer u and numeric meters through one answer state for each scale", () => {
+    for (const scale of [LOG_SCALE, LINEAR_SCALE]) {
+      if (!scale) throw new Error("missing recall scale");
+      const answering = enterMagnitudeRecallAnswerMode(startMagnitudeRecallTrial({
+        itemId: `concept:${scale.id}`,
+        scaleId: scale.id,
+        startedAtMs: 1_000,
+      }));
+      const pointerU = scale.id === BODY_LENGTH_LOG_RECALL_SCALE_ID ? 0.61 : 0.4;
+      const answerValueSI = denormalizeScaleUnitPosition(pointerU, scale);
+      const pointerDraft = updateMagnitudeRecallDraftAnswer(answering, {
+        scale,
+        answerU: pointerU,
+        inputMethod: "drag",
+      });
+      const numericDraft = updateMagnitudeRecallDraftAnswer(answering, {
+        scale,
+        answerValue: answerValueSI,
+        unit: "m",
+        inputMethod: "numeric",
+      });
+
+      expect(answerValueSI).not.toBeNull();
+      expect(pointerDraft?.answerValueSI).toBeCloseTo(answerValueSI, 12);
+      expect(pointerDraft?.answerU).toBeCloseTo(pointerU, 12);
+      expect(numericDraft?.answerValueSI).toBeCloseTo(pointerDraft?.answerValueSI || 0, 12);
+      expect(numericDraft?.answerU).toBeCloseTo(pointerDraft?.answerU || 0, 12);
+    }
+  });
+
   it("builds a reusable normalization fixture while excluding unset body_length", () => {
     const items = buildMagnitudeRecallItems(VISUALIZATION_GRAPH_FIXTURE);
     const itemIds = items.map((item) => item.itemId);

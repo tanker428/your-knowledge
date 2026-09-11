@@ -17,6 +17,7 @@ import { escapeHtml } from "./html.js";
  *   canCommit: boolean,
  *   numericValue: string,
  *   numericNeedsConfirm: boolean,
+ *   targetThumbnailSrc?: string|null,
  *   resultCount: number,
  * }} view
  * @returns {string}
@@ -42,19 +43,23 @@ export function renderMagnitudeRecallPanel(view) {
       ${view.scales.map((scale) => `<button type="button" class="${scale.id === view.scale?.id ? "active" : ""}" data-magnitude-recall-scale="${escapeHtml(scale.id)}" ${phase === "study" ? "" : "disabled"}>${escapeHtml(scaleLabel(scale))}</button>`).join("")}
     </div>
     <div class="magnitude-recall-axis-label"><span>${escapeHtml(view.scale.id)}</span><strong>${escapeHtml(formatMeters(view.scale.minValueSI))} - ${escapeHtml(formatMeters(view.scale.maxValueSI))}</strong></div>
-    ${phase === "study" ? renderStudy(view.item) : renderAnswerAxis(view.item, view.scale, view.session, answerU, correctU)}
+    ${phase === "study" ? renderStudy(view.item, view.targetThumbnailSrc) : renderAnswerAxis(view.item, view.scale, view.session, answerU, correctU, view.targetThumbnailSrc)}
     ${phase === "answer" ? renderAnswerControls(view, canSubmit) : ""}
     ${phase === "feedback" && answered ? renderFeedback(view.item, view.scale, view.session, answered, answerU, correctU) : ""}
   </section>`;
 }
 
-/** @param {MagnitudeRecallItem} item */
-function renderStudy(item) {
+/** @param {MagnitudeRecallItem} item @param {string|null|undefined} targetThumbnailSrc */
+function renderStudy(item, targetThumbnailSrc) {
   return `<div class="magnitude-recall-study">
     <div class="magnitude-recall-tray" aria-label="未配置トレイ">
-      <button type="button" class="magnitude-recall-card" data-magnitude-recall-start>
-        <span>未配置トレイ</span><strong>${escapeHtml(item.label)}</strong>
-      </button>
+      ${renderTargetCard(item, {
+        action: "start",
+        phase: "study",
+        draggable: false,
+        disabled: false,
+        thumbnailSrc: targetThumbnailSrc,
+      })}
     </div>
   </div>`;
 }
@@ -65,8 +70,9 @@ function renderStudy(item) {
  * @param {MagnitudeRecallState} session
  * @param {number|null} answerU
  * @param {number|null} correctU
+ * @param {string|null|undefined} targetThumbnailSrc
  */
-function renderAnswerAxis(item, scale, session, answerU, correctU) {
+function renderAnswerAxis(item, scale, session, answerU, correctU, targetThumbnailSrc) {
   const answerLabel = session.answerValueSI == null ? "未入力" : formatMeters(session.answerValueSI);
   const disabled = session.phase === "feedback" ? "true" : "false";
   const pointerU = answerU ?? 0.5;
@@ -77,9 +83,13 @@ function renderAnswerAxis(item, scale, session, answerU, correctU) {
   }).join("");
   return `<div class="magnitude-recall-answer-layout">
     <div class="magnitude-recall-tray">
-      <button type="button" class="magnitude-recall-card" data-magnitude-recall-card draggable="${session.phase === "answer" ? "true" : "false"}" ${session.phase === "feedback" ? "disabled" : ""}>
-        <span>target</span><strong>${escapeHtml(item.label)}</strong>
-      </button>
+      ${renderTargetCard(item, {
+        action: "answer",
+        phase: session.phase,
+        draggable: session.phase === "answer",
+        disabled: session.phase === "feedback",
+        thumbnailSrc: targetThumbnailSrc,
+      })}
     </div>
     <div class="magnitude-recall-axis-wrap">
       <div class="magnitude-recall-axis" data-magnitude-recall-axis role="slider" tabindex="0" aria-disabled="${disabled}" aria-valuemin="0" aria-valuemax="1" aria-valuenow="${answerU ?? 0}" aria-valuetext="${escapeHtml(answerLabel)}">
@@ -94,15 +104,29 @@ function renderAnswerAxis(item, scale, session, answerU, correctU) {
 }
 
 /**
+ * @param {MagnitudeRecallItem} item
+ * @param {{action:"start"|"answer", phase:MagnitudeRecallState["phase"], draggable:boolean, disabled:boolean, thumbnailSrc?:string|null}} options
+ */
+function renderTargetCard(item, options) {
+  const thumbnail = options.thumbnailSrc
+    ? `<i class="magnitude-recall-card-thumb" aria-hidden="true"><img src="${escapeHtml(options.thumbnailSrc)}" alt="" /></i>`
+    : "";
+  const dataAttribute = options.action === "start" ? "data-magnitude-recall-start" : "data-magnitude-recall-card";
+  const className = `magnitude-recall-card${thumbnail ? " with-thumbnail" : ""}`;
+  const label = options.action === "start" ? "未配置トレイ" : "target";
+  return `<button type="button" class="${className}" ${dataAttribute} data-magnitude-recall-target-phase="${escapeHtml(options.phase)}" draggable="${options.draggable ? "true" : "false"}" ${options.disabled ? "disabled" : ""}>
+    ${thumbnail}<span>${escapeHtml(label)}</span><strong>${escapeHtml(item.label)}</strong>
+  </button>`;
+}
+
+/**
  * @param {Parameters<typeof renderMagnitudeRecallPanel>[0]} view
  * @param {boolean} canSubmit
  */
 function renderAnswerControls(view, canSubmit) {
   return `<div class="magnitude-recall-controls">
     <label>m <input type="number" min="0" step="0.01" inputmode="decimal" data-magnitude-recall-numeric-input value="${escapeHtml(view.numericValue)}" /></label>
-    <button type="button" class="ghost-button" data-magnitude-recall-numeric>数値で確認</button>
-    ${view.numericNeedsConfirm ? `<button type="button" class="primary-button" data-magnitude-recall-confirm-numeric>この数値で回答</button>` : ""}
-    <button type="button" class="primary-button" data-magnitude-recall-submit ${canSubmit ? "" : "disabled"}>回答する</button>
+    <button type="button" class="primary-button ${canSubmit ? "" : "disabled"}" data-magnitude-recall-submit ${canSubmit ? "" : "disabled"}>回答する</button>
   </div>`;
 }
 

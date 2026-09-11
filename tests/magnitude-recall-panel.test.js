@@ -80,8 +80,8 @@ describe("magnitude recall panel", () => {
     expect(document.querySelector("[data-magnitude-recall-pointer]")?.classList.contains("unset")).toBe(true);
   });
 
-  it("renders numeric reconfirmation and feedback TrialResult JSON", () => {
-    const confirming = docFor({
+  it("renders live numeric answers, target thumbnails, fallback text, and feedback TrialResult JSON", () => {
+    const answering = docFor({
       session: {
         phase: "answer",
         itemId: item.itemId,
@@ -94,13 +94,32 @@ describe("magnitude recall panel", () => {
         result: null,
       },
       numericValue: "4.1",
-      numericNeedsConfirm: true,
+      targetThumbnailSrc: "blob:target-thumb",
       canCommit: true,
     });
 
-    expect(confirming.querySelector("[data-magnitude-recall-submit]")?.hasAttribute("disabled")).toBe(true);
-    expect(confirming.querySelector("[data-magnitude-recall-confirm-numeric]")?.textContent).toContain("この数値で回答");
-    expect(confirming.querySelector("[data-magnitude-recall-pointer]")?.getAttribute("aria-label")).toContain("あなたの回答：4.1 m");
+    expect(answering.querySelector("[data-magnitude-recall-submit]")?.hasAttribute("disabled")).toBe(false);
+    expect(answering.querySelector("[data-magnitude-recall-confirm-numeric]")).toBeNull();
+    expect(answering.querySelector(".magnitude-recall-card-thumb img")?.getAttribute("src")).toBe("blob:target-thumb");
+    expect(answering.querySelector("[data-magnitude-recall-pointer]")?.getAttribute("aria-label")).toContain("あなたの回答：4.1 m");
+
+    const fallback = docFor({
+      session: {
+        phase: "answer",
+        itemId: item.itemId,
+        scaleId: scale.id,
+        answerValueSI: null,
+        answerU: null,
+        inputMethod: null,
+        startedAtMs: 0,
+        answeredAtMs: null,
+        result: null,
+      },
+      targetThumbnailSrc: null,
+      canCommit: false,
+    });
+    expect(fallback.querySelector(".magnitude-recall-card-thumb")).toBeNull();
+    expect(fallback.querySelector("[data-magnitude-recall-card] strong")?.textContent).toBe("Fukuiraptor");
 
     const feedback = docFor({
       session: {

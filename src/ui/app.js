@@ -90,7 +90,10 @@ import {
 } from "../features/knowledge-graph/selectors.js";
 import { buildProjectVisualizationGraph } from "../features/knowledge-3d/project-visualization-adapter.js";
 import { visualizationNodesForLayout } from "../features/knowledge-3d/layout-engine.js";
-import { mountKnowledge3dGraph } from "../features/knowledge-3d/three-fixture-renderer.js";
+import {
+  mountKnowledge3dGraph,
+  selectMagnitudeNodeRepresentativeObservationId,
+} from "../features/knowledge-3d/three-fixture-renderer.js";
 import {
   BODY_LENGTH_LOG_RECALL_SCALE_ID,
   BODY_LENGTH_RECALL_SCALES,
@@ -357,6 +360,9 @@ export async function initApp(deps) {
   let knowledge3dController = null;
   let knowledge3dMountToken = 0;
   let knowledge3dGraphKey = null;
+  let magnitudeRecallTargetThumbnail = null;
+  let magnitudeRecallTargetThumbnailPendingKey = null;
+  let magnitudeRecallTargetThumbnailToken = 0;
 
   /**
    * The bundled demo photos, as records. The migration layers saved state on
@@ -2148,6 +2154,7 @@ export async function initApp(deps) {
   function disposeKnowledge3d() {
     knowledge3dMountToken += 1;
     releaseKnowledge3dController();
+    disposeMagnitudeRecallTargetThumbnail();
   }
 
   function releaseKnowledge3dController(controller = knowledge3dController) {
@@ -2159,6 +2166,20 @@ export async function initApp(deps) {
       controller?.dispose?.();
     } catch (error) {
       console.warn("Failed to dispose Knowledge 3D renderer", error);
+    }
+  }
+
+  function disposeMagnitudeRecallTargetThumbnail() {
+    magnitudeRecallTargetThumbnailToken += 1;
+    magnitudeRecallTargetThumbnailPendingKey = null;
+    const objectUrl = magnitudeRecallTargetThumbnail?.objectUrl;
+    magnitudeRecallTargetThumbnail = null;
+    if (!objectUrl) return;
+    try {
+      URL.revokeObjectURL(objectUrl);
+    } catch {
+      // The DOM thumbnail is best-effort UI chrome; renderer textures have
+      // their own disposal path in the Three.js controller.
     }
   }
 
@@ -2282,6 +2303,7 @@ export async function initApp(deps) {
     const scope = currentKnowledge3dScope();
     const mode = currentKnowledge3dMode();
     const magnitudeAxisKind = mode === "magnitude" ? currentMagnitudeAxisKind() : undefined;
+    if (mode !== "magnitude") disposeMagnitudeRecallTargetThumbnail();
 
     if (scope === "activeVisit" && !state.activeVisitId) {
       disposeKnowledge3d();
@@ -2353,7 +2375,7 @@ export async function initApp(deps) {
         releaseKnowledge3dController();
         knowledge3dGraphKey = null;
         $("#knowledgeGraphCanvas").innerHTML = renderKnowledge3dCanvas(displayGraph, recall);
-        bindKnowledge3dEvents(displayGraph, recall);
+        bindKnowledge3dEvents(displayGraph, recall, graph);
         const retryStage = $("#knowledge3dStage");
         if (!retryStage) return;
         const token = knowledge3dMountToken + 1;
@@ -2384,12 +2406,12 @@ export async function initApp(deps) {
           retryStage.innerHTML = renderKnowledge3dError(retryError);
         }
       }
-      bindKnowledge3dEvents(displayGraph, recall);
+      bindKnowledge3dEvents(displayGraph, recall, graph);
       return;
     }
 
     $("#knowledgeGraphCanvas").innerHTML = renderKnowledge3dCanvas(displayGraph, recall);
-    bindKnowledge3dEvents(displayGraph, recall);
+    bindKnowledge3dEvents(displayGraph, recall, graph);
 
     const nextStage = $("#knowledge3dStage");
     if (!nextStage) return;
@@ -2676,6 +2698,7 @@ export async function initApp(deps) {
         canCommit: false,
         numericValue: state.magnitudeRecallNumericValue,
         numericNeedsConfirm: state.magnitudeRecallNumericNeedsConfirm,
+        targetThumbnailSrc: null,
         resultCount,
       };
     }
@@ -2705,6 +2728,8 @@ export async function initApp(deps) {
       resetMagnitudeRecallNumericState();
     }
 
+    const targetThumbnailSrc = magnitudeRecallTargetThumbnailSrc(graph, item);
+
     return {
       scales: BODY_LENGTH_RECALL_SCALES,
       scale,
@@ -2714,12 +2739,66 @@ export async function initApp(deps) {
       canCommit: canCommitMagnitudeRecallAnswer(state.magnitudeRecallSession),
       numericValue: state.magnitudeRecallNumericValue,
       numericNeedsConfirm: state.magnitudeRecallNumericNeedsConfirm,
+      targetThumbnailSrc,
       resultCount,
     };
   }
 
+  function magnitudeRecallTargetThumbnailSrc(graph, item) {
+    const node = graph.nodes.find((candidate) => candidate.id === item?.itemId);
+    const observationId = selectMagnitudeNodeRepresentativeObservationId(graph, node);
+    if (!item || !observationId) {
+      disposeMagnitudeRecallTargetThumbnail();
+      return null;
+    }
+    const key = `${item.itemId}|${observationId}`;
+    if (magnitudeRecallTargetThumbnail?.key === key) return magnitudeRecallTargetThumbnail.src;
+    queueMagnitudeRecallTargetThumbnailLoad(key, item.itemId, observationId);
+    return null;
+  }
+
+  function queueMagnitudeRecallTargetThumbnailLoad(key, itemId, observationId) {
+    if (magnitudeRecallTargetThumbnailPendingKey === key) return;
+    disposeMagnitudeRecallTargetThumbnail();
+    magnitudeRecallTargetThumbnailPendingKey = key;
+    const token = magnitudeRecallTargetThumbnailToken + 1;
+    magnitudeRecallTargetThumbnailToken = token;
+    void loadKnowledge3dObservationThumbnail(observationId)
+      .then((blob) => {
+        if (
+          token !== magnitudeRecallTargetThumbnailToken
+          || magnitudeRecallTargetThumbnailPendingKey !== key
+          || state.knowledgeDisplayMode !== "3d"
+          || currentKnowledge3dMode() !== "magnitude"
+          || state.magnitudeRecallSession?.itemId !== itemId
+          || !blob
+        ) {
+          if (token === magnitudeRecallTargetThumbnailToken) {
+            magnitudeRecallTargetThumbnailPendingKey = null;
+          }
+          return;
+        }
+        const objectUrl = URL.createObjectURL(blob);
+        magnitudeRecallTargetThumbnailPendingKey = null;
+        magnitudeRecallTargetThumbnail = {
+          key,
+          itemId,
+          observationId,
+          src: objectUrl,
+          objectUrl,
+        };
+        renderKnowledge();
+      })
+      .catch(() => {
+        if (token === magnitudeRecallTargetThumbnailToken) {
+          magnitudeRecallTargetThumbnailPendingKey = null;
+        }
+      });
+  }
+
   function graphForMagnitudeRecallDisplay(graph, recall) {
     if (!recall?.item || recall.session?.phase === "feedback") return graph;
+    const answerMeasurement = magnitudeRecallDraftMeasurement(recall);
     return {
       ...graph,
       metadata: {
@@ -2732,11 +2811,32 @@ export async function initApp(deps) {
       },
       nodes: graph.nodes.map((node) => {
         if (node.id !== recall.item.itemId) return node;
+        const hiddenCorrectMeasurements = (node.measurements || [])
+          .filter((measurement) => measurement.quantityKind !== recall.item.quantityKind);
         return {
           ...node,
-          measurements: (node.measurements || []).filter((measurement) => measurement.quantityKind !== "body_length"),
+          measurements: answerMeasurement
+            ? [...hiddenCorrectMeasurements, answerMeasurement]
+            : hiddenCorrectMeasurements,
         };
       }),
+    };
+  }
+
+  function magnitudeRecallDraftMeasurement(recall) {
+    const answerValueSI = recall?.session?.phase === "answer" && Number.isFinite(recall.session.answerValueSI)
+      ? recall.session.answerValueSI
+      : null;
+    if (answerValueSI === null || !recall?.item) return null;
+    return {
+      quantityKind: recall.item.quantityKind,
+      valueSI: answerValueSI,
+      minSI: null,
+      maxSI: null,
+      unitSI: recall.item.unitSI,
+      estimated: true,
+      confidence: 1,
+      source: "magnitude-recall-answer",
     };
   }
 
@@ -2745,7 +2845,7 @@ export async function initApp(deps) {
     state.magnitudeRecallNumericNeedsConfirm = false;
   }
 
-  function bindKnowledge3dEvents(graph, recall = null) {
+  function bindKnowledge3dEvents(graph, recall = null, baseGraph = graph) {
     $$('[data-knowledge3d-node]').forEach((button) =>
       button.onclick = () => {
         const id = button.dataset.knowledge3dNode;
@@ -2780,10 +2880,10 @@ export async function initApp(deps) {
     $$('[data-open-photo]').forEach((button) => {
       button.onclick = () => openPhotoModal(button.dataset.openPhoto);
     });
-    bindMagnitudeRecallEvents(recall);
+    bindMagnitudeRecallEvents(recall, baseGraph);
   }
 
-  function bindMagnitudeRecallEvents(recall) {
+  function bindMagnitudeRecallEvents(recall, baseGraph) {
     if (!recall?.item || !recall.scale || !recall.session) return;
 
     $$("[data-magnitude-recall-scale]").forEach((button) => {
@@ -2824,7 +2924,7 @@ export async function initApp(deps) {
     axis?.addEventListener("keydown", (event) => {
       handleMagnitudeRecallKeyboard(event, recall);
     });
-    bindMagnitudeRecallPointer(recall, axis);
+    bindMagnitudeRecallPointer(recall, baseGraph, axis);
 
     $("[data-magnitude-recall-card]")?.addEventListener("dragstart", (event) => {
       event.dataTransfer?.setData("text/plain", recall.item?.itemId || "");
@@ -2832,30 +2932,23 @@ export async function initApp(deps) {
     });
 
     const numericInput = $("[data-magnitude-recall-numeric-input]");
-    numericInput?.addEventListener("input", (event) => {
-      state.magnitudeRecallNumericValue = event.target.value;
-      state.magnitudeRecallNumericNeedsConfirm = false;
-    });
-    $("[data-magnitude-recall-numeric]")?.addEventListener("click", () => {
-      const value = numericInput?.value ?? state.magnitudeRecallNumericValue;
+    const syncNumericDraft = (event) => {
+      const value = event?.target?.value ?? numericInput?.value ?? state.magnitudeRecallNumericValue;
       state.magnitudeRecallNumericValue = value;
-      const updated = updateMagnitudeRecallDraftAnswer(state.magnitudeRecallSession, {
-        scale: recall.scale,
+      updateMagnitudeRecallAnswerDraft(recall, {
         answerValue: value,
         unit: "m",
         inputMethod: "numeric",
+      }, {
+        render: false,
+        numericValue: value,
       });
-      state.magnitudeRecallSession = updated;
-      state.magnitudeRecallNumericNeedsConfirm = canCommitMagnitudeRecallAnswer(updated);
-      renderKnowledge();
-    });
-    $("[data-magnitude-recall-confirm-numeric]")?.addEventListener("click", () => {
-      if (!state.magnitudeRecallNumericNeedsConfirm) return;
-      state.magnitudeRecallNumericNeedsConfirm = false;
-      commitMagnitudeRecallFromUi(recall);
-    });
+      if (axis) syncMagnitudeRecallAnswerUi(axis);
+      syncMagnitudeRecallBoardAnswer(baseGraph, recall);
+    };
+    numericInput?.addEventListener("input", syncNumericDraft);
+    numericInput?.addEventListener("change", syncNumericDraft);
     $("[data-magnitude-recall-submit]")?.addEventListener("click", () => {
-      if (state.magnitudeRecallNumericNeedsConfirm) return;
       commitMagnitudeRecallFromUi(recall);
     });
     $("[data-magnitude-recall-next]")?.addEventListener("click", () => {
@@ -2872,7 +2965,7 @@ export async function initApp(deps) {
     });
   }
 
-  function bindMagnitudeRecallPointer(recall, axis) {
+  function bindMagnitudeRecallPointer(recall, baseGraph, axis) {
     const pointer = $("[data-magnitude-recall-pointer]");
     if (!axis || !pointer) return;
 
@@ -2891,11 +2984,11 @@ export async function initApp(deps) {
       pointer.focus?.();
       pointer.setPointerCapture?.(event.pointerId);
       state.magnitudeRecallSuppressAxisClickUntil = Date.now() + 350;
-      updateMagnitudeRecallAnswerFromPointer(recall, axis, event, { render: false });
+      updateMagnitudeRecallAnswerFromPointer(recall, baseGraph, axis, event, { render: false });
 
       const onPointerMove = (moveEvent) => {
         moveEvent.preventDefault?.();
-        updateMagnitudeRecallAnswerFromPointer(recall, axis, moveEvent, { render: false });
+        updateMagnitudeRecallAnswerFromPointer(recall, baseGraph, axis, moveEvent, { render: false });
       };
       const onPointerUp = (upEvent) => {
         window.removeEventListener("pointermove", onPointerMove);
@@ -2903,7 +2996,7 @@ export async function initApp(deps) {
         window.removeEventListener("pointercancel", onPointerUp);
         pointer.releasePointerCapture?.(upEvent.pointerId);
         state.magnitudeRecallSuppressAxisClickUntil = Date.now() + 350;
-        updateMagnitudeRecallAnswerFromPointer(recall, axis, upEvent, { render: true });
+        updateMagnitudeRecallAnswerFromPointer(recall, baseGraph, axis, upEvent, { render: true });
       };
       window.addEventListener("pointermove", onPointerMove);
       window.addEventListener("pointerup", onPointerUp);
@@ -2932,29 +3025,43 @@ export async function initApp(deps) {
     return true;
   }
 
-  function updateMagnitudeRecallAnswerFromPointer(recall, axis, event, options = {}) {
+  function updateMagnitudeRecallAnswerFromPointer(recall, baseGraph, axis, event, options = {}) {
     const u = magnitudeRecallAxisU(event, axis);
     if (u === null) return;
     updateMagnitudeRecallAnswerDraft(recall, { answerU: u, inputMethod: "drag" }, options);
-    if (options.render === false) syncMagnitudeRecallPointerUi(axis, u);
+    if (options.render === false) {
+      syncMagnitudeRecallAnswerUi(axis);
+      syncMagnitudeRecallBoardAnswer(baseGraph, recall);
+    }
   }
 
-  function syncMagnitudeRecallPointerUi(axis, u) {
+  function syncMagnitudeRecallAnswerUi(axis) {
     const value = Number.isFinite(state.magnitudeRecallSession?.answerValueSI)
       ? state.magnitudeRecallSession.answerValueSI
       : null;
+    const answerU = Number.isFinite(state.magnitudeRecallSession?.answerU)
+      ? state.magnitudeRecallSession.answerU
+      : null;
+    const pointerU = answerU ?? 0.5;
     const label = value === null ? "未入力" : formatMeters(value);
     const axisWrap = axis.closest(".magnitude-recall-axis-wrap") || document;
     const pointer = $("[data-magnitude-recall-pointer]", axis);
     if (pointer) {
-      pointer.style.setProperty("--recall-left", `${u * 100}%`);
+      pointer.style.setProperty("--recall-left", `${pointerU * 100}%`);
       pointer.classList.toggle("unset", value === null);
       pointer.setAttribute("aria-label", `あなたの回答：${label}`);
     }
-    axis.setAttribute("aria-valuenow", String(u));
+    axis.setAttribute("aria-valuenow", String(answerU ?? 0));
     axis.setAttribute("aria-valuetext", label);
     const readout = $(".magnitude-recall-answer-readout strong", axisWrap);
     if (readout) readout.textContent = label;
+    const numericInput = $("[data-magnitude-recall-numeric-input]");
+    if (numericInput) numericInput.value = state.magnitudeRecallNumericValue;
+    const canSubmit = canCommitMagnitudeRecallAnswer(state.magnitudeRecallSession)
+      && !state.magnitudeRecallNumericNeedsConfirm;
+    const submit = $("[data-magnitude-recall-submit]");
+    submit?.classList.toggle("disabled", !canSubmit);
+    submit?.toggleAttribute("disabled", !canSubmit);
   }
 
   function updateMagnitudeRecallAnswerDraft(recall, input, options = {}) {
@@ -2964,7 +3071,43 @@ export async function initApp(deps) {
       ...input,
     });
     state.magnitudeRecallNumericNeedsConfirm = false;
+    state.magnitudeRecallNumericValue = typeof options.numericValue === "string"
+      ? options.numericValue
+      : numericInputValueForMagnitudeRecallAnswer(state.magnitudeRecallSession);
     if (options.render !== false) renderKnowledge();
+  }
+
+  function numericInputValueForMagnitudeRecallAnswer(session) {
+    return Number.isFinite(session?.answerValueSI)
+      ? Number(session.answerValueSI.toPrecision(6)).toString()
+      : "";
+  }
+
+  function syncMagnitudeRecallBoardAnswer(baseGraph, recall) {
+    if (
+      state.knowledgeDisplayMode !== "3d"
+      || currentKnowledge3dMode() !== "magnitude"
+      || !knowledge3dController
+      || !recall?.item
+    ) {
+      return;
+    }
+    const displayGraph = graphForMagnitudeRecallDisplay(baseGraph, {
+      ...recall,
+      session: state.magnitudeRecallSession,
+    });
+    try {
+      knowledge3dController.updateLayout?.({
+        graph: displayGraph,
+        mode: "magnitude",
+        selectedNodeId: state.knowledge3dSelectedNodeId,
+        autoRotate: false,
+        magnitudeAxisKind: currentMagnitudeAxisKind(),
+        instant: true,
+      });
+    } catch {
+      releaseKnowledge3dController();
+    }
   }
 
   function commitMagnitudeRecallFromUi(recall) {

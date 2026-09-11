@@ -303,6 +303,13 @@ function expectPlacementContainsCorners(placement) {
   }
 }
 
+function expectMagnitudeFitHeadOn(placement) {
+  const view = normalize(testSubtract(placement.target, placement.position));
+  expect(view.x).toBeCloseTo(0, 12);
+  expect(view.y).toBeCloseTo(0, 12);
+  expect(view.z).toBeCloseTo(-1, 12);
+}
+
 function testSubtract(left, right) {
   return { x: left.x - right.x, y: left.y - right.y, z: left.z - right.z };
 }
@@ -374,6 +381,8 @@ describe("Three.js fixture renderer", () => {
     expect(timeFit).not.toBeNull();
     expectPlacementContainsCorners(quantityFit);
     expectPlacementContainsCorners(timeFit);
+    expectMagnitudeFitHeadOn(quantityFit);
+    expectMagnitudeFitHeadOn(timeFit);
     expect(computeMagnitudeFitCameraPlacement(magnitudeLayout(VISUALIZATION_GRAPH_FIXTURE), { width: 0, height: 0 })?.aspect).toBeCloseTo(640 / 420, 6);
   });
 
@@ -589,7 +598,7 @@ describe("Three.js fixture renderer", () => {
     expectCameraAtPlacement(camera, quantityFit);
 
     container.dispatchEvent(new jsdom.window.WheelEvent("wheel", { deltaY: -100, cancelable: true }));
-    expect(camera.position.x).not.toBeCloseTo(quantityFit.position.x, 5);
+    expect(camera.position.z).not.toBeCloseTo(quantityFit.position.z, 5);
     fake.groups[0].rotation.y = 1.2;
     controller.resetCamera?.();
     expect(fake.groups[0].rotation.y).toBe(0);
@@ -650,6 +659,40 @@ describe("Three.js fixture renderer", () => {
 
     controller.dispose();
     expect(fake.textureDispose).toHaveBeenCalled();
+  });
+
+  it("moves a Magnitude answer marker instantly to the answer value", async () => {
+    const { jsdom, container } = dom();
+    const fake = fakeThree(jsdom.window.document);
+    const initialGraph = magnitudePhotoGraph(["o-a"]);
+    const answerGraph = magnitudePhotoGraph(["o-a"]);
+    answerGraph.nodes[0].measurements[0].valueSI = 10;
+
+    const controller = await mountKnowledge3dGraph(container, {
+      graph: initialGraph,
+      mode: "magnitude",
+      webglAvailable: true,
+      loadThree: async () => fake.THREE,
+      runtime: { window: jsdom.window, document: jsdom.window.document },
+      requestAnimationFrame: () => 0,
+      cancelAnimationFrame: vi.fn(),
+    });
+
+    const rootGroup = fake.groups[0];
+    const nodeObject = rootGroup.children.find((child) => child.userData?.nodeId === "entity:e-a");
+    const answerNode = magnitudeLayout(
+      /** @type {import("../src/features/knowledge-3d/visualization-graph.js").VisualizationGraphV1} */ (answerGraph),
+    ).nodes.find((node) => node.id === "entity:e-a");
+    if (!nodeObject || !answerNode) throw new Error("missing magnitude answer marker");
+
+    controller.updateLayout?.({
+      graph: answerGraph,
+      mode: "magnitude",
+      instant: true,
+    });
+
+    expect(nodeObject.position.x).toBeCloseTo(answerNode.x, 12);
+    controller.dispose();
   });
 
   it("positions the selected Magnitude label above loaded thumbnails", async () => {

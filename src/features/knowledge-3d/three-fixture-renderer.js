@@ -32,6 +32,7 @@ const CAMERA_TARGET = Object.freeze({ x: 0, y: 1, z: 0 });
 const CAMERA_ZOOM_MIN = 0.35;
 const CAMERA_ZOOM_MAX = 2.6;
 const CAMERA_ZOOM_STEP = 1.12;
+const MAGNITUDE_FRONT_CAMERA_DIRECTION = Object.freeze({ x: 0, y: 0, z: 1 });
 const MAGNITUDE_FIT_MARGIN = 1.18;
 const MAGNITUDE_FIT_EXTRA_DISTANCE = 0.65;
 const MAGNITUDE_FIT_BOARD_X_PADDING = 1.9;
@@ -47,7 +48,7 @@ const BOARD_LAYER_Y = Object.freeze([0, 1, 2]);
  * @property {string|null} reason
  * @property {() => void} dispose
  * @property {() => void} [resetCamera]
- * @property {(options:{graph?: any, mode?: "home"|"relation"|"size"|"magnitude", selectedNodeId?: string|null, autoRotate?: boolean, magnitudeAxisKind?: "quantity"|"time"}) => void} [updateLayout]
+ * @property {(options:{graph?: any, mode?: "home"|"relation"|"size"|"magnitude", selectedNodeId?: string|null, autoRotate?: boolean, magnitudeAxisKind?: "quantity"|"time", instant?: boolean}) => void} [updateLayout]
  */
 
 /**
@@ -81,7 +82,8 @@ export function selectMagnitudeNodeRepresentativeObservationId(graph, node) {
 /**
  * Compute a magnitude-only fit-to-view camera frame without depending on
  * Three.js objects. The returned camera frame uses the renderer's established
- * home viewing direction, but targets the selected board's layout bounds.
+ * front-facing viewing direction, and targets the selected board's layout
+ * bounds so tick labels and the number line are readable head-on.
  *
  * @param {import('./layout-engine.js').VisualizationLayout} layout
  * @param {{width?: number, height?: number}} [viewport]
@@ -97,7 +99,7 @@ export function computeMagnitudeFitCameraPlacement(layout, viewport = {}) {
   const verticalFovRadians = degreesToRadians(CAMERA_FOV_DEGREES);
   const horizontalFovRadians = 2 * Math.atan(Math.tan(verticalFovRadians / 2) * aspect);
   const target = boxCenter(bounds);
-  const cameraDirection = normalizeVector(subtractVector(CAMERA_HOME, CAMERA_TARGET)) || { x: 0.52, y: 0.36, z: 0.77 };
+  const cameraDirection = MAGNITUDE_FRONT_CAMERA_DIRECTION;
   const viewDirection = scaleVector(cameraDirection, -1);
   const right = normalizeVector(crossVector(viewDirection, { x: 0, y: 1, z: 0 })) || { x: 1, y: 0, z: 0 };
   const up = normalizeVector(crossVector(right, viewDirection)) || { x: 0, y: 1, z: 0 };
@@ -422,7 +424,8 @@ function mountThreeScene(container, THREE, graph, layout, options) {
       selectedNodeId: nextSelectedNodeId,
       thumbnailManager,
     });
-    const animate = nextMode !== currentMode || !sameLayoutPositions(currentLayout, nextLayout);
+    const instant = updateOptions.instant === true;
+    const animate = !instant && (nextMode !== currentMode || !sameLayoutPositions(currentLayout, nextLayout));
     const shouldFitMagnitude = nextMode === "magnitude" && (currentMode !== "magnitude" || animate);
     const shouldRestoreHomeCamera = currentMode === "magnitude" && nextMode !== "magnitude";
     if (animate) {
@@ -432,7 +435,8 @@ function mountThreeScene(container, THREE, graph, layout, options) {
         startedAt: animationNow(hostWindow),
         duration: MODE_TRANSITION_MS,
       });
-    } else if (!activeTransition) {
+    } else if (instant || !activeTransition) {
+      if (instant) activeTransition = null;
       applyLayoutPositions(nextLayout, { nodeObjectById, labelObjectById });
     }
     currentGraph = nextGraph;
