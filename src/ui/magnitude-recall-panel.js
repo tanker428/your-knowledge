@@ -17,6 +17,7 @@ import { escapeHtml } from "./html.js";
  *   canCommit: boolean,
  *   numericValue: string,
  *   numericNeedsConfirm: boolean,
+ *   inputMessage?: string,
  *   targetThumbnailSrc?: string|null,
  *   resultCount: number,
  * }} view
@@ -127,6 +128,7 @@ function renderAnswerControls(view, canSubmit) {
   return `<div class="magnitude-recall-controls">
     <label>m <input type="number" min="0" step="0.01" inputmode="decimal" data-magnitude-recall-numeric-input value="${escapeHtml(view.numericValue)}" /></label>
     <button type="button" class="primary-button ${canSubmit ? "" : "disabled"}" data-magnitude-recall-submit ${canSubmit ? "" : "disabled"}>回答する</button>
+    <small class="magnitude-recall-input-message">${escapeHtml(view.inputMessage || "")}</small>
   </div>`;
 }
 

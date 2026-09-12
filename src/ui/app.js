@@ -314,6 +314,7 @@ export async function initApp(deps) {
     magnitudeRecallItemCursor: 0,
     magnitudeRecallNumericValue: "",
     magnitudeRecallNumericNeedsConfirm: false,
+    magnitudeRecallInputMessage: "",
     magnitudeRecallSuppressAxisClickUntil: 0,
     knowledgeZoom: 1,
     knowledgeAxis: "all",
@@ -2708,6 +2709,7 @@ export async function initApp(deps) {
         canCommit: false,
         numericValue: state.magnitudeRecallNumericValue,
         numericNeedsConfirm: state.magnitudeRecallNumericNeedsConfirm,
+        inputMessage: state.magnitudeRecallInputMessage,
         targetThumbnailSrc: null,
         resultCount,
       };
@@ -2749,6 +2751,7 @@ export async function initApp(deps) {
       canCommit: canCommitMagnitudeRecallAnswer(state.magnitudeRecallSession),
       numericValue: state.magnitudeRecallNumericValue,
       numericNeedsConfirm: state.magnitudeRecallNumericNeedsConfirm,
+      inputMessage: state.magnitudeRecallInputMessage,
       targetThumbnailSrc,
       resultCount,
     };
@@ -2878,7 +2881,9 @@ export async function initApp(deps) {
     if (!recall?.scale) return [];
     const specs = [];
     const displayItems = buildMagnitudeRecallItems(graph);
+    const feedbackResult = recall.session?.phase === "feedback" ? recall.session.result : null;
     for (const item of displayItems) {
+      if (feedbackResult && item.itemId === recall.item?.itemId) continue;
       const binding = findBundledSilhouetteBinding(item);
       const asset = binding ? findBundledSilhouetteAsset(binding.assetId, BUNDLED_SILHOUETTE_ASSETS) : null;
       if (!asset) continue;
@@ -2894,6 +2899,32 @@ export async function initApp(deps) {
         scale: recall.scale,
       });
       if (spec) specs.push(spec);
+    }
+
+    if (feedbackResult && recall.item) {
+      const binding = findBundledSilhouetteBinding(recall.item);
+      const asset = binding ? findBundledSilhouetteAsset(binding.assetId, BUNDLED_SILHOUETTE_ASSETS) : null;
+      if (asset) {
+        const answerSpec = buildSilhouettePresentationSpec({
+          itemId: recall.item.itemId,
+          label: recall.item.label,
+          asset,
+          role: "answer",
+          valueSI: feedbackResult.answerValueSI,
+          axisU: Number.isFinite(recall.session?.answerU) ? recall.session.answerU : null,
+          scale: recall.scale,
+        });
+        const correctSpec = buildSilhouettePresentationSpec({
+          itemId: recall.item.itemId,
+          label: recall.item.label,
+          asset,
+          role: "correct",
+          valueSI: feedbackResult.correctValueSI,
+          scale: recall.scale,
+        });
+        if (answerSpec) specs.push(answerSpec);
+        if (correctSpec) specs.push(correctSpec);
+      }
     }
 
     const humanBinding = findBundledSilhouetteBinding(HUMAN_BODY_LENGTH_REFERENCE);
@@ -2926,6 +2957,7 @@ export async function initApp(deps) {
   function resetMagnitudeRecallNumericState() {
     state.magnitudeRecallNumericValue = "";
     state.magnitudeRecallNumericNeedsConfirm = false;
+    state.magnitudeRecallInputMessage = "";
   }
 
   function bindKnowledge3dEvents(graph, recall = null, baseGraph = graph) {
@@ -3140,6 +3172,8 @@ export async function initApp(deps) {
     if (readout) readout.textContent = label;
     const numericInput = $("[data-magnitude-recall-numeric-input]");
     if (numericInput) numericInput.value = state.magnitudeRecallNumericValue;
+    const message = $(".magnitude-recall-input-message", axisWrap.closest(".magnitude-recall-panel") || document);
+    if (message) message.textContent = state.magnitudeRecallInputMessage;
     const canSubmit = canCommitMagnitudeRecallAnswer(state.magnitudeRecallSession)
       && !state.magnitudeRecallNumericNeedsConfirm;
     const submit = $("[data-magnitude-recall-submit]");
@@ -3149,11 +3183,12 @@ export async function initApp(deps) {
 
   function updateMagnitudeRecallAnswerDraft(recall, input, options = {}) {
     if (!recall?.scale || recall.session?.phase !== "answer") return;
+    state.magnitudeRecallInputMessage = magnitudeRecallInputMessage(recall, input);
     state.magnitudeRecallSession = updateMagnitudeRecallDraftAnswer(state.magnitudeRecallSession, {
       scale: recall.scale,
       ...input,
     });
-    state.magnitudeRecallNumericNeedsConfirm = false;
+    state.magnitudeRecallNumericNeedsConfirm = Boolean(state.magnitudeRecallInputMessage);
     state.magnitudeRecallNumericValue = typeof options.numericValue === "string"
       ? options.numericValue
       : numericInputValueForMagnitudeRecallAnswer(state.magnitudeRecallSession);
@@ -3164,6 +3199,22 @@ export async function initApp(deps) {
     return Number.isFinite(session?.answerValueSI)
       ? Number(session.answerValueSI.toPrecision(6)).toString()
       : "";
+  }
+
+  function magnitudeRecallInputMessage(recall, input) {
+    if (!("answerValue" in input) && !("answerValueSI" in input)) return "";
+    const raw = input.answerValueSI ?? input.answerValue;
+    if (raw === "" || raw === null || raw === undefined) return "";
+    const value = Number(raw);
+    if (!Number.isFinite(value)) return "Enter a number in meters.";
+    if (value < 0) return "Body length cannot be negative.";
+    if (recall.scale.normalization === "log" && value <= 0) {
+      return "Log scale requires a value above 0 m.";
+    }
+    if (value < recall.scale.minValueSI || value > recall.scale.maxValueSI) {
+      return `Enter a value from ${formatMeters(recall.scale.minValueSI)} to ${formatMeters(recall.scale.maxValueSI)}.`;
+    }
+    return "";
   }
 
   function syncMagnitudeRecallBoardAnswer(baseGraph, recall) {

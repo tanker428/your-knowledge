@@ -1670,7 +1670,10 @@ function updateMagnitudeSilhouetteFallback(THREE, group, spec, frame) {
     line = createDecorationLine(THREE, [
       { x: 0, y: 0, z: 0 },
       { x: 0, y: 0, z: 0 },
-    ], silhouetteRoleColor(spec.role), 0.7, { magnitudeSilhouetteFallback: true });
+    ], silhouetteRoleColor(spec.role), 0.7, {
+      magnitudeSilhouetteFallback: true,
+      lineStyle: silhouetteRoleLineStyle(spec.role),
+    });
     group.add(line);
   }
   const startX = (spec.calibration.bodyLengthStartX - 0.5) * frame.width;
@@ -1683,8 +1686,13 @@ function updateMagnitudeSilhouetteFallback(THREE, group, spec, frame) {
   if (line.material) {
     line.material.color?.setHex?.(silhouetteRoleColor(spec.role));
     if (typeof line.material.color === "number") line.material.color = silhouetteRoleColor(spec.role);
-    line.material.opacity = group.children?.some((child) => child.userData?.magnitudeSilhouetteImage) ? 0 : 0.68;
+    line.material.opacity = group.children?.some((child) => child.userData?.magnitudeSilhouetteImage)
+      ? 0
+      : spec.role === "answer"
+        ? 0.5
+        : 0.68;
   }
+  line.userData.lineStyle = silhouetteRoleLineStyle(spec.role);
 }
 
 /**
@@ -1699,7 +1707,10 @@ function updateMagnitudeSilhouetteConnector(THREE, group, spec, frame) {
     line = createDecorationLine(THREE, [
       { x: 0, y: 0, z: 0 },
       { x: 0, y: 0, z: 0 },
-    ], silhouetteRoleColor(spec.role), 0.62, { magnitudeSilhouetteConnector: true });
+    ], silhouetteRoleColor(spec.role), 0.62, {
+      magnitudeSilhouetteConnector: true,
+      lineStyle: silhouetteRoleLineStyle(spec.role),
+    });
     group.add(line);
   }
   line.geometry?.setFromPoints?.([
@@ -1718,8 +1729,13 @@ function updateMagnitudeSilhouetteConnector(THREE, group, spec, frame) {
     const color = group.userData.selected ? 0xe86f36 : silhouetteRoleColor(spec.role);
     line.material.color?.setHex?.(color);
     if (typeof line.material.color === "number") line.material.color = color;
-    line.material.opacity = group.userData.selected ? 0.86 : 0.56;
+    line.material.opacity = group.userData.selected
+      ? 0.86
+      : spec.role === "answer"
+        ? 0.46
+        : 0.62;
   }
+  line.userData.lineStyle = silhouetteRoleLineStyle(spec.role);
 }
 
 /**
@@ -1785,6 +1801,13 @@ function silhouetteRoleColor(role) {
   if (role === "answer") return 0xe86f36;
   if (role === "correct") return 0x3f6f4a;
   return 0x17211b;
+}
+
+/** @param {string} role */
+function silhouetteRoleLineStyle(role) {
+  if (role === "answer") return "dashed";
+  if (role === "correct") return "solid-bold";
+  return "solid";
 }
 
 /** @param {string} role */
