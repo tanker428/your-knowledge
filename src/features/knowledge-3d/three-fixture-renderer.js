@@ -40,6 +40,9 @@ const MAGNITUDE_FIT_BOARD_Y_PADDING = 0.95;
 const MAGNITUDE_FIT_BOARD_Z_PADDING = 0.85;
 const MAGNITUDE_FIT_NODE_X_PADDING = 1.45;
 const MAGNITUDE_FIT_NODE_Z_PADDING = 0.9;
+const MAGNITUDE_NUMBER_LINE_THICKNESS = 0.07;
+const MAGNITUDE_AXIS_TICK_THICKNESS = 0.055;
+const MAGNITUDE_NODE_GUIDE_THICKNESS = 0.035;
 const BOARD_LAYER_Y = Object.freeze([0, 1, 2]);
 
 /**
@@ -1166,14 +1169,18 @@ function renderMagnitudeBoard(THREE, document, decorationRoot, layout, board) {
   decorationRoot.add(createDecorationLine(THREE, [
     boardPoint(board, axisMinX, board.axisY),
     boardPoint(board, axisMaxX, board.axisY),
-  ], color, 0.72, { decorationKind: "number-line", boardId }));
+  ], color, 0.86, { decorationKind: "number-line", boardId }, {
+    thickness: MAGNITUDE_NUMBER_LINE_THICKNESS,
+  }));
 
   for (const tick of board.ticks || []) {
-    const opacity = tick.major ? 0.62 : 0.34;
+    const opacity = tick.major ? 0.76 : 0.48;
     decorationRoot.add(createDecorationLine(THREE, [
-      boardPoint(board, tick.x, board.axisY - 0.12),
-      boardPoint(board, tick.x, board.axisY + 0.2),
-    ], lineColor, opacity, { decorationKind: "axis-tick", boardId }));
+      boardPoint(board, tick.x, board.axisY - 0.16),
+      boardPoint(board, tick.x, board.axisY + (tick.major ? 0.28 : 0.22)),
+    ], lineColor, opacity, { decorationKind: "axis-tick", boardId }, {
+      thickness: tick.major ? MAGNITUDE_AXIS_TICK_THICKNESS : MAGNITUDE_AXIS_TICK_THICKNESS * 0.78,
+    }));
     if (tick.major) {
       decorationRoot.add(createDecorationLine(THREE, [
         boardPoint(board, tick.x, board.axisY),
@@ -1188,7 +1195,9 @@ function renderMagnitudeBoard(THREE, document, decorationRoot, layout, board) {
     decorationRoot.add(createDecorationLine(THREE, [
       boardPoint(board, node.x, board.axisY),
       boardPoint(board, node.x, node.y),
-    ], color, 0.24, { decorationKind: "node-guide", boardId, nodeId: node.id }));
+    ], color, 0.42, { decorationKind: "node-guide", boardId, nodeId: node.id }, {
+      thickness: MAGNITUDE_NODE_GUIDE_THICKNESS,
+    }));
   }
 
   if (finiteNumber(board.unsetAreaX)) {
@@ -1221,13 +1230,61 @@ function boardPoint(board, x, y) {
  * @param {number} color
  * @param {number} opacity
  * @param {Record<string, any>} [userData]
+ * @param {{thickness?:number}} [options]
  */
-function createDecorationLine(THREE, points, color, opacity, userData = {}) {
+function createDecorationLine(THREE, points, color, opacity, userData = {}, options = {}) {
+  const thickness = positiveFiniteNumber(options.thickness) || 0;
+  const bar = thickness > 0
+    ? createDecorationBar(THREE, points, color, opacity, thickness, userData)
+    : null;
+  if (bar) return bar;
   const geometry = new THREE.BufferGeometry().setFromPoints(points.map((point) => new THREE.Vector3(point.x, point.y, point.z)));
-  const material = new THREE.LineBasicMaterial({ color, transparent: true, opacity });
+  const material = new THREE.LineBasicMaterial({
+    color,
+    transparent: true,
+    opacity,
+    linewidth: thickness ? Math.max(1, Math.round(thickness * 24)) : 1,
+  });
   const line = new THREE.Line(geometry, material);
-  line.userData = userData;
+  line.userData = thickness ? { ...userData, decorationThickness: thickness } : userData;
   return line;
+}
+
+/**
+ * @param {any} THREE
+ * @param {{x:number,y:number,z:number}[]} points
+ * @param {number} color
+ * @param {number} opacity
+ * @param {number} thickness
+ * @param {Record<string, any>} userData
+ */
+function createDecorationBar(THREE, points, color, opacity, thickness, userData) {
+  if (
+    points.length !== 2
+    || !THREE.BoxGeometry
+    || !THREE.Mesh
+    || !(THREE.MeshBasicMaterial || THREE.MeshStandardMaterial)
+  ) {
+    return null;
+  }
+  const [start, end] = points;
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const dz = end.z - start.z;
+  const length = Math.hypot(dx, dy, dz);
+  if (!Number.isFinite(length) || length <= 0) return null;
+  const geometry = new THREE.BoxGeometry(length, thickness, thickness);
+  const Material = THREE.MeshBasicMaterial || THREE.MeshStandardMaterial;
+  const material = new Material({ color, transparent: true, opacity });
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.position.set(
+    (start.x + end.x) / 2,
+    (start.y + end.y) / 2,
+    (start.z + end.z) / 2,
+  );
+  mesh.rotation.z = Math.atan2(dy, dx);
+  mesh.userData = { ...userData, decorationThickness: thickness };
+  return mesh;
 }
 
 /**
