@@ -43,6 +43,11 @@ const MAGNITUDE_FIT_NODE_Z_PADDING = 0.9;
 const MAGNITUDE_NUMBER_LINE_THICKNESS = 0.07;
 const MAGNITUDE_AXIS_TICK_THICKNESS = 0.055;
 const MAGNITUDE_NODE_GUIDE_THICKNESS = 0.035;
+const MAGNITUDE_SILHOUETTE_RENDER_ORDER = 560;
+const MAGNITUDE_SILHOUETTE_LABEL_RENDER_ORDER = 910;
+const MAGNITUDE_SILHOUETTE_Z_OFFSET = 0.05;
+const MAGNITUDE_SILHOUETTE_LANE_STEP = 0.58;
+const MAGNITUDE_SILHOUETTE_AXIS_GAP = 0.35;
 const BOARD_LAYER_Y = Object.freeze([0, 1, 2]);
 
 /**
@@ -90,11 +95,12 @@ export function selectMagnitudeNodeRepresentativeObservationId(graph, node) {
  *
  * @param {import('./layout-engine.js').VisualizationLayout} layout
  * @param {{width?: number, height?: number}} [viewport]
+ * @param {{silhouetteSpecs?: any[]}} [options]
  * @returns {{position:{x:number,y:number,z:number}, target:{x:number,y:number,z:number}, bounds:{min:{x:number,y:number,z:number}, max:{x:number,y:number,z:number}}, corners:{x:number,y:number,z:number}[], verticalFovDegrees:number, horizontalFovDegrees:number, aspect:number}|null}
  */
-export function computeMagnitudeFitCameraPlacement(layout, viewport = {}) {
+export function computeMagnitudeFitCameraPlacement(layout, viewport = {}, options = {}) {
   if (layout?.mode !== "magnitude") return null;
-  const bounds = magnitudeLayoutSceneBounds(layout);
+  const bounds = magnitudeLayoutSceneBounds(layout, options.silhouetteSpecs || []);
   if (!bounds) return null;
   const width = positiveFiniteNumber(viewport.width) || 640;
   const height = positiveFiniteNumber(viewport.height) || 420;
@@ -270,7 +276,9 @@ function mountThreeScene(container, THREE, graph, layout, options) {
   };
   const root = new THREE.Group();
   const decorationRoot = new THREE.Group();
+  const silhouetteRoot = new THREE.Group();
   root.add(decorationRoot);
+  root.add(silhouetteRoot);
 
   scene.add(new THREE.AmbientLight(0xffffff, 0.7));
   const keyLight = new THREE.DirectionalLight(0xffffff, 1.2);
@@ -279,6 +287,7 @@ function mountThreeScene(container, THREE, graph, layout, options) {
   scene.add(root);
 
   const thumbnailManager = createMagnitudeThumbnailManager(THREE, runtime, options.loadObservationThumbnail);
+  const silhouetteManager = createMagnitudeSilhouetteManager(THREE);
   let currentGraph = graph;
   let currentLayout = layout;
   let currentMode = layout.mode;
@@ -287,12 +296,17 @@ function mountThreeScene(container, THREE, graph, layout, options) {
   const reducedMotion = prefersReducedMotion(hostWindow);
   let currentAutoRotate = shouldAutoRotate(autoRotateRequested, currentMode, reducedMotion);
   let activeTransition = null;
-  /** @param {import('./layout-engine.js').VisualizationLayout} targetLayout */
-  const fitMagnitudeCamera = (targetLayout) => {
+  /**
+   * @param {import('./layout-engine.js').VisualizationLayout} targetLayout
+   * @param {any} [targetGraph]
+   */
+  const fitMagnitudeCamera = (targetLayout, targetGraph = currentGraph) => {
     root.rotation.y = 0;
     const fit = computeMagnitudeFitCameraPlacement(targetLayout, {
       width: Math.max(1, container.clientWidth || 640),
       height: Math.max(1, container.clientHeight || 420),
+    }, {
+      silhouetteSpecs: magnitudeSilhouetteSpecsFromGraph(targetGraph),
     });
     if (fit) {
       setCameraFrame(fit);
@@ -303,7 +317,7 @@ function mountThreeScene(container, THREE, graph, layout, options) {
   const resetCamera = () => {
     root.rotation.y = 0;
     if (currentMode === "magnitude") {
-      fitMagnitudeCamera(currentLayout);
+      fitMagnitudeCamera(currentLayout, currentGraph);
     } else {
       applyHomeCamera();
     }
@@ -339,6 +353,9 @@ function mountThreeScene(container, THREE, graph, layout, options) {
     edgeObjectById.set(edge.id, line);
   }
   refreshLayoutDecorations(THREE, container.ownerDocument, decorationRoot, layout);
+  silhouetteManager.sync(container.ownerDocument, silhouetteRoot, layout, graph, {
+    selectedNodeId: currentSelectedNodeId,
+  });
 
   const resize = () => {
     const width = Math.max(1, container.clientWidth || 640);
@@ -346,7 +363,7 @@ function mountThreeScene(container, THREE, graph, layout, options) {
     renderer.setSize(width, height, false);
     camera.aspect = width / height;
     camera.updateProjectionMatrix();
-    if (currentMode === "magnitude") fitMagnitudeCamera(currentLayout);
+    if (currentMode === "magnitude") fitMagnitudeCamera(currentLayout, currentGraph);
   };
 
   let dragging = false;
@@ -449,8 +466,11 @@ function mountThreeScene(container, THREE, graph, layout, options) {
     updateSelection(nodeObjectById, currentSelectedNodeId);
     updateEdgeGeometry(THREE, currentLayout, edgeObjectById, nodeObjectById);
     refreshLayoutDecorations(THREE, container.ownerDocument, decorationRoot, currentLayout);
+    silhouetteManager.sync(container.ownerDocument, silhouetteRoot, currentLayout, currentGraph, {
+      selectedNodeId: currentSelectedNodeId,
+    });
     if (shouldFitMagnitude) {
-      fitMagnitudeCamera(currentLayout);
+      fitMagnitudeCamera(currentLayout, currentGraph);
     } else if (shouldRestoreHomeCamera) {
       applyHomeCamera();
     }
@@ -490,6 +510,7 @@ function mountThreeScene(container, THREE, graph, layout, options) {
       disposed = true;
       if (frameId && cancelFrame) cancelFrame(frameId);
       thumbnailManager.dispose();
+      silhouetteManager.dispose();
       hostWindow.removeEventListener?.("resize", resize);
       container.removeEventListener("pointerdown", pointerDown);
       container.removeEventListener("pointermove", pointerMove);
@@ -619,8 +640,11 @@ function createMagnitudeFallbackNode(THREE, document, graphNode, node) {
   return fallback;
 }
 
-/** @param {import('./layout-engine.js').VisualizationLayout} layout */
-function magnitudeLayoutSceneBounds(layout) {
+/**
+ * @param {import('./layout-engine.js').VisualizationLayout} layout
+ * @param {any[]} [silhouetteSpecs]
+ */
+function magnitudeLayoutSceneBounds(layout, silhouetteSpecs = []) {
   const points = [];
   const boards = Array.isArray(layout.metadata?.boards) ? layout.metadata.boards : [];
   for (const board of boards) {
@@ -659,7 +683,82 @@ function magnitudeLayoutSceneBounds(layout) {
     });
   }
 
+  const board = boards.find((candidate) => candidate.axisKind === "quantity") || boards[0];
+  if (board) {
+    for (const spec of silhouetteSpecs) {
+      const frame = silhouetteWorldFrame(spec, board);
+      if (!frame) continue;
+      includeSceneBox(points, {
+        x: frame.center.x - frame.width / 2 - 0.18,
+        y: frame.center.y - frame.height / 2 - 0.18,
+        z: frame.center.z - MAGNITUDE_FIT_NODE_Z_PADDING,
+      }, {
+        x: frame.center.x + frame.width / 2 + 0.18,
+        y: frame.center.y + frame.height / 2 + LABEL_SPRITE_HEIGHT + 0.42,
+        z: frame.center.z + MAGNITUDE_FIT_NODE_Z_PADDING,
+      });
+    }
+  }
+
   return boundsFromPoints(points);
+}
+
+/**
+ * @param {any} graph
+ * @returns {any[]}
+ */
+function magnitudeSilhouetteSpecsFromGraph(graph) {
+  const specs = graph?.metadata?.magnitudeSilhouettes?.specs;
+  return Array.isArray(specs) ? specs.filter(isMagnitudeSilhouetteSpec) : [];
+}
+
+/**
+ * @param {any} spec
+ * @returns {boolean}
+ */
+function isMagnitudeSilhouetteSpec(spec) {
+  return Boolean(
+    spec
+    && typeof spec.itemId === "string"
+    && typeof spec.assetId === "string"
+    && finiteNumber(spec.valueSI)
+    && finiteNumber(spec.axisU)
+    && finiteNumber(spec.dimensions?.imageWidthDrawUnits)
+    && finiteNumber(spec.dimensions?.imageHeightDrawUnits)
+    && finiteNumber(spec.calibration?.anchorX)
+    && finiteNumber(spec.calibration?.anchorY)
+  );
+}
+
+/**
+ * @param {any} spec
+ * @param {import('./layout-engine.js').LayoutBoard} board
+ * @returns {{axisPoint:{x:number,y:number,z:number}, anchorPoint:{x:number,y:number,z:number}, center:{x:number,y:number,z:number}, width:number, height:number}|null}
+ */
+function silhouetteWorldFrame(spec, board) {
+  if (!isMagnitudeSilhouetteSpec(spec) || !board) return null;
+  const axisMinX = finiteNumber(board.axisMinX) ? board.axisMinX : board.xMin;
+  const axisMaxX = finiteNumber(board.axisMaxX) ? board.axisMaxX : board.xMax;
+  const markerX = axisMinX + clamp(spec.axisU, 0, 1) * (axisMaxX - axisMinX);
+  const lane = finiteNumber(spec.lane) ? spec.lane : 0;
+  const width = Math.max(0, spec.dimensions.imageWidthDrawUnits);
+  const height = Math.max(0, spec.dimensions.imageHeightDrawUnits);
+  const anchorX = clamp(spec.calibration.anchorX, 0, 1);
+  const anchorY = clamp(spec.calibration.anchorY, 0, 1);
+  const laneY = (board.axisY + MAGNITUDE_SILHOUETTE_AXIS_GAP + lane * MAGNITUDE_SILHOUETTE_LANE_STEP) * NODE_Y_SCALE;
+  const z = board.z + MAGNITUDE_SILHOUETTE_Z_OFFSET;
+  const center = {
+    x: markerX + (0.5 - anchorX) * width,
+    y: laneY + (anchorY - 0.5) * height,
+    z,
+  };
+  return {
+    axisPoint: boardPoint(board, markerX, board.axisY),
+    anchorPoint: { x: markerX, y: laneY, z },
+    center,
+    width,
+    height,
+  };
 }
 
 /** @param {import('./layout-engine.js').VisualizationLayout} layout */
@@ -1349,6 +1448,360 @@ function createLabelSprite(THREE, document, label) {
 
 /**
  * @param {any} THREE
+ */
+function createMagnitudeSilhouetteManager(THREE) {
+  const textureByHref = new Map();
+  const objectByKey = new Map();
+  let active = true;
+
+  /**
+   * @param {Document} document
+   * @param {any} root
+   * @param {import('./layout-engine.js').VisualizationLayout} layout
+   * @param {any} graph
+   * @param {{selectedNodeId?: string|null}} [options]
+   */
+  const sync = (document, root, layout, graph, options = {}) => {
+    const specs = layout?.mode === "magnitude" ? magnitudeSilhouetteSpecsFromGraph(graph) : [];
+    const boards = Array.isArray(layout?.metadata?.boards) ? layout.metadata.boards : [];
+    const board = boards.find((candidate) => candidate.axisKind === "quantity");
+    const liveKeys = new Set();
+    if (board) {
+      for (const spec of specs) {
+        const frame = silhouetteWorldFrame(spec, board);
+        if (!frame) continue;
+        const key = magnitudeSilhouetteKey(spec);
+        liveKeys.add(key);
+        let group = objectByKey.get(key);
+        if (!group) {
+          group = new THREE.Group();
+          group.userData = {
+            magnitudeSilhouette: true,
+            silhouetteKey: key,
+          };
+          root.add(group);
+          objectByKey.set(key, group);
+        }
+        updateMagnitudeSilhouetteObject(THREE, document, group, spec, frame, {
+          selected: options.selectedNodeId === spec.itemId,
+          requestTexture,
+        });
+      }
+      if (specs.length) {
+        liveKeys.add("__scale-bar");
+        syncMagnitudeSilhouetteScaleBar(THREE, document, root, objectByKey, board, specs[0]);
+      }
+    }
+
+    for (const [key, object] of [...objectByKey.entries()]) {
+      if (liveKeys.has(key)) continue;
+      root.remove?.(object);
+      disposeObject(object);
+      objectByKey.delete(key);
+    }
+  };
+
+  /**
+   * @param {string|null|undefined} href
+   * @param {any} group
+   * @param {symbol} token
+   */
+  const requestTexture = (href, group, token) => {
+    if (!href || !THREE.TextureLoader) return;
+    const cached = textureByHref.get(href);
+    if (cached?.status === "loaded" && cached.texture) {
+      applyMagnitudeSilhouetteTextureIfLive(THREE, active, group, token, cached.texture);
+      return;
+    }
+    if (cached?.status === "loading") {
+      cached.callbacks.push((texture) => applyMagnitudeSilhouetteTextureIfLive(THREE, active, group, token, texture));
+      return;
+    }
+    const entry = {
+      status: "loading",
+      texture: null,
+      callbacks: [(texture) => applyMagnitudeSilhouetteTextureIfLive(THREE, active, group, token, texture)],
+    };
+    textureByHref.set(href, entry);
+    try {
+      new THREE.TextureLoader().load(
+        href,
+        (texture) => {
+          texture.userData = {
+            ...(texture.userData || {}),
+            persistentSilhouetteTexture: true,
+          };
+          if (THREE.SRGBColorSpace) texture.colorSpace = THREE.SRGBColorSpace;
+          texture.needsUpdate = true;
+          entry.status = "loaded";
+          entry.texture = texture;
+          const callbacks = [...entry.callbacks];
+          entry.callbacks.length = 0;
+          for (const callback of callbacks) callback(texture);
+        },
+        undefined,
+        () => {
+          entry.status = "failed";
+          entry.callbacks.length = 0;
+        },
+      );
+    } catch {
+      entry.status = "failed";
+      entry.callbacks.length = 0;
+    }
+  };
+
+  return {
+    sync,
+    dispose() {
+      active = false;
+      for (const object of objectByKey.values()) disposeObject(object);
+      objectByKey.clear();
+      for (const entry of textureByHref.values()) entry.texture?.dispose?.();
+      textureByHref.clear();
+    },
+  };
+}
+
+/**
+ * @param {any} spec
+ * @returns {string}
+ */
+function magnitudeSilhouetteKey(spec) {
+  return `${spec.itemId}|${spec.role}`;
+}
+
+/**
+ * @param {any} THREE
+ * @param {Document} document
+ * @param {any} group
+ * @param {any} spec
+ * @param {{axisPoint:{x:number,y:number,z:number}, anchorPoint:{x:number,y:number,z:number}, center:{x:number,y:number,z:number}, width:number, height:number}} frame
+ * @param {{selected:boolean, requestTexture:(href:string|null|undefined, group:any, token:symbol)=>void}} options
+ */
+function updateMagnitudeSilhouetteObject(THREE, document, group, spec, frame, options) {
+  group.position.set(frame.center.x, frame.center.y, frame.center.z);
+  const token = group.userData.silhouetteRequestToken || Symbol(spec.assetId);
+  group.userData = {
+    ...(group.userData || {}),
+    nodeId: spec.itemId,
+    itemId: spec.itemId,
+    role: spec.role,
+    assetId: spec.assetId,
+    silhouetteSpec: spec,
+    silhouetteFrame: frame,
+    silhouetteRequestToken: token,
+    selected: options.selected,
+  };
+
+  updateMagnitudeSilhouetteImageSprite(THREE, group);
+  updateMagnitudeSilhouetteFallback(THREE, group, spec, frame);
+  updateMagnitudeSilhouetteConnector(THREE, group, spec, frame);
+  updateMagnitudeSilhouetteLabel(THREE, document, group, spec, frame);
+
+  if (spec.href && group.userData.loadedSilhouetteHref !== spec.href) {
+    const nextToken = Symbol(spec.href);
+    group.userData.silhouetteRequestToken = nextToken;
+    group.userData.loadedSilhouetteHref = null;
+    options.requestTexture(spec.href, group, nextToken);
+  }
+}
+
+/**
+ * @param {any} THREE
+ * @param {boolean} managerActive
+ * @param {any} group
+ * @param {symbol} token
+ * @param {any} texture
+ */
+function applyMagnitudeSilhouetteTextureIfLive(THREE, managerActive, group, token, texture) {
+  if (
+    !managerActive
+    || group?.userData?.disposed === true
+    || group?.userData?.silhouetteRequestToken !== token
+  ) {
+    return;
+  }
+  group.userData.loadedSilhouetteHref = group.userData.silhouetteSpec?.href || null;
+  let sprite = group.children?.find((child) => child.userData?.magnitudeSilhouetteImage);
+  if (!sprite) {
+    if (!THREE.SpriteMaterial || !THREE.Sprite) return;
+    sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: texture,
+      transparent: true,
+      depthWrite: false,
+      depthTest: false,
+    }));
+    sprite.renderOrder = MAGNITUDE_SILHOUETTE_RENDER_ORDER;
+    sprite.userData = { magnitudeSilhouetteImage: true };
+    group.add(sprite);
+  } else {
+    sprite.material.map = texture;
+    sprite.material.needsUpdate = true;
+  }
+  updateMagnitudeSilhouetteImageSprite(THREE, group);
+}
+
+/**
+ * @param {any} THREE
+ * @param {any} group
+ */
+function updateMagnitudeSilhouetteImageSprite(THREE, group) {
+  const sprite = group.children?.find((child) => child.userData?.magnitudeSilhouetteImage);
+  const spec = group.userData?.silhouetteSpec;
+  const frame = group.userData?.silhouetteFrame;
+  if (!sprite || !spec || !frame) return;
+  sprite.scale.set(frame.width, frame.height, 1);
+  sprite.position.set(0, 0, 0);
+  sprite.material.opacity = spec.role === "answer" ? 0.86 : 0.94;
+  if (sprite.material.color?.setHex) sprite.material.color.setHex(group.userData.selected ? 0xe86f36 : 0xffffff);
+  sprite.visible = frame.width > 0 && frame.height > 0;
+}
+
+/**
+ * @param {any} THREE
+ * @param {any} group
+ * @param {any} spec
+ * @param {{axisPoint:{x:number,y:number,z:number}, anchorPoint:{x:number,y:number,z:number}, center:{x:number,y:number,z:number}, width:number, height:number}} frame
+ */
+function updateMagnitudeSilhouetteFallback(THREE, group, spec, frame) {
+  let line = group.children?.find((child) => child.userData?.magnitudeSilhouetteFallback);
+  if (!line) {
+    line = createDecorationLine(THREE, [
+      { x: 0, y: 0, z: 0 },
+      { x: 0, y: 0, z: 0 },
+    ], silhouetteRoleColor(spec.role), 0.7, { magnitudeSilhouetteFallback: true });
+    group.add(line);
+  }
+  const startX = (spec.calibration.bodyLengthStartX - 0.5) * frame.width;
+  const endX = (spec.calibration.bodyLengthEndX - 0.5) * frame.width;
+  const y = (spec.calibration.anchorY - spec.calibration.baselineY) * frame.height;
+  line.geometry?.setFromPoints?.([
+    new THREE.Vector3(startX, y, 0),
+    new THREE.Vector3(endX, y, 0),
+  ]);
+  if (line.material) {
+    line.material.color?.setHex?.(silhouetteRoleColor(spec.role));
+    if (typeof line.material.color === "number") line.material.color = silhouetteRoleColor(spec.role);
+    line.material.opacity = group.children?.some((child) => child.userData?.magnitudeSilhouetteImage) ? 0 : 0.68;
+  }
+}
+
+/**
+ * @param {any} THREE
+ * @param {any} group
+ * @param {any} spec
+ * @param {{axisPoint:{x:number,y:number,z:number}, anchorPoint:{x:number,y:number,z:number}, center:{x:number,y:number,z:number}}} frame
+ */
+function updateMagnitudeSilhouetteConnector(THREE, group, spec, frame) {
+  let line = group.children?.find((child) => child.userData?.magnitudeSilhouetteConnector);
+  if (!line) {
+    line = createDecorationLine(THREE, [
+      { x: 0, y: 0, z: 0 },
+      { x: 0, y: 0, z: 0 },
+    ], silhouetteRoleColor(spec.role), 0.62, { magnitudeSilhouetteConnector: true });
+    group.add(line);
+  }
+  line.geometry?.setFromPoints?.([
+    new THREE.Vector3(
+      frame.axisPoint.x - frame.center.x,
+      frame.axisPoint.y - frame.center.y,
+      frame.axisPoint.z - frame.center.z,
+    ),
+    new THREE.Vector3(
+      frame.anchorPoint.x - frame.center.x,
+      frame.anchorPoint.y - frame.center.y,
+      frame.anchorPoint.z - frame.center.z,
+    ),
+  ]);
+  if (line.material) {
+    const color = group.userData.selected ? 0xe86f36 : silhouetteRoleColor(spec.role);
+    line.material.color?.setHex?.(color);
+    if (typeof line.material.color === "number") line.material.color = color;
+    line.material.opacity = group.userData.selected ? 0.86 : 0.56;
+  }
+}
+
+/**
+ * @param {any} THREE
+ * @param {Document} document
+ * @param {any} group
+ * @param {any} spec
+ * @param {{height:number}} frame
+ */
+function updateMagnitudeSilhouetteLabel(THREE, document, group, spec, frame) {
+  const text = `${silhouetteRoleLabel(spec.role)}${spec.role === "reference" ? "" : ": "}${spec.label} ${formatSilhouetteMeters(spec.valueSI)}`;
+  let label = group.children?.find((child) => child.userData?.magnitudeSilhouetteLabel);
+  if (!label || label.userData?.labelText !== text) {
+    if (label) {
+      group.remove?.(label);
+      disposeObject(label);
+    }
+    label = createLabelSprite(THREE, document, text);
+    if (!label) return;
+    label.userData = { magnitudeSilhouetteLabel: true, labelText: text };
+    label.renderOrder = MAGNITUDE_SILHOUETTE_LABEL_RENDER_ORDER;
+    group.add(label);
+  }
+  label.position.set(0, frame.height / 2 + LABEL_SPRITE_HEIGHT * 0.62, 0);
+}
+
+/**
+ * @param {any} THREE
+ * @param {Document} document
+ * @param {any} root
+ * @param {Map<string, any>} objectByKey
+ * @param {import('./layout-engine.js').LayoutBoard} board
+ * @param {any} spec
+ */
+function syncMagnitudeSilhouetteScaleBar(THREE, document, root, objectByKey, board, spec) {
+  let group = objectByKey.get("__scale-bar");
+  if (!group) {
+    group = new THREE.Group();
+    group.userData = { magnitudeSilhouetteScaleBar: true };
+    root.add(group);
+    objectByKey.set("__scale-bar", group);
+  }
+  clearGroup(group);
+  const unitsPerMeter = positiveFiniteNumber(spec.drawUnitsPerMeter) || 0.24;
+  const meters = unitsPerMeter < 0.2 ? 5 : 1;
+  const width = meters * unitsPerMeter;
+  group.position.set(board.xMin + 0.7, (board.yMax - 0.16) * NODE_Y_SCALE, board.z + MAGNITUDE_SILHOUETTE_Z_OFFSET);
+  group.add(createDecorationLine(THREE, [
+    { x: 0, y: 0, z: 0 },
+    { x: width, y: 0, z: 0 },
+  ], 0x1f2a22, 0.82, { magnitudeSilhouetteScaleBarLine: true }));
+  const label = createLabelSprite(THREE, document, `${meters} m silhouette scale`);
+  if (label) {
+    label.position.set(width / 2, LABEL_SPRITE_HEIGHT * 0.72, 0);
+    label.scale.set(2.35, 0.58, 1);
+    label.userData = { magnitudeSilhouetteScaleBarLabel: true };
+    group.add(label);
+  }
+}
+
+/** @param {string} role */
+function silhouetteRoleColor(role) {
+  if (role === "answer") return 0xe86f36;
+  if (role === "correct") return 0x3f6f4a;
+  return 0x17211b;
+}
+
+/** @param {string} role */
+function silhouetteRoleLabel(role) {
+  if (role === "answer") return "your answer";
+  if (role === "correct") return "correct";
+  return "";
+}
+
+/** @param {number} value */
+function formatSilhouetteMeters(value) {
+  if (!Number.isFinite(value)) return "";
+  return `${Number(value.toPrecision(4)).toLocaleString("en-US")} m`;
+}
+
+/**
+ * @param {any} THREE
  * @param {any} runtime
  * @param {((observationId:string) => Promise<Blob|null>)|undefined} loadObservationThumbnail
  */
@@ -1509,6 +1962,7 @@ function disposeObject(object) {
     const materials = Array.isArray(child.material) ? child.material : [child.material].filter(Boolean);
     for (const material of materials) {
       for (const value of Object.values(material)) {
+        if (value?.userData?.persistentSilhouetteTexture) continue;
         if (value && typeof value === "object" && "dispose" in value) value.dispose();
       }
       material.dispose?.();

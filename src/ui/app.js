@@ -108,6 +108,16 @@ import {
   updateMagnitudeRecallDraftAnswer,
 } from "../features/knowledge-3d/magnitude-recall.js";
 import {
+  MAGNITUDE_SILHOUETTE_SCHEMA_VERSION,
+  buildSilhouettePresentationSpec,
+} from "../features/knowledge-3d/magnitude-silhouette.js";
+import {
+  HUMAN_BODY_LENGTH_REFERENCE,
+  BUNDLED_SILHOUETTE_ASSETS,
+  findBundledSilhouetteAsset,
+  findBundledSilhouetteBinding,
+} from "../features/knowledge-3d/magnitude-silhouette-assets.js";
+import {
   buildQuizResultEntries,
   describeQuizAvailability,
   getQuizCards,
@@ -2797,9 +2807,12 @@ export async function initApp(deps) {
   }
 
   function graphForMagnitudeRecallDisplay(graph, recall) {
-    if (!recall?.item || recall.session?.phase === "feedback") return graph;
+    if (!recall?.item) return graph;
+    if (recall.session?.phase === "feedback") {
+      return withMagnitudeRecallSilhouetteMetadata(graph, recall);
+    }
     const answerMeasurement = magnitudeRecallDraftMeasurement(recall);
-    return {
+    const displayGraph = {
       ...graph,
       metadata: {
         ...graph.metadata,
@@ -2821,6 +2834,7 @@ export async function initApp(deps) {
         };
       }),
     };
+    return withMagnitudeRecallSilhouetteMetadata(displayGraph, recall);
   }
 
   function magnitudeRecallDraftMeasurement(recall) {
@@ -2838,6 +2852,75 @@ export async function initApp(deps) {
       confidence: 1,
       source: "magnitude-recall-answer",
     };
+  }
+
+  function withMagnitudeRecallSilhouetteMetadata(graph, recall) {
+    if (!recall?.item || !recall.scale) return graph;
+    return {
+      ...graph,
+      metadata: {
+        ...graph.metadata,
+        magnitudeRecall: {
+          phase: recall.session?.phase,
+          itemId: recall.item.itemId,
+          scaleId: recall.scale.id,
+        },
+        magnitudeSilhouettes: {
+          schemaVersion: MAGNITUDE_SILHOUETTE_SCHEMA_VERSION,
+          scaleId: recall.scale.id,
+          specs: magnitudeRecallSilhouetteSpecs(graph, recall),
+        },
+      },
+    };
+  }
+
+  function magnitudeRecallSilhouetteSpecs(graph, recall) {
+    if (!recall?.scale) return [];
+    const specs = [];
+    const displayItems = buildMagnitudeRecallItems(graph);
+    for (const item of displayItems) {
+      const binding = findBundledSilhouetteBinding(item);
+      const asset = binding ? findBundledSilhouetteAsset(binding.assetId, BUNDLED_SILHOUETTE_ASSETS) : null;
+      if (!asset) continue;
+      const role = recall.session?.phase === "answer" && item.itemId === recall.item?.itemId
+        ? "answer"
+        : "reference";
+      const spec = buildSilhouettePresentationSpec({
+        itemId: item.itemId,
+        label: item.label,
+        asset,
+        role,
+        valueSI: item.correctValueSI,
+        scale: recall.scale,
+      });
+      if (spec) specs.push(spec);
+    }
+
+    const humanBinding = findBundledSilhouetteBinding(HUMAN_BODY_LENGTH_REFERENCE);
+    const humanAsset = humanBinding ? findBundledSilhouetteAsset(humanBinding.assetId, BUNDLED_SILHOUETTE_ASSETS) : null;
+    const humanSpec = humanAsset
+      ? buildSilhouettePresentationSpec({
+        itemId: HUMAN_BODY_LENGTH_REFERENCE.itemId,
+        label: HUMAN_BODY_LENGTH_REFERENCE.label,
+        asset: humanAsset,
+        role: "reference",
+        valueSI: HUMAN_BODY_LENGTH_REFERENCE.valueSI,
+        scale: recall.scale,
+      })
+      : null;
+    if (humanSpec) specs.push(humanSpec);
+
+    return specs
+      .sort((left, right) => left.axisU - right.axisU || left.itemId.localeCompare(right.itemId))
+      .map((spec, index) => ({
+        ...spec,
+        lane: magnitudeSilhouetteLane(index),
+      }));
+  }
+
+  function magnitudeSilhouetteLane(index) {
+    const distance = Math.floor(index / 2) + 1;
+    return index % 2 === 0 ? distance : -distance;
   }
 
   function resetMagnitudeRecallNumericState() {
