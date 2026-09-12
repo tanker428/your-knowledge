@@ -310,8 +310,30 @@ describe("body_length magnitude recall core", () => {
         maxValueSI: scale.maxValueSI,
         tickValuesSI: [...scale.tickValuesSI],
       })),
+      silhouettes: {
+        schemaVersion: "1.0.0",
+        measurementKind: "body_length",
+        unitSI: "m",
+        displayRule: {
+          length: "linear valueSI * drawUnitsPerMeter",
+          writesDerivedDimensionsToKnowledge: false,
+        },
+        humanReference: {
+          itemId: "reference:human-body-length",
+          valueSI: 1.7,
+          unitSI: "m",
+        },
+      },
     });
+    expect(fixture.silhouettes.assets.map((asset) => asset.assetId)).toEqual(expect.arrayContaining([
+      "silhouette:fukuiraptor-side:v1",
+      "silhouette:human-side:v1",
+    ]));
+    expect(fixture.silhouettes.bindings.map((binding) => binding.targetId)).toEqual(expect.arrayContaining([
+      "taxon:fukuiraptor",
+      "reference:human-body-length",
+    ]));
     expect(fixture.items.every((item) => !Object.hasOwn(item, "x") && !Object.hasOwn(item, "y"))).toBe(true);
-    expect(JSON.stringify(fixture)).not.toMatch(/pixel|three|dom/i);
+    expect(JSON.stringify(fixture)).not.toMatch(/pixel|three|dom|blob/i);
   });
 });
