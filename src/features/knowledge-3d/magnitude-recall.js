@@ -240,7 +240,10 @@ export function buildMagnitudeRecallFixture(graph, options = {}) {
  *
  * 教材上の仮ルールとして、正解値からの相対誤差が +/-10% 以内なら正解。
  *
- * @param {{itemId: string, scaleId: string, answerValueSI: unknown, correctValueSI: unknown, elapsedMs: unknown, inputMethod: unknown}} input
+ * An optional estimated range also accepts answers inside its inclusive bounds.
+ * Error remains relative to the representative value for comparable results.
+ *
+ * @param {{itemId: string, scaleId: string, answerValueSI: unknown, correctValueSI: unknown, elapsedMs: unknown, inputMethod: unknown, rangeSI?: {minSI:number, maxSI:number}|null}} input
  * @returns {TrialResult|null}
  */
 export function scoreMagnitudeRecallAnswer(input) {
@@ -254,12 +257,16 @@ export function scoreMagnitudeRecallAnswer(input) {
   if (answerValueSI < 0 || correctValueSI <= 0) return null;
 
   const error = Math.abs(answerValueSI - correctValueSI) / correctValueSI;
+  const range = input.rangeSI;
+  const withinRange = range && Number.isFinite(range.minSI) && Number.isFinite(range.maxSI)
+    && range.minSI >= 0 && range.maxSI >= range.minSI
+    && answerValueSI >= range.minSI - EPSILON && answerValueSI <= range.maxSI + EPSILON;
   return {
     itemId,
     scaleId,
     answerValueSI,
     correctValueSI,
-    correct: error <= MAGNITUDE_RECALL_TRIAL_CORRECT_RATIO + EPSILON,
+    correct: error <= MAGNITUDE_RECALL_TRIAL_CORRECT_RATIO + EPSILON || Boolean(withinRange),
     error,
     elapsedMs: Math.max(0, Math.round(elapsedMs)),
     inputMethod,
@@ -338,7 +345,7 @@ export function canCommitMagnitudeRecallAnswer(state) {
 
 /**
  * @param {MagnitudeRecallState|null} state
- * @param {{correctValueSI: unknown, nowMs?: unknown}} input
+ * @param {{correctValueSI: unknown, nowMs?: unknown, rangeSI?: {minSI:number, maxSI:number}|null}} input
  * @returns {MagnitudeRecallState|null}
  */
 export function commitMagnitudeRecallAnswer(state, input) {
@@ -349,6 +356,7 @@ export function commitMagnitudeRecallAnswer(state, input) {
     scaleId: state.scaleId,
     answerValueSI: state.answerValueSI,
     correctValueSI: input?.correctValueSI,
+    rangeSI: input?.rangeSI,
     elapsedMs: nowMs - state.startedAtMs,
     inputMethod: state.inputMethod,
   });
