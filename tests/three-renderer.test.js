@@ -22,6 +22,14 @@ import {
   TIME_MAGNITUDE_BOARD_ID,
   TIME_MAGNITUDE_BOARD_Z,
 } from "../src/features/knowledge-3d/layout-engine.js";
+import {
+  BODY_LENGTH_LOG_RECALL_SCALE_ID,
+  findMagnitudeRecallScale,
+} from "../src/features/knowledge-3d/magnitude-recall.js";
+import { buildSilhouettePresentationSpec } from "../src/features/knowledge-3d/magnitude-silhouette.js";
+import { findBundledSilhouetteAsset } from "../src/features/knowledge-3d/magnitude-silhouette-assets.js";
+
+const LOG_SCALE = findMagnitudeRecallScale(BODY_LENGTH_LOG_RECALL_SCALE_ID);
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -267,6 +275,36 @@ function magnitudePhotoGraph(observationIds = ["o-b", "o-a"]) {
   };
 }
 
+function magnitudeSilhouetteGraph(valueSI = 4.2) {
+  const graph = magnitudePhotoGraph(["o-a"]);
+  const spec = testSilhouetteSpec(valueSI);
+  return {
+    ...graph,
+    metadata: {
+      ...graph.metadata,
+      magnitudeSilhouettes: {
+        schemaVersion: "1.0.0",
+        scaleId: LOG_SCALE?.id,
+        specs: spec ? [spec] : [],
+      },
+    },
+  };
+}
+
+function testSilhouetteSpec(valueSI = 4.2) {
+  const asset = findBundledSilhouetteAsset("silhouette:fukuiraptor-side:v1");
+  if (!asset || !LOG_SCALE) throw new Error("missing silhouette test asset or scale");
+  return buildSilhouettePresentationSpec({
+    itemId: "entity:e-a",
+    label: "Entity A",
+    asset,
+    role: "answer",
+    valueSI,
+    scale: LOG_SCALE,
+    drawUnitsPerMeter: 0.4,
+  });
+}
+
 function installObjectUrlMocks(window) {
   const createObjectURL = vi.fn(() => "blob:thumbnail");
   const revokeObjectURL = vi.fn();
@@ -384,6 +422,23 @@ describe("Three.js fixture renderer", () => {
     expectMagnitudeFitHeadOn(quantityFit);
     expectMagnitudeFitHeadOn(timeFit);
     expect(computeMagnitudeFitCameraPlacement(magnitudeLayout(VISUALIZATION_GRAPH_FIXTURE), { width: 0, height: 0 })?.aspect).toBeCloseTo(640 / 420, 6);
+  });
+
+  it("includes magnitude silhouette bounds in the front-fit camera frame", () => {
+    const graph = magnitudeSilhouetteGraph(12);
+    const layout = magnitudeLayout(
+      /** @type {import("../src/features/knowledge-3d/visualization-graph.js").VisualizationGraphV1} */ (graph),
+    );
+    const spec = { ...graph.metadata.magnitudeSilhouettes.specs[0], lane: 8 };
+    const plainFit = computeMagnitudeFitCameraPlacement(layout, { width: 640, height: 420 });
+    const silhouetteFit = computeMagnitudeFitCameraPlacement(layout, { width: 640, height: 420 }, {
+      silhouetteSpecs: [spec],
+    });
+
+    expect(plainFit).not.toBeNull();
+    expect(silhouetteFit).not.toBeNull();
+    expect(silhouetteFit?.bounds.max.y).toBeGreaterThan(plainFit?.bounds.max.y || 0);
+    expectPlacementContainsCorners(silhouetteFit);
   });
 
   it("does not import Three.js when WebGL is unavailable", async () => {
@@ -693,6 +748,48 @@ describe("Three.js fixture renderer", () => {
 
     expect(nodeObject.position.x).toBeCloseTo(answerNode.x, 12);
     controller.dispose();
+  });
+
+  it("renders Magnitude silhouette specs without reloading SVGs during answer updates", async () => {
+    const { jsdom, container } = dom();
+    enableCanvasLabels(jsdom.window.document);
+    const fake = fakeThree(jsdom.window.document);
+    const initialGraph = magnitudeSilhouetteGraph(4);
+    const answerGraph = magnitudeSilhouetteGraph(8);
+
+    const controller = await mountKnowledge3dGraph(container, {
+      graph: initialGraph,
+      mode: "magnitude",
+      webglAvailable: true,
+      loadThree: async () => fake.THREE,
+      runtime: { window: jsdom.window, document: jsdom.window.document },
+      requestAnimationFrame: () => 0,
+      cancelAnimationFrame: vi.fn(),
+    });
+
+    expect(fake.textureLoadCalls).toHaveLength(1);
+    fake.textureLoadCalls[0].onLoad({
+      image: { width: 1200, height: 420 },
+      dispose: fake.textureDispose,
+    });
+
+    const silhouetteRoot = fake.groups[2];
+    const silhouette = silhouetteRoot.children.find((child) => child.userData?.magnitudeSilhouette);
+    const image = silhouette?.children.find((child) => child.userData?.magnitudeSilhouetteImage);
+    if (!silhouette || !image) throw new Error("missing rendered silhouette");
+    const initialWidth = image.scale.x;
+
+    controller.updateLayout?.({
+      graph: answerGraph,
+      mode: "magnitude",
+      instant: true,
+    });
+
+    const updatedImage = silhouette.children.find((child) => child.userData?.magnitudeSilhouetteImage);
+    expect(fake.textureLoadCalls).toHaveLength(1);
+    expect(updatedImage?.scale.x).toBeGreaterThan(initialWidth);
+    controller.dispose();
+    expect(fake.textureDispose).toHaveBeenCalled();
   });
 
   it("positions the selected Magnitude label above loaded thumbnails", async () => {

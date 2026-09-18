@@ -7,6 +7,11 @@ import {
   LENGTH_UNIT_SI,
   normalizeBodyLengthQuantity,
 } from "./measurements.js";
+import {
+  BUNDLED_SILHOUETTE_ASSETS,
+  BUNDLED_SILHOUETTE_BINDINGS,
+  HUMAN_BODY_LENGTH_REFERENCE,
+} from "./magnitude-silhouette-assets.js";
 
 export const MAGNITUDE_RECALL_SCHEMA_VERSION = "1.0.0";
 export const BODY_LENGTH_LOG_RECALL_SCALE_ID = "body_length:log-0.1-100m";
@@ -47,6 +52,7 @@ export const BODY_LENGTH_RECALL_FIXTURE = Object.freeze({
   unitSI: LENGTH_UNIT_SI,
   preferredScaleId: BODY_LENGTH_LOG_RECALL_SCALE_ID,
   scales: Object.freeze(BODY_LENGTH_RECALL_SCALES_INTERNAL.map(serializeScale)),
+  silhouettes: Object.freeze(serializeSilhouetteFixture()),
 });
 
 /**
@@ -220,7 +226,7 @@ export function buildMagnitudeRecallItems(graph, options = {}) {
  *
  * @param {{nodes?: any[]}} graph
  * @param {{quantityKind?: string, unitSI?: string, scales?: readonly MagnitudeRecallScale[]}} [options]
- * @returns {{schemaVersion:string, quantityKind:string, unitSI:string, scales:ReturnType<typeof serializeScale>[], items:MagnitudeRecallItem[]}}
+ * @returns {{schemaVersion:string, quantityKind:string, unitSI:string, scales:ReturnType<typeof serializeScale>[], silhouettes:ReturnType<typeof serializeSilhouetteFixture>, items:MagnitudeRecallItem[]}}
  */
 export function buildMagnitudeRecallFixture(graph, options = {}) {
   const quantityKind = options.quantityKind || BODY_LENGTH_QUANTITY_KIND;
@@ -231,6 +237,7 @@ export function buildMagnitudeRecallFixture(graph, options = {}) {
     quantityKind,
     unitSI,
     scales: scales.map(serializeScale),
+    silhouettes: serializeSilhouetteFixture(),
     items: buildMagnitudeRecallItems(graph, { quantityKind, unitSI }),
   };
 }
@@ -437,6 +444,56 @@ function serializeScale(scale) {
     minValueSI: scale.minValueSI,
     maxValueSI: scale.maxValueSI,
     tickValuesSI: [...scale.tickValuesSI],
+  };
+}
+
+function serializeSilhouetteFixture() {
+  return {
+    schemaVersion: "1.0.0",
+    measurementKind: BODY_LENGTH_QUANTITY_KIND,
+    unitSI: LENGTH_UNIT_SI,
+    displayRule: {
+      position: "scale-normalized axisU",
+      length: "linear valueSI * drawUnitsPerMeter",
+      imageWidth: "valueSI * drawUnitsPerMeter / calibrationSpanFraction",
+      preserveAspectRatio: true,
+      writesDerivedDimensionsToKnowledge: false,
+    },
+    assets: BUNDLED_SILHOUETTE_ASSETS.map(serializeSilhouetteAsset),
+    bindings: BUNDLED_SILHOUETTE_BINDINGS.map(serializeSilhouetteBinding),
+    humanReference: {
+      itemId: HUMAN_BODY_LENGTH_REFERENCE.itemId,
+      label: HUMAN_BODY_LENGTH_REFERENCE.label,
+      valueSI: HUMAN_BODY_LENGTH_REFERENCE.valueSI,
+      unitSI: HUMAN_BODY_LENGTH_REFERENCE.unitSI,
+      referenceIds: [...HUMAN_BODY_LENGTH_REFERENCE.referenceIds],
+    },
+  };
+}
+
+/** @param {import('./magnitude-silhouette.js').SilhouetteAsset} asset */
+function serializeSilhouetteAsset(asset) {
+  return {
+    assetId: asset.assetId,
+    assetVersion: asset.assetVersion,
+    mimeType: asset.mimeType,
+    view: asset.view,
+    viewBoxWidth: asset.viewBoxWidth,
+    viewBoxHeight: asset.viewBoxHeight,
+    calibration: { ...asset.calibration },
+    sourceLabel: asset.sourceLabel,
+    licenseLabel: asset.licenseLabel,
+    schematic: asset.schematic,
+  };
+}
+
+/** @param {import('./magnitude-silhouette.js').SilhouetteBinding} binding */
+function serializeSilhouetteBinding(binding) {
+  return {
+    bindingId: binding.bindingId,
+    targetId: binding.targetId,
+    assetId: binding.assetId,
+    measurementKind: binding.measurementKind,
   };
 }
 

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 220" role="img" aria-labelledby="title">
+  <title>Human body-length reference schematic side silhouette</title>
+  <path fill="#18231d" d="M50 142c31-23 72-36 124-39l87-5c32-2 66-8 101-17 29-8 53-7 71 2 13 7 17 17 12 30-8 22-35 35-80 39-45 4-83 10-115 17-38 8-78 12-120 11-40-1-68-8-83-20-7-6-6-12 3-18z"/>
+  <circle cx="416" cy="91" r="28" fill="#18231d"/>
+  <path fill="#18231d" d="M170 157c12 7 22 17 30 31 6 10 8 20 7 31h-43c5-21 2-38-10-52 3-6 8-9 16-10zM287 157c11 8 19 19 24 33 3 11 4 21 2 29h-43c7-22 5-40-7-55 6-5 14-7 24-7z"/>
+</svg>

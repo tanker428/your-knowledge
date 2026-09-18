@@ -108,6 +108,16 @@ import {
   updateMagnitudeRecallDraftAnswer,
 } from "../features/knowledge-3d/magnitude-recall.js";
 import {
+  MAGNITUDE_SILHOUETTE_SCHEMA_VERSION,
+  buildSilhouettePresentationSpec,
+} from "../features/knowledge-3d/magnitude-silhouette.js";
+import {
+  HUMAN_BODY_LENGTH_REFERENCE,
+  BUNDLED_SILHOUETTE_ASSETS,
+  findBundledSilhouetteAsset,
+  findBundledSilhouetteBinding,
+} from "../features/knowledge-3d/magnitude-silhouette-assets.js";
+import {
   buildQuizResultEntries,
   describeQuizAvailability,
   getQuizCards,
@@ -304,6 +314,7 @@ export async function initApp(deps) {
     magnitudeRecallItemCursor: 0,
     magnitudeRecallNumericValue: "",
     magnitudeRecallNumericNeedsConfirm: false,
+    magnitudeRecallInputMessage: "",
     magnitudeRecallSuppressAxisClickUntil: 0,
     knowledgeZoom: 1,
     knowledgeAxis: "all",
@@ -2698,6 +2709,7 @@ export async function initApp(deps) {
         canCommit: false,
         numericValue: state.magnitudeRecallNumericValue,
         numericNeedsConfirm: state.magnitudeRecallNumericNeedsConfirm,
+        inputMessage: state.magnitudeRecallInputMessage,
         targetThumbnailSrc: null,
         resultCount,
       };
@@ -2739,6 +2751,7 @@ export async function initApp(deps) {
       canCommit: canCommitMagnitudeRecallAnswer(state.magnitudeRecallSession),
       numericValue: state.magnitudeRecallNumericValue,
       numericNeedsConfirm: state.magnitudeRecallNumericNeedsConfirm,
+      inputMessage: state.magnitudeRecallInputMessage,
       targetThumbnailSrc,
       resultCount,
     };
@@ -2797,9 +2810,12 @@ export async function initApp(deps) {
   }
 
   function graphForMagnitudeRecallDisplay(graph, recall) {
-    if (!recall?.item || recall.session?.phase === "feedback") return graph;
+    if (!recall?.item) return graph;
+    if (recall.session?.phase === "feedback") {
+      return withMagnitudeRecallSilhouetteMetadata(graph, recall);
+    }
     const answerMeasurement = magnitudeRecallDraftMeasurement(recall);
-    return {
+    const displayGraph = {
       ...graph,
       metadata: {
         ...graph.metadata,
@@ -2821,6 +2837,7 @@ export async function initApp(deps) {
         };
       }),
     };
+    return withMagnitudeRecallSilhouetteMetadata(displayGraph, recall);
   }
 
   function magnitudeRecallDraftMeasurement(recall) {
@@ -2840,9 +2857,107 @@ export async function initApp(deps) {
     };
   }
 
+  function withMagnitudeRecallSilhouetteMetadata(graph, recall) {
+    if (!recall?.item || !recall.scale) return graph;
+    return {
+      ...graph,
+      metadata: {
+        ...graph.metadata,
+        magnitudeRecall: {
+          phase: recall.session?.phase,
+          itemId: recall.item.itemId,
+          scaleId: recall.scale.id,
+        },
+        magnitudeSilhouettes: {
+          schemaVersion: MAGNITUDE_SILHOUETTE_SCHEMA_VERSION,
+          scaleId: recall.scale.id,
+          specs: magnitudeRecallSilhouetteSpecs(graph, recall),
+        },
+      },
+    };
+  }
+
+  function magnitudeRecallSilhouetteSpecs(graph, recall) {
+    if (!recall?.scale) return [];
+    const specs = [];
+    const displayItems = buildMagnitudeRecallItems(graph);
+    const feedbackResult = recall.session?.phase === "feedback" ? recall.session.result : null;
+    for (const item of displayItems) {
+      if (feedbackResult && item.itemId === recall.item?.itemId) continue;
+      const binding = findBundledSilhouetteBinding(item);
+      const asset = binding ? findBundledSilhouetteAsset(binding.assetId, BUNDLED_SILHOUETTE_ASSETS) : null;
+      if (!asset) continue;
+      const role = recall.session?.phase === "answer" && item.itemId === recall.item?.itemId
+        ? "answer"
+        : "reference";
+      const spec = buildSilhouettePresentationSpec({
+        itemId: item.itemId,
+        label: item.label,
+        asset,
+        role,
+        valueSI: item.correctValueSI,
+        scale: recall.scale,
+      });
+      if (spec) specs.push(spec);
+    }
+
+    if (feedbackResult && recall.item) {
+      const binding = findBundledSilhouetteBinding(recall.item);
+      const asset = binding ? findBundledSilhouetteAsset(binding.assetId, BUNDLED_SILHOUETTE_ASSETS) : null;
+      if (asset) {
+        const answerSpec = buildSilhouettePresentationSpec({
+          itemId: recall.item.itemId,
+          label: recall.item.label,
+          asset,
+          role: "answer",
+          valueSI: feedbackResult.answerValueSI,
+          axisU: Number.isFinite(recall.session?.answerU) ? recall.session.answerU : null,
+          scale: recall.scale,
+        });
+        const correctSpec = buildSilhouettePresentationSpec({
+          itemId: recall.item.itemId,
+          label: recall.item.label,
+          asset,
+          role: "correct",
+          valueSI: feedbackResult.correctValueSI,
+          scale: recall.scale,
+        });
+        if (answerSpec) specs.push(answerSpec);
+        if (correctSpec) specs.push(correctSpec);
+      }
+    }
+
+    const humanBinding = findBundledSilhouetteBinding(HUMAN_BODY_LENGTH_REFERENCE);
+    const humanAsset = humanBinding ? findBundledSilhouetteAsset(humanBinding.assetId, BUNDLED_SILHOUETTE_ASSETS) : null;
+    const humanSpec = humanAsset
+      ? buildSilhouettePresentationSpec({
+        itemId: HUMAN_BODY_LENGTH_REFERENCE.itemId,
+        label: HUMAN_BODY_LENGTH_REFERENCE.label,
+        asset: humanAsset,
+        role: "reference",
+        valueSI: HUMAN_BODY_LENGTH_REFERENCE.valueSI,
+        scale: recall.scale,
+      })
+      : null;
+    if (humanSpec) specs.push(humanSpec);
+
+    return specs
+      .sort((left, right) => left.axisU - right.axisU || left.itemId.localeCompare(right.itemId))
+      .map((spec, index) => ({
+        ...spec,
+        lane: magnitudeSilhouetteLane(index),
+      }));
+  }
+
+  function magnitudeSilhouetteLane(index) {
+    const distance = Math.floor(index / 2) + 1;
+    return index % 2 === 0 ? distance : -distance;
+  }
+
   function resetMagnitudeRecallNumericState() {
     state.magnitudeRecallNumericValue = "";
     state.magnitudeRecallNumericNeedsConfirm = false;
+    state.magnitudeRecallInputMessage = "";
   }
 
   function bindKnowledge3dEvents(graph, recall = null, baseGraph = graph) {
@@ -3057,6 +3172,8 @@ export async function initApp(deps) {
     if (readout) readout.textContent = label;
     const numericInput = $("[data-magnitude-recall-numeric-input]");
     if (numericInput) numericInput.value = state.magnitudeRecallNumericValue;
+    const message = $(".magnitude-recall-input-message", axisWrap.closest(".magnitude-recall-panel") || document);
+    if (message) message.textContent = state.magnitudeRecallInputMessage;
     const canSubmit = canCommitMagnitudeRecallAnswer(state.magnitudeRecallSession)
       && !state.magnitudeRecallNumericNeedsConfirm;
     const submit = $("[data-magnitude-recall-submit]");
@@ -3066,11 +3183,12 @@ export async function initApp(deps) {
 
   function updateMagnitudeRecallAnswerDraft(recall, input, options = {}) {
     if (!recall?.scale || recall.session?.phase !== "answer") return;
+    state.magnitudeRecallInputMessage = magnitudeRecallInputMessage(recall, input);
     state.magnitudeRecallSession = updateMagnitudeRecallDraftAnswer(state.magnitudeRecallSession, {
       scale: recall.scale,
       ...input,
     });
-    state.magnitudeRecallNumericNeedsConfirm = false;
+    state.magnitudeRecallNumericNeedsConfirm = Boolean(state.magnitudeRecallInputMessage);
     state.magnitudeRecallNumericValue = typeof options.numericValue === "string"
       ? options.numericValue
       : numericInputValueForMagnitudeRecallAnswer(state.magnitudeRecallSession);
@@ -3081,6 +3199,22 @@ export async function initApp(deps) {
     return Number.isFinite(session?.answerValueSI)
       ? Number(session.answerValueSI.toPrecision(6)).toString()
       : "";
+  }
+
+  function magnitudeRecallInputMessage(recall, input) {
+    if (!("answerValue" in input) && !("answerValueSI" in input)) return "";
+    const raw = input.answerValueSI ?? input.answerValue;
+    if (raw === "" || raw === null || raw === undefined) return "";
+    const value = Number(raw);
+    if (!Number.isFinite(value)) return "Enter a number in meters.";
+    if (value < 0) return "Body length cannot be negative.";
+    if (recall.scale.normalization === "log" && value <= 0) {
+      return "Log scale requires a value above 0 m.";
+    }
+    if (value < recall.scale.minValueSI || value > recall.scale.maxValueSI) {
+      return `Enter a value from ${formatMeters(recall.scale.minValueSI)} to ${formatMeters(recall.scale.maxValueSI)}.`;
+    }
+    return "";
   }
 
   function syncMagnitudeRecallBoardAnswer(baseGraph, recall) {

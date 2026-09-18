@@ -184,10 +184,11 @@
   position: absolute;
   left: 14px;
   right: 14px;
-  top: 58px;
-  height: 4px;
+  top: 56px;
+  height: 8px;
   border-radius: 99px;
   background: linear-gradient(90deg, #607f8c, #d58a70);
+  box-shadow: 0 2px 7px rgba(32, 37, 31, .16);
 }
 
 .magnitude-recall-tick,
@@ -202,39 +203,41 @@
 }
 
 .magnitude-recall-tick {
-  top: 45px;
-  gap: 20px;
+  top: 41px;
+  gap: 23px;
   color: var(--muted);
   font-size: 8px;
   font-weight: 850;
 }
 
 .magnitude-recall-tick i {
-  width: 1px;
-  height: 16px;
+  width: 3px;
+  height: 23px;
+  border-radius: 99px;
   background: var(--line);
 }
 
 .magnitude-recall-tick.major i {
-  height: 22px;
+  width: 4px;
+  height: 30px;
   background: var(--ink);
 }
 
 .magnitude-recall-marker {
-  top: 31px;
-  gap: 36px;
+  top: 26px;
+  gap: 43px;
   color: var(--accent);
   font-size: 8px;
   font-weight: 900;
 }
 
 .magnitude-recall-marker i {
-  width: 14px;
-  height: 14px;
-  border: 2px solid white;
+  width: 20px;
+  height: 20px;
+  border: 3px solid white;
   border-radius: 50%;
   background: var(--accent);
-  box-shadow: 0 0 0 2px rgba(232, 111, 54, .28);
+  box-shadow: 0 0 0 3px rgba(232, 111, 54, .28);
 }
 
 .magnitude-recall-marker.correct {
@@ -243,7 +246,38 @@
 
 .magnitude-recall-marker.correct i {
   background: var(--sage);
-  box-shadow: 0 0 0 2px rgba(90, 120, 77, .28);
+  box-shadow: 0 0 0 3px rgba(90, 120, 77, .28);
+}
+
+.magnitude-recall-pointer {
+  left: calc(14px + (100% - 28px) * var(--recall-left) / 100);
+  width: 38px;
+  height: 38px;
+  border-width: 3px;
+  box-shadow: 0 8px 18px rgba(20, 21, 19, .2);
+}
+
+.magnitude-recall-pointer::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: -1;
+  width: 4px;
+  height: 48px;
+  border-radius: 99px;
+  background: rgba(31, 36, 31, .55);
+  transform: translate(-50%, -3px);
+}
+
+.magnitude-recall-pointer i {
+  width: 14px;
+  height: 14px;
+}
+
+.magnitude-recall-pointer small {
+  top: 43px;
+  font-size: 9px;
 }
 
 .magnitude-recall-controls {
@@ -269,6 +303,13 @@
   color: var(--ink);
   padding: 8px;
   font-size: 10px;
+}
+
+.magnitude-recall-input-message {
+  flex-basis: 100%;
+  color: #8e3d29;
+  font-size: 9px;
+  font-weight: 850;
 }
 
 .magnitude-recall-feedback {

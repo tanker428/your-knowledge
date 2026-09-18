@@ -86,6 +86,85 @@ it does not position chronology or replace the existing timeline board. A
 geological interval from `145 Ma` to `100.5 Ma` therefore becomes a `44.5 Ma`
 duration magnitude before normalization.
 
+## Silhouette Comparison Contract
+
+Magnitude silhouette comparison is renderer-independent. The shared fixture
+from `buildMagnitudeRecallFixture()` now includes:
+
+- `silhouettes.assets`: static bundled SVG asset metadata, viewBox size, and
+  normalized calibration interval.
+- `silhouettes.bindings`: target/reference id to asset id links for
+  `body_length`.
+- `silhouettes.humanReference`: a `1.7 m` comparison reference that uses the
+  same rules as any other target.
+- `silhouettes.displayRule`: the math a renderer must reproduce.
+
+The SVG is not the measurement authority. Body length still comes from the
+existing `VisualizationMeasurement` / teaching item. A renderer derives display
+position and dimensions for the current view only, and must not write those
+derived coordinates or image sizes back to Reference, Observation, or Project
+JSON data.
+
+Asset calibration uses normalized fractions:
+
+```text
+calibrationSpanFraction = abs(bodyLengthEndX - bodyLengthStartX)
+bodyLengthDrawUnits = valueSI * drawUnitsPerMeter
+imageWidthDrawUnits = bodyLengthDrawUnits / calibrationSpanFraction
+imageHeightDrawUnits = imageWidthDrawUnits * (viewBoxHeight / viewBoxWidth)
+```
+
+The same image keeps a uniform X/Y scale, preserving the silhouette outline.
+Missing or failed SVG loads fall back to a calibrated length bar and label; the
+renderer must not pretend an ordinary photo thumbnail is a real-scale
+silhouette.
+
+## Recall State Transitions
+
+Recall uses one answer value:
+
+```text
+input pointer/numeric/keyboard -> updateMagnitudeRecallDraftAnswer()
+answerValueSI -> answerU + numeric readout + board position + silhouette length
+```
+
+While answering, the target's registered `body_length` measurement is removed
+from the display graph. If the learner has not answered yet, the target has no
+real-scale silhouette. Once `answerValueSI` exists, the target silhouette uses
+role `"answer"` and that value only. Comparison targets and the human reference
+continue to use registered/reference values.
+
+On confirm, the existing `scoreMagnitudeRecallAnswer()` remains the only
+scoring path. Feedback keeps the saved answer silhouette and adds a role
+`"correct"` silhouette for the representative curriculum value. Both use the
+same draw-units-per-meter scale and preserve their axis positions, so the
+learner compares both position and length directly.
+
+Invalid input is explicit: log scales reject `0` and negative values, out-of
+range typed values show a range message instead of being silently clamped, and
+linear `0` remains a valid length-zero answer distinct from unanswered `null`.
+
+## Log Position, Linear Length
+
+Axis position and silhouette size encode different things. For the default
+`body_length:log-0.1-100m` scale, `0.1`, `1`, `10`, and `100 m` are equally
+spaced on the number line:
+
+```text
+u = log(v / 0.1) / log(100 / 0.1)
+```
+
+The silhouette length is not log-transformed:
+
+```text
+displayed body length = valueSI * drawUnitsPerMeter
+```
+
+So a `10 m` target is ten times the silhouette length of a `1 m` target even
+though their axis positions are one tick interval apart. This keeps the number
+line readable for orders of magnitude while preserving real-size comparison in
+the silhouettes.
+
 ## No Regression Guarantee
 
 This model is projection-only:

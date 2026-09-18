@@ -24,6 +24,8 @@ export const MAGNITUDE_QUANTITY_BOARD_Z = -3.8;
 export const TIME_MAGNITUDE_BOARD_ID = "time:duration";
 export const TIME_MAGNITUDE_BOARD_Z = 3.8;
 export const TIME_MAGNITUDE_UNIT_LABEL = "Ma";
+export const MAGNITUDE_BODY_LENGTH_AXIS_MIN_VALUE_SI = 0.1;
+export const MAGNITUDE_BODY_LENGTH_AXIS_MAX_VALUE_SI = 100;
 
 const HOME_RADIUS_BY_LAYER = Object.freeze({
   experience: 3.5,
@@ -35,6 +37,7 @@ const BOARD_MIN_Y = -0.82;
 const BOARD_MAX_Y = 2.42;
 const BOARD_X_PADDING = 1.2;
 const BOARD_UNSET_PADDING = 2.8;
+const MAGNITUDE_UNSET_AXIS_GAP = 2.2;
 const MAGNITUDE_TICK_MULTIPLIERS = Object.freeze([1, 2, 5]);
 
 /**
@@ -265,10 +268,18 @@ export function magnitudeLayout(graph, options = {}) {
   const scaledXs = entries
     .filter((entry) => entry.resolved)
     .map((entry) => entry.resolved.normalizedScalar * scale);
+  const fixedQuantityAxisRange = axisKind === "quantity"
+    ? fixedBodyLengthMagnitudeAxisRange(scale)
+    : null;
   const unsetAreaX = options.unsetAreaX
-    ?? round(Math.max(SIZE_LAYOUT_DEFAULT_UNSET_X, ...scaledXs.map((x) => x + 3)));
-  const axisMinX = round(Math.min(-SIZE_LAYOUT_SCALE, ...scaledXs) - BOARD_X_PADDING);
-  const axisMaxX = round(Math.max(SIZE_LAYOUT_SCALE, ...scaledXs) + BOARD_X_PADDING);
+    ?? round(Math.max(
+      fixedQuantityAxisRange ? fixedQuantityAxisRange.axisMaxX + MAGNITUDE_UNSET_AXIS_GAP : SIZE_LAYOUT_DEFAULT_UNSET_X,
+      ...scaledXs.map((x) => x + 3),
+    ));
+  const axisMinX = fixedQuantityAxisRange?.axisMinX
+    ?? round(Math.min(-SIZE_LAYOUT_SCALE, ...scaledXs) - BOARD_X_PADDING);
+  const axisMaxX = fixedQuantityAxisRange?.axisMaxX
+    ?? round(Math.max(SIZE_LAYOUT_SCALE, ...scaledXs) + BOARD_X_PADDING);
   const quantity = quantityBoard({
     boardId: SIZE_BOARD_ID,
     quantityKind,
@@ -551,6 +562,17 @@ function timeMagnitudeAxis() {
     normalization: "log",
     unitSI: TIME_UNIT_SI,
     referenceValueSI: SECONDS_PER_MILLION_YEARS,
+  };
+}
+
+/**
+ * @param {number} scale
+ * @returns {{axisMinX:number, axisMaxX:number}}
+ */
+function fixedBodyLengthMagnitudeAxisRange(scale) {
+  return {
+    axisMinX: round(Math.log10(MAGNITUDE_BODY_LENGTH_AXIS_MIN_VALUE_SI) * scale),
+    axisMaxX: round(Math.log10(MAGNITUDE_BODY_LENGTH_AXIS_MAX_VALUE_SI) * scale),
   };
 }
 
