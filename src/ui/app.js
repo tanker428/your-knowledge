@@ -95,6 +95,7 @@ import {
   selectMagnitudeNodeRepresentativeObservationId,
 } from "../features/knowledge-3d/three-fixture-renderer.js";
 import {
+  BODY_LENGTH_LINEAR_RECALL_SCALE_ID,
   BODY_LENGTH_LOG_RECALL_SCALE_ID,
   BODY_LENGTH_RECALL_SCALES,
   buildMagnitudeRecallItems,
@@ -107,6 +108,12 @@ import {
   startNextMagnitudeRecallTrial,
   updateMagnitudeRecallDraftAnswer,
 } from "../features/knowledge-3d/magnitude-recall.js";
+import {
+  DEFAULT_METERS_PER_COUNT,
+  applyCountRecallEvent,
+  buildCountRecallAnswer,
+  scoreCountRecallTrial,
+} from "../features/knowledge-3d/magnitude-count-recall.js";
 import {
   buildQuizResultEntries,
   describeQuizAvailability,
@@ -148,6 +155,7 @@ import { quizAttemptContextKey, reconcileQuizQuestionTypes, renderQuizQuestionTy
 import { MISSING_PHOTO_SRC } from "./photo-assets.js";
 import { escapeHtml } from "./html.js";
 import { formatMeters, renderMagnitudeRecallPanel } from "./magnitude-recall-panel.js";
+import { renderMagnitudeCountPanel, syncMagnitudeCountPanel } from "./magnitude-count-panel.js";
 
 const MAX_UPLOAD_BATCH = 120;
 const STATUS_LABELS = {
@@ -305,6 +313,16 @@ export async function initApp(deps) {
     magnitudeRecallNumericValue: "",
     magnitudeRecallNumericNeedsConfirm: false,
     magnitudeRecallSuppressAxisClickUntil: 0,
+    magnitudeCountScaleId: BODY_LENGTH_LINEAR_RECALL_SCALE_ID,
+    /** @type {import('./magnitude-count-panel.js').CountSession|null} */
+    magnitudeCountSession: null,
+    magnitudeCountItemCursor: 0,
+    magnitudeCount: 0,
+    magnitudeCountNumericValue: "",
+    magnitudeCountHintUsed: false,
+    /** @type {number|null} */
+    magnitudeCountPausedAt: null,
+    magnitudeCountEnded: false,
     knowledgeZoom: 1,
     knowledgeAxis: "all",
     knowledgeExpanded: new Set(),
@@ -363,6 +381,8 @@ export async function initApp(deps) {
   let magnitudeRecallTargetThumbnail = null;
   let magnitudeRecallTargetThumbnailPendingKey = null;
   let magnitudeRecallTargetThumbnailToken = 0;
+  /** @type {AbortController|null} */
+  let magnitudeCountEvents = null;
 
   /**
    * The bundled demo photos, as records. The migration layers saved state on
@@ -2152,6 +2172,8 @@ export async function initApp(deps) {
   void renderLegacyKnowledge;
 
   function disposeKnowledge3d() {
+    magnitudeCountEvents?.abort();
+    pauseMagnitudeCount();
     knowledge3dMountToken += 1;
     releaseKnowledge3dController();
     disposeMagnitudeRecallTargetThumbnail();
@@ -2303,7 +2325,11 @@ export async function initApp(deps) {
     const scope = currentKnowledge3dScope();
     const mode = currentKnowledge3dMode();
     const magnitudeAxisKind = mode === "magnitude" ? currentMagnitudeAxisKind() : undefined;
-    if (mode !== "magnitude") disposeMagnitudeRecallTargetThumbnail();
+    if (mode !== "magnitude") {
+      disposeMagnitudeRecallTargetThumbnail();
+      magnitudeCountEvents?.abort();
+      pauseMagnitudeCount();
+    }
 
     if (scope === "activeVisit" && !state.activeVisitId) {
       disposeKnowledge3d();
@@ -2449,7 +2475,7 @@ export async function initApp(deps) {
     const mode = currentKnowledge3dMode();
     const scope = currentKnowledge3dScope();
     const displayNodeCount = knowledge3dDisplayNodes(graph, mode).length;
-    return `<div class="kg-canvas-header"><span>WEB 3D</span><strong>${escapeHtml(knowledge3dModeLabel(mode))}</strong><span class="kg-header-actions"><button class="text-button" data-knowledge3d-reset-camera>カメラを戻す</button></span></div><div id="magnitudeAxisSelectorHost">${mode === "magnitude" ? renderMagnitudeAxisSelector() : ""}</div><div id="knowledge3dStage" class="knowledge-3d-stage knowledge-3d-mode-${escapeHtml(mode)}"><div class="knowledge-3d-loading"><strong>3D知識空間を読み込み中</strong><small>${escapeHtml(knowledge3dScopeLabel(scope))}・${displayNodeCount} nodes</small></div></div><div class="knowledge-3d-legend">${renderKnowledge3dLegend(mode)}</div><div id="magnitudeRecallPanelHost">${recall ? renderMagnitudeRecallPanel(recall) : ""}</div>`;
+    return `<div class="kg-canvas-header"><span>WEB 3D</span><strong>${escapeHtml(knowledge3dModeLabel(mode))}</strong><span class="kg-header-actions"><button class="text-button" data-knowledge3d-reset-camera>カメラを戻す</button></span></div><div id="magnitudeAxisSelectorHost">${mode === "magnitude" ? renderMagnitudeAxisSelector() : ""}</div><div id="knowledge3dStage" class="knowledge-3d-stage knowledge-3d-mode-${escapeHtml(mode)}"><div class="knowledge-3d-loading"><strong>3D知識空間を読み込み中</strong><small>${escapeHtml(knowledge3dScopeLabel(scope))}・${displayNodeCount} nodes</small></div></div><div class="knowledge-3d-legend">${renderKnowledge3dLegend(mode)}</div><div id="magnitudeRecallPanelHost">${recall ? renderMagnitudeRecallPanel(recall) : ""}</div><div id="magnitudeCountPanelHost"></div>`;
   }
 
   function updateKnowledge3dCanvasChrome(graph, mode, scope, recall = null) {
@@ -2684,6 +2710,231 @@ export async function initApp(deps) {
     };
   }
 
+  // Count answers have their own cursor, draft, phase and telemetry. Never use
+  // the count as quizScore or feed it into knowledge/progress learning events.
+  function resetMagnitudeCountDraft() {
+    state.magnitudeCount = 0;
+    state.magnitudeCountNumericValue = "";
+    state.magnitudeCountHintUsed = false;
+    state.magnitudeCountPausedAt = null;
+  }
+
+  function pauseMagnitudeCount() {
+    if (state.magnitudeCountSession?.phase === "answer" && state.magnitudeCountPausedAt === null) {
+      state.magnitudeCountPausedAt = Date.now();
+    }
+  }
+
+  function prepareMagnitudeCount(graph) {
+    const items = buildMagnitudeRecallItems(graph).filter((item) => BODY_LENGTH_RECALL_SCALES.some(
+      (scale) => item.correctValueSI >= scale.minValueSI && item.correctValueSI <= scale.maxValueSI,
+    ));
+    const current = state.magnitudeCountSession;
+    const item = items.find((entry) => entry.itemId === current?.itemId)
+      || items[state.magnitudeCountItemCursor % Math.max(1, items.length)] || null;
+    let scale = findMagnitudeRecallScale(current?.scaleId || state.magnitudeCountScaleId);
+    // A larger item must remain answerable when moving on from the 0–15 m scale.
+    if (item && (!current || current.phase === "study" || current.itemId !== item.itemId)
+      && (item.correctValueSI > scale.maxValueSI || item.correctValueSI < scale.minValueSI)) {
+      scale = findMagnitudeRecallScale(item.correctValueSI > scale.maxValueSI
+        ? BODY_LENGTH_LOG_RECALL_SCALE_ID : BODY_LENGTH_LINEAR_RECALL_SCALE_ID);
+    }
+    if (!item) {
+      state.magnitudeCountSession = null;
+      resetMagnitudeCountDraft();
+    } else if (!current || current.itemId !== item.itemId || current.scaleId !== scale.id) {
+      state.magnitudeCountScaleId = scale.id;
+      state.magnitudeCountSession = { ...startMagnitudeRecallTrial({ itemId: item.itemId, scaleId: scale.id, startedAtMs: Date.now() }), result: null };
+      resetMagnitudeCountDraft();
+    }
+    return {
+      scales: BODY_LENGTH_RECALL_SCALES,
+      scale,
+      items,
+      item,
+      session: state.magnitudeCountSession,
+      count: state.magnitudeCount,
+      metersPerCount: DEFAULT_METERS_PER_COUNT,
+      numericValue: state.magnitudeCountNumericValue,
+      canCommit: canCommitMagnitudeRecallAnswer(state.magnitudeCountSession),
+      paused: state.magnitudeCountPausedAt !== null,
+      ended: state.magnitudeCountEnded,
+      hintUsed: state.magnitudeCountHintUsed,
+      resultCount: state.quizResults.filter((result) => result.quizType === "magnitude-count-recall").length,
+    };
+  }
+
+  function renderMagnitudeCount(graph) {
+    magnitudeCountEvents?.abort();
+    const host = $("#magnitudeCountPanelHost");
+    if (!host) return;
+    if (currentKnowledge3dMode() !== "magnitude") {
+      host.innerHTML = "";
+      return;
+    }
+    const view = prepareMagnitudeCount(graph);
+    host.innerHTML = renderMagnitudeCountPanel(view);
+    syncMagnitudeCountPanel(host, view);
+    if (!view.item || !view.session) return;
+    magnitudeCountEvents = new AbortController();
+    const { signal } = magnitudeCountEvents;
+    const on = (selector, type, handler) => {
+      $$(selector, host).forEach((element) => element.addEventListener(type, handler, { signal }));
+    };
+    const canEdit = () => state.magnitudeCountSession?.phase === "answer"
+      && !state.magnitudeCountSession.result && !state.magnitudeCountEnded && state.magnitudeCountPausedAt === null;
+    const refresh = () => renderMagnitudeCount(graph);
+    const sync = () => syncMagnitudeCountPanel(host, prepareMagnitudeCount(graph));
+    const draft = (inputMethod, hasAnswer = true) => {
+      if (!canEdit()) return;
+      const raw = state.magnitudeCountNumericValue;
+      const overrideValueSI = raw.trim() ? Number(raw) : undefined;
+      const answer = hasAnswer && buildCountRecallAnswer({
+        scale: view.scale,
+        count: state.magnitudeCount,
+        metersPerCount: DEFAULT_METERS_PER_COUNT,
+        overrideValueSI,
+      });
+      // Invalid/empty overrides must clear the draft, never fall back to an old count.
+      const validOverride = !raw || (Number.isFinite(overrideValueSI) && overrideValueSI >= 0);
+      const updated = updateMagnitudeRecallDraftAnswer(state.magnitudeCountSession, {
+        scale: view.scale, answerValueSI: answer && validOverride ? answer.answerValueSI : null, inputMethod,
+      });
+      state.magnitudeCountSession = { ...updated, result: null };
+      sync();
+    };
+    const operate = (event, inputMethod) => {
+      if (!canEdit()) return;
+      const previousCount = state.magnitudeCount;
+      state.magnitudeCount = applyCountRecallEvent(state.magnitudeCount, event);
+      state.magnitudeCountNumericValue = "";
+      draft(inputMethod, event === "increment" || (event === "decrement" && previousCount > 0));
+    };
+    on("[data-magnitude-count-scale]", "click", (event) => {
+      if (state.magnitudeCountSession?.phase !== "study" || state.magnitudeCountEnded) return;
+      const scaleId = event.currentTarget.dataset.magnitudeCountScale;
+      if (!findMagnitudeRecallScale(scaleId) || event.currentTarget.disabled) return;
+      state.magnitudeCountScaleId = scaleId;
+      state.magnitudeCountSession = { ...startMagnitudeRecallTrial({ itemId: view.item.itemId, scaleId, startedAtMs: Date.now() }), result: null };
+      resetMagnitudeCountDraft();
+      refresh();
+    });
+    on("[data-magnitude-count-start]", "click", () => {
+      if (state.magnitudeCountSession?.phase !== "study" || state.magnitudeCountEnded) return;
+      const started = enterMagnitudeRecallAnswerMode(state.magnitudeCountSession);
+      state.magnitudeCountSession = { ...started, startedAtMs: Date.now(), result: null };
+      refresh();
+      $("[data-magnitude-count-increment]", host)?.focus();
+    });
+    // Click is the sole pointer/touch activation: pointerdown/up never increment.
+    // Cancel native keyboard activation so a key plus its synthetic click counts once.
+    let keyboardActivation = false;
+    let keyboardReleaseTimer = null;
+    signal.addEventListener("abort", () => clearTimeout(keyboardReleaseTimer), { once: true });
+    const heldKeys = new Set();
+    on("[data-magnitude-count-increment]", "pointerdown", () => { keyboardActivation = false; });
+    on("[data-magnitude-count-increment]", "click", (event) => {
+      if (event.button !== 0 || (keyboardActivation && event.detail === 0)) return;
+      operate("increment", "axis-click");
+    });
+    on("[data-magnitude-count-increment]", "keydown", (event) => {
+      if (event.key !== " " && event.key !== "Enter") return;
+      if (event.isComposing || event.ctrlKey || event.altKey || event.metaKey) return;
+      event.preventDefault();
+      clearTimeout(keyboardReleaseTimer);
+      keyboardActivation = true;
+      if (event.repeat || heldKeys.has(event.key)) return;
+      heldKeys.add(event.key);
+      operate("increment", "keyboard");
+    });
+    on("[data-magnitude-count-increment]", "keyup", (event) => {
+      if (event.key !== " " && event.key !== "Enter") return;
+      event.preventDefault();
+      heldKeys.delete(event.key);
+      keyboardReleaseTimer = setTimeout(() => { keyboardActivation = false; }, 0);
+    });
+    on("[data-magnitude-count-increment]", "blur", () => { heldKeys.clear(); keyboardActivation = false; });
+    on("[data-magnitude-count-undo]", "click", (event) => operate("decrement", event.detail === 0 ? "keyboard" : "axis-click"));
+    on("[data-magnitude-count-reset]", "click", (event) => operate("reset", event.detail === 0 ? "keyboard" : "axis-click"));
+    on("[data-magnitude-count-numeric-input]", "input", (event) => {
+      if (!canEdit()) return;
+      state.magnitudeCountNumericValue = event.target.value;
+      draft("numeric", Boolean(event.target.value.trim()));
+    });
+    on("[data-magnitude-count-hint]", "click", () => {
+      if (!canEdit()) return;
+      state.magnitudeCountHintUsed = true;
+      sync();
+    });
+    on("[data-magnitude-count-submit]", "click", () => {
+      const session = state.magnitudeCountSession;
+      if (!canEdit() || !canCommitMagnitudeRecallAnswer(session)) return;
+      const now = Date.now();
+      const result = scoreCountRecallTrial({
+        itemId: session.itemId, scaleId: session.scaleId, count: state.magnitudeCount,
+        metersPerCount: DEFAULT_METERS_PER_COUNT,
+        overrideValueSI: state.magnitudeCountNumericValue.trim() ? Number(state.magnitudeCountNumericValue) : undefined,
+        correctValueSI: view.item.correctValueSI, elapsedMs: now - session.startedAtMs,
+        inputMethod: session.inputMethod, hintUsed: state.magnitudeCountHintUsed,
+      });
+      if (!result) return;
+      state.magnitudeCountSession = { ...session, phase: "feedback", answeredAtMs: now, result };
+      const completedAt = new Date(now).toISOString();
+      state.quizResults.push({
+        id: uid("magnitude-count-result"), quizType: "magnitude-count-recall",
+        quizId: `magnitude-count-recall:${session.itemId}`, attemptId: uid("magnitude-count-attempt"),
+        completedAt, answeredAt: completedAt, ...result,
+        answer: { itemId: session.itemId, scaleId: session.scaleId, u: session.answerU, valueSI: result.answerValueSI },
+      });
+      persist();
+      refresh();
+    });
+    on("[data-magnitude-count-next]", "click", () => {
+      if (state.magnitudeCountSession?.phase !== "feedback" || state.magnitudeCountEnded) return;
+      const index = view.items.findIndex((entry) => entry.itemId === state.magnitudeCountSession.itemId);
+      state.magnitudeCountItemCursor = (index + 1) % view.items.length;
+      const next = startNextMagnitudeRecallTrial(state.magnitudeCountSession, {
+        itemId: view.items[state.magnitudeCountItemCursor].itemId,
+        scaleId: state.magnitudeCountScaleId, startedAtMs: Date.now(),
+      });
+      state.magnitudeCountSession = { ...next, result: null };
+      resetMagnitudeCountDraft();
+      refresh();
+    });
+    on("[data-magnitude-count-pause]", "click", () => {
+      if (state.magnitudeCountSession?.phase !== "answer") return;
+      if (state.magnitudeCountPausedAt === null) pauseMagnitudeCount();
+      else {
+        state.magnitudeCountSession.startedAtMs += Date.now() - state.magnitudeCountPausedAt;
+        state.magnitudeCountPausedAt = null;
+      }
+      refresh();
+    });
+    on("[data-magnitude-count-end]", "click", () => {
+      state.magnitudeCountEnded = true;
+      state.magnitudeCountSession = { ...startMagnitudeRecallTrial({ itemId: view.item.itemId, scaleId: view.scale.id }), result: null };
+      resetMagnitudeCountDraft();
+      refresh();
+      showToast("回数学習を終了しました");
+    });
+    on("[data-magnitude-count-restart]", "click", () => {
+      state.magnitudeCountEnded = false;
+      state.magnitudeCountSession = null;
+      resetMagnitudeCountDraft();
+      refresh();
+    });
+    on("[data-magnitude-count-download]", "click", () => {
+      const result = state.magnitudeCountSession?.result;
+      if (!result || state.magnitudeCountSession.phase !== "feedback") return;
+      const blob = new Blob([JSON.stringify(result, null, 2)], { type: "application/json" });
+      void shareOrDownload(blob, `magnitude-count-${result.itemId.replace(/[^a-zA-Z0-9_-]/g, "-")}-${new Date().toISOString().slice(0, 10)}.json`, "回数回答の結果")
+        .then((outcome) => {
+          if (outcome === "shared") showToast("学習結果を共有しました");
+          else if (outcome === "downloaded") showToast("学習結果を書き出しました");
+        }).catch(() => showToast("結果を書き出せませんでした。もう一度お試しください"));
+    });
+  }
+
   function prepareMagnitudeRecall(graph) {
     const items = buildMagnitudeRecallItems(graph);
     const resultCount = state.quizResults.filter((result) => result.quizType === "magnitude-recall").length;
@@ -2881,6 +3132,7 @@ export async function initApp(deps) {
       button.onclick = () => openPhotoModal(button.dataset.openPhoto);
     });
     bindMagnitudeRecallEvents(recall, baseGraph);
+    renderMagnitudeCount(baseGraph);
   }
 
   function bindMagnitudeRecallEvents(recall, baseGraph) {
