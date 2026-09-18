@@ -23,6 +23,7 @@ const SHELL_ASSETS = [
   "./",
   "./index.html",
   "./styles.css",
+  "./magnitude-recall.css",
   "./manifest.webmanifest",
   "./favicon.svg",
   "./pwa-icon-192.png",

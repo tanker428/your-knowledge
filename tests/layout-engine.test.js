@@ -4,14 +4,22 @@ import {
   DEFAULT_SIZE_QUANTITY_KIND,
   homeLayout,
   layoutVisualizationGraph,
+  MAGNITUDE_QUANTITY_BOARD_Z,
+  magnitudeLayout,
   relationLayout,
   SEMANTIC_LAYER_Y,
+  SIZE_BOARD_ID,
+  SIZE_BOARD_Z,
   sizeLayout,
   SIZE_LAYOUT_DEFAULT_UNSET_X,
   SIZE_LAYOUT_SCALE,
+  TIME_MAGNITUDE_BOARD_ID,
+  TIME_MAGNITUDE_BOARD_Z,
+  TIME_MAGNITUDE_UNIT_LABEL,
   VISUALIZATION_LAYOUT_SCHEMA_VERSION,
   visualizationNodesForLayout,
 } from "../src/features/knowledge-3d/layout-engine.js";
+import { SECONDS_PER_MILLION_YEARS, TIME_UNIT_SI } from "../src/features/knowledge-3d/magnitude.js";
 
 describe("knowledge 3D layout engine", () => {
   it("creates deterministic Home layout with fixed semantic Y layers", () => {
@@ -63,16 +71,111 @@ describe("knowledge 3D layout engine", () => {
     expect(layout.nodes.some((node) => node.id.startsWith("landmark:"))).toBe(false);
     expect(concept).toMatchObject({
       zone: "scaled",
+      boardId: SIZE_BOARD_ID,
       representativeValue: 4.2,
       rangeSI: null,
     });
     expect(concept?.x).toBeCloseTo(Math.log10(4.2) * SIZE_LAYOUT_SCALE, 6);
     expect(ranged).toMatchObject({
       zone: "scaled",
+      boardId: SIZE_BOARD_ID,
       representativeValue: Math.sqrt(4 * 5.5),
       rangeSI: { minSI: 4, maxSI: 5.5 },
     });
     expect(ranged?.x).toBeCloseTo(Math.log10(Math.sqrt(4 * 5.5)) * SIZE_LAYOUT_SCALE, 6);
+  });
+
+  it("projects Size layout as a flat display-only number-line board", () => {
+    const layout = sizeLayout(VISUALIZATION_GRAPH_FIXTURE);
+    const board = layout.metadata.boards[0];
+    const oneMeter = board.ticks.find((tick) => tick.valueSI === 1);
+    const tenMeters = board.ticks.find((tick) => tick.valueSI === 10);
+
+    expect(layout.metadata.boards).toHaveLength(1);
+    expect(board).toMatchObject({
+      id: SIZE_BOARD_ID,
+      axisKind: "quantity",
+      axisLabel: DEFAULT_SIZE_QUANTITY_KIND,
+      normalization: "log",
+      unitSI: "m",
+      scale: SIZE_LAYOUT_SCALE,
+      z: SIZE_BOARD_Z,
+      unsetAreaX: SIZE_LAYOUT_DEFAULT_UNSET_X,
+    });
+    expect(new Set(layout.nodes.map((node) => node.boardId))).toEqual(new Set([SIZE_BOARD_ID]));
+    expect(new Set(layout.nodes.map((node) => node.z))).toEqual(new Set([SIZE_BOARD_Z]));
+    expect(layout.nodes.filter((node) => node.zone === "scaled").every((node) => node.normalizedScalar !== null)).toBe(true);
+    expect(oneMeter).toMatchObject({ normalizedScalar: 0, x: 0, label: "1 m", major: true });
+    expect(tenMeters).toMatchObject({ label: "10 m", major: true });
+    expect(tenMeters?.x).toBeCloseTo(SIZE_LAYOUT_SCALE, 6);
+  });
+
+  it("projects quantity as the default single magnitude board", () => {
+    const layout = magnitudeLayout(VISUALIZATION_GRAPH_FIXTURE);
+    const quantity = layout.metadata.boards[0];
+    const explicitQuantity = magnitudeLayout(VISUALIZATION_GRAPH_FIXTURE, { magnitudeAxisKind: "quantity" });
+    const fukuiraptor = layout.nodes.find((node) => node.id === "concept:taxon:fukuiraptor");
+    const unresolved = layout.nodes.find((node) => node.id === "concept:unresolved:o-unresolved");
+
+    expect(layout.mode).toBe("magnitude");
+    expect(JSON.stringify(layout)).toBe(JSON.stringify(explicitQuantity));
+    expect(layout.metadata.boards).toHaveLength(1);
+    expect(quantity).toMatchObject({
+      id: SIZE_BOARD_ID,
+      axisKind: "quantity",
+      axisLabel: DEFAULT_SIZE_QUANTITY_KIND,
+      normalization: "log",
+      z: MAGNITUDE_QUANTITY_BOARD_Z,
+    });
+    expect(layout.metadata.boards.some((board) => board.id === TIME_MAGNITUDE_BOARD_ID)).toBe(false);
+    expect(new Set(layout.nodes.map((node) => node.boardId))).toEqual(new Set([SIZE_BOARD_ID]));
+    expect(layout.nodes.some((node) => node.id.startsWith("experience:"))).toBe(false);
+    expect(layout.nodes.some((node) => node.id.startsWith("landmark:"))).toBe(false);
+    expect(fukuiraptor).toMatchObject({
+      zone: "scaled",
+      boardId: SIZE_BOARD_ID,
+      z: MAGNITUDE_QUANTITY_BOARD_Z,
+    });
+    expect(unresolved).toMatchObject({
+      zone: "unset",
+      boardId: SIZE_BOARD_ID,
+      representativeValue: null,
+    });
+  });
+
+  it("projects duration as the selected single magnitude board", () => {
+    const layout = magnitudeLayout(VISUALIZATION_GRAPH_FIXTURE, { magnitudeAxisKind: "time" });
+    const time = layout.metadata.boards[0];
+    const earlyCretaceous = layout.nodes.find((node) => node.id === "landmark:geo:early-cretaceous");
+
+    expect(layout.mode).toBe("magnitude");
+    expect(layout.metadata.boards).toHaveLength(1);
+    expect(time).toMatchObject({
+      id: TIME_MAGNITUDE_BOARD_ID,
+      axisKind: "time",
+      axisLabel: "duration",
+      normalization: "log",
+      unitSI: TIME_UNIT_SI,
+      unitLabel: TIME_MAGNITUDE_UNIT_LABEL,
+      referenceValueSI: SECONDS_PER_MILLION_YEARS,
+      z: TIME_MAGNITUDE_BOARD_Z,
+    });
+    expect(layout.metadata.boards.some((board) => board.id === SIZE_BOARD_ID)).toBe(false);
+    expect(new Set(layout.nodes.map((node) => node.boardId))).toEqual(new Set([TIME_MAGNITUDE_BOARD_ID]));
+    expect(layout.nodes.some((node) => node.id.startsWith("experience:"))).toBe(false);
+    expect(layout.nodes.some((node) => node.id === "concept:taxon:fukuiraptor")).toBe(false);
+    expect(earlyCretaceous).toMatchObject({
+      zone: "scaled",
+      boardId: TIME_MAGNITUDE_BOARD_ID,
+      z: TIME_MAGNITUDE_BOARD_Z,
+      representativeValue: 44.5 * SECONDS_PER_MILLION_YEARS,
+    });
+    expect(earlyCretaceous?.x).toBeCloseTo(Math.log10(44.5) * SIZE_LAYOUT_SCALE, 6);
+    expect(time?.ticks.find((tick) => tick.label === `1 ${TIME_MAGNITUDE_UNIT_LABEL}`)).toMatchObject({
+      normalizedScalar: 0,
+      x: 0,
+      major: true,
+    });
   });
 
   it("keeps unknown or incompatible measurements in the unset area", () => {
@@ -126,9 +229,21 @@ describe("knowledge 3D layout engine", () => {
     expect(visualizationNodesForLayout(VISUALIZATION_GRAPH_FIXTURE, { mode: "home" }))
       .toEqual(VISUALIZATION_GRAPH_FIXTURE.nodes);
     const sizeNodes = visualizationNodesForLayout(VISUALIZATION_GRAPH_FIXTURE, { mode: "size" });
+    const magnitudeNodes = visualizationNodesForLayout(VISUALIZATION_GRAPH_FIXTURE, { mode: "magnitude" });
+    const timeMagnitudeNodes = visualizationNodesForLayout(VISUALIZATION_GRAPH_FIXTURE, {
+      mode: "magnitude",
+      magnitudeAxisKind: "time",
+    });
 
     expect(sizeNodes).toHaveLength(sizeLayout(VISUALIZATION_GRAPH_FIXTURE).nodes.length);
     expect(sizeNodes.every((node) => node.kind === "concept" || node.kind === "entity")).toBe(true);
+    expect(magnitudeNodes).toHaveLength(magnitudeLayout(VISUALIZATION_GRAPH_FIXTURE).nodes.length);
+    expect(magnitudeNodes.some((node) => node.kind === "landmark")).toBe(false);
+    expect(magnitudeNodes.every((node) => node.kind === "concept" || node.kind === "entity")).toBe(true);
+    expect(timeMagnitudeNodes).toHaveLength(magnitudeLayout(VISUALIZATION_GRAPH_FIXTURE, { magnitudeAxisKind: "time" }).nodes.length);
+    expect(timeMagnitudeNodes.some((node) => node.kind === "landmark")).toBe(true);
+    expect(magnitudeNodes.every((node) => node.kind !== "experience")).toBe(true);
+    expect(timeMagnitudeNodes.every((node) => node.kind !== "experience")).toBe(true);
   });
 
   it("dispatches layoutVisualizationGraph by mode without mutating the graph", () => {
@@ -137,6 +252,7 @@ describe("knowledge 3D layout engine", () => {
     expect(layoutVisualizationGraph(VISUALIZATION_GRAPH_FIXTURE, { mode: "home" }).mode).toBe("home");
     expect(layoutVisualizationGraph(VISUALIZATION_GRAPH_FIXTURE, { mode: "relation" }).mode).toBe("relation");
     expect(layoutVisualizationGraph(VISUALIZATION_GRAPH_FIXTURE, { mode: "size" }).mode).toBe("size");
+    expect(layoutVisualizationGraph(VISUALIZATION_GRAPH_FIXTURE, { mode: "magnitude" }).mode).toBe("magnitude");
     expect(JSON.stringify(VISUALIZATION_GRAPH_FIXTURE)).toBe(before);
   });
 });

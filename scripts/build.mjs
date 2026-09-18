@@ -21,6 +21,7 @@ const SHIP = [
   ".nojekyll",
   "index.html",
   "styles.css",
+  "magnitude-recall.css",
   "sw.js",
   "manifest.webmanifest",
   "favicon.svg",
@@ -147,6 +148,7 @@ function checkNoAbsolutePaths() {
     .concat([
       path.join(root, "index.html"),
       path.join(root, "styles.css"),
+      path.join(root, "magnitude-recall.css"),
       path.join(root, "sw.js"),
     ])) {
     if (!/\.(js|html|css|json|webmanifest)$/.test(file)) continue;

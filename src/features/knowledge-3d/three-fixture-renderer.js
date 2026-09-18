@@ -16,14 +16,31 @@ const NODE_COLORS = Object.freeze({
 });
 const NODE_Y_SCALE = 2.6;
 const LABEL_Y_OFFSET = 0.55;
+const LABEL_SPRITE_HEIGHT = 0.8;
+const SELECTED_NODE_SCALE = 1.28;
+const MAGNITUDE_LABEL_THUMBNAIL_GAP = 0.14;
 const MODE_TRANSITION_MS = 520;
 /** Labels draw on top of nodes and edges instead of being clipped by them. */
 const LABEL_RENDER_ORDER = 900;
+const MAGNITUDE_THUMBNAIL_RENDER_ORDER = 520;
+const MAGNITUDE_FALLBACK_RENDER_ORDER = 510;
+const MAGNITUDE_THUMBNAIL_MIN_SIZE = 0.92;
+const MAGNITUDE_THUMBNAIL_MAX_SIZE = 1.72;
+const CAMERA_FOV_DEGREES = 52;
 const CAMERA_HOME = Object.freeze({ x: 10, y: 8, z: 14 });
 const CAMERA_TARGET = Object.freeze({ x: 0, y: 1, z: 0 });
 const CAMERA_ZOOM_MIN = 0.35;
 const CAMERA_ZOOM_MAX = 2.6;
 const CAMERA_ZOOM_STEP = 1.12;
+const MAGNITUDE_FRONT_CAMERA_DIRECTION = Object.freeze({ x: 0, y: 0, z: 1 });
+const MAGNITUDE_FIT_MARGIN = 1.18;
+const MAGNITUDE_FIT_EXTRA_DISTANCE = 0.65;
+const MAGNITUDE_FIT_BOARD_X_PADDING = 1.9;
+const MAGNITUDE_FIT_BOARD_Y_PADDING = 0.95;
+const MAGNITUDE_FIT_BOARD_Z_PADDING = 0.85;
+const MAGNITUDE_FIT_NODE_X_PADDING = 1.45;
+const MAGNITUDE_FIT_NODE_Z_PADDING = 0.9;
+const BOARD_LAYER_Y = Object.freeze([0, 1, 2]);
 
 /**
  * @typedef {object} Knowledge3dController
@@ -31,15 +48,95 @@ const CAMERA_ZOOM_STEP = 1.12;
  * @property {string|null} reason
  * @property {() => void} dispose
  * @property {() => void} [resetCamera]
- * @property {(options:{graph?: any, mode?: "home"|"relation"|"size", selectedNodeId?: string|null, autoRotate?: boolean}) => void} [updateLayout]
+ * @property {(options:{graph?: any, mode?: "home"|"relation"|"size"|"magnitude", selectedNodeId?: string|null, autoRotate?: boolean, magnitudeAxisKind?: "quantity"|"time", instant?: boolean}) => void} [updateLayout]
  */
+
+/**
+ * Pick one Observation to visually represent a magnitude node.
+ *
+ * Selection is deterministic: use the lexicographically smallest non-empty
+ * `node.observationIds` value. If the node has no direct Observation trace,
+ * collect Observation ids from graph nodes that share any of its `entityIds`,
+ * sort those ids, and use the smallest.
+ *
+ * @param {{nodes?: any[]}|null|undefined} graph
+ * @param {{observationIds?: unknown[], entityIds?: unknown[]}|null|undefined} node
+ * @returns {string|null}
+ */
+export function selectMagnitudeNodeRepresentativeObservationId(graph, node) {
+  const direct = sortedUniqueStrings(node?.observationIds);
+  if (direct.length) return direct[0];
+
+  const entityIds = new Set(sortedUniqueStrings(node?.entityIds));
+  if (!entityIds.size || !Array.isArray(graph?.nodes)) return null;
+
+  const derived = [];
+  for (const candidate of graph.nodes) {
+    if (!Array.isArray(candidate?.entityIds)) continue;
+    const sharesEntity = sortedUniqueStrings(candidate.entityIds).some((id) => entityIds.has(id));
+    if (sharesEntity) derived.push(...sortedUniqueStrings(candidate.observationIds));
+  }
+  return sortedUniqueStrings(derived)[0] || null;
+}
+
+/**
+ * Compute a magnitude-only fit-to-view camera frame without depending on
+ * Three.js objects. The returned camera frame uses the renderer's established
+ * front-facing viewing direction, and targets the selected board's layout
+ * bounds so tick labels and the number line are readable head-on.
+ *
+ * @param {import('./layout-engine.js').VisualizationLayout} layout
+ * @param {{width?: number, height?: number}} [viewport]
+ * @returns {{position:{x:number,y:number,z:number}, target:{x:number,y:number,z:number}, bounds:{min:{x:number,y:number,z:number}, max:{x:number,y:number,z:number}}, corners:{x:number,y:number,z:number}[], verticalFovDegrees:number, horizontalFovDegrees:number, aspect:number}|null}
+ */
+export function computeMagnitudeFitCameraPlacement(layout, viewport = {}) {
+  if (layout?.mode !== "magnitude") return null;
+  const bounds = magnitudeLayoutSceneBounds(layout);
+  if (!bounds) return null;
+  const width = positiveFiniteNumber(viewport.width) || 640;
+  const height = positiveFiniteNumber(viewport.height) || 420;
+  const aspect = width / height;
+  const verticalFovRadians = degreesToRadians(CAMERA_FOV_DEGREES);
+  const horizontalFovRadians = 2 * Math.atan(Math.tan(verticalFovRadians / 2) * aspect);
+  const target = boxCenter(bounds);
+  const cameraDirection = MAGNITUDE_FRONT_CAMERA_DIRECTION;
+  const viewDirection = scaleVector(cameraDirection, -1);
+  const right = normalizeVector(crossVector(viewDirection, { x: 0, y: 1, z: 0 })) || { x: 1, y: 0, z: 0 };
+  const up = normalizeVector(crossVector(right, viewDirection)) || { x: 0, y: 1, z: 0 };
+  const corners = boxCorners(bounds);
+  let halfWidth = 0;
+  let halfHeight = 0;
+  let halfDepth = 0;
+  for (const corner of corners) {
+    const relative = subtractVector(corner, target);
+    halfWidth = Math.max(halfWidth, Math.abs(dotVector(relative, right)));
+    halfHeight = Math.max(halfHeight, Math.abs(dotVector(relative, up)));
+    halfDepth = Math.max(halfDepth, Math.abs(dotVector(relative, viewDirection)));
+  }
+  halfWidth = Math.max(halfWidth, 0.5);
+  halfHeight = Math.max(halfHeight, 0.5);
+  const distance = Math.max(
+    halfHeight / Math.tan(verticalFovRadians / 2),
+    halfWidth / Math.tan(horizontalFovRadians / 2),
+  ) * MAGNITUDE_FIT_MARGIN + halfDepth + MAGNITUDE_FIT_EXTRA_DISTANCE;
+
+  return {
+    position: addVector(target, scaleVector(cameraDirection, distance)),
+    target,
+    bounds,
+    corners,
+    verticalFovDegrees: CAMERA_FOV_DEGREES,
+    horizontalFovDegrees: radiansToDegrees(horizontalFovRadians),
+    aspect,
+  };
+}
 
 /**
  * Mount the fixture 3D renderer. The Three.js module is imported only after
  * this function is called and WebGL has been confirmed available.
  *
  * @param {HTMLElement} container
- * @param {{mode?: "home"|"relation"|"size", loadThree?: () => Promise<any>, runtime?: any, webglAvailable?: boolean, requestAnimationFrame?: FrameRequestCallback, cancelAnimationFrame?: (id:number) => void, graph?: any, selectedNodeId?: string|null, onNodeSelect?: (nodeId:string) => void, autoRotate?: boolean}} [options]
+ * @param {{mode?: "home"|"relation"|"size"|"magnitude", loadThree?: () => Promise<any>, runtime?: any, webglAvailable?: boolean, requestAnimationFrame?: FrameRequestCallback, cancelAnimationFrame?: (id:number) => void, graph?: any, selectedNodeId?: string|null, onNodeSelect?: (nodeId:string) => void, autoRotate?: boolean, magnitudeAxisKind?: "quantity"|"time", loadObservationThumbnail?: (observationId:string) => Promise<Blob|null>}} [options]
  * @returns {Promise<Knowledge3dController>}
  */
 export async function mountKnowledge3dFixture(container, options = {}) {
@@ -54,7 +151,7 @@ export async function mountKnowledge3dFixture(container, options = {}) {
  * lifecycle as the fixture preview.
  *
  * @param {HTMLElement} container
- * @param {{mode?: "home"|"relation"|"size", loadThree?: () => Promise<any>, runtime?: any, webglAvailable?: boolean, requestAnimationFrame?: FrameRequestCallback, cancelAnimationFrame?: (id:number) => void, graph?: any, selectedNodeId?: string|null, onNodeSelect?: (nodeId:string) => void, autoRotate?: boolean}} [options]
+ * @param {{mode?: "home"|"relation"|"size"|"magnitude", loadThree?: () => Promise<any>, runtime?: any, webglAvailable?: boolean, requestAnimationFrame?: FrameRequestCallback, cancelAnimationFrame?: (id:number) => void, graph?: any, selectedNodeId?: string|null, onNodeSelect?: (nodeId:string) => void, autoRotate?: boolean, magnitudeAxisKind?: "quantity"|"time", loadObservationThumbnail?: (observationId:string) => Promise<Blob|null>}} [options]
  * @returns {Promise<Knowledge3dController>}
  */
 export async function mountKnowledge3dGraph(container, options = {}) {
@@ -73,7 +170,10 @@ export async function mountKnowledge3dGraph(container, options = {}) {
   }
 
   const graph = options.graph || VISUALIZATION_GRAPH_FIXTURE;
-  const layout = layoutVisualizationGraph(graph, { mode: options.mode || "home" });
+  const layout = layoutVisualizationGraph(graph, {
+    mode: options.mode || "home",
+    magnitudeAxisKind: options.magnitudeAxisKind,
+  });
   return mountThreeScene(container, THREE, graph, layout, {
     runtime,
     requestAnimationFrame: options.requestAnimationFrame,
@@ -81,6 +181,7 @@ export async function mountKnowledge3dGraph(container, options = {}) {
     selectedNodeId: options.selectedNodeId,
     onNodeSelect: options.onNodeSelect,
     autoRotate: options.autoRotate,
+    loadObservationThumbnail: options.loadObservationThumbnail,
   });
 }
 
@@ -113,7 +214,7 @@ function mountFallback(container, reason) {
  * @param {any} THREE
  * @param {any} graph
  * @param {import('./layout-engine.js').VisualizationLayout} layout
- * @param {{runtime:any, requestAnimationFrame?: FrameRequestCallback, cancelAnimationFrame?: (id:number) => void, selectedNodeId?: string|null, onNodeSelect?: (nodeId:string) => void, autoRotate?: boolean}} options
+ * @param {{runtime:any, requestAnimationFrame?: FrameRequestCallback, cancelAnimationFrame?: (id:number) => void, selectedNodeId?: string|null, onNodeSelect?: (nodeId:string) => void, autoRotate?: boolean, loadObservationThumbnail?: (observationId:string) => Promise<Blob|null>}} options
  * @returns {Knowledge3dController}
  */
 function mountThreeScene(container, THREE, graph, layout, options) {
@@ -132,17 +233,31 @@ function mountThreeScene(container, THREE, graph, layout, options) {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0xf6f4ef);
 
-  const camera = new THREE.PerspectiveCamera(52, 1, 0.1, 1000);
+  const camera = new THREE.PerspectiveCamera(CAMERA_FOV_DEGREES, 1, 0.1, 1000);
   let cameraZoom = 1;
-  /** Place the camera along the home-to-target ray. Smaller zoom = closer. */
+  /** @type {{x:number,y:number,z:number}} */
+  let cameraBasePosition = { ...CAMERA_HOME };
+  /** @type {{x:number,y:number,z:number}} */
+  let cameraTarget = { ...CAMERA_TARGET };
+  /** Place the camera along the active frame-to-target ray. Smaller zoom = closer. */
   const applyCameraZoom = () => {
     camera.position.set(
-      CAMERA_TARGET.x + (CAMERA_HOME.x - CAMERA_TARGET.x) * cameraZoom,
-      CAMERA_TARGET.y + (CAMERA_HOME.y - CAMERA_TARGET.y) * cameraZoom,
-      CAMERA_TARGET.z + (CAMERA_HOME.z - CAMERA_TARGET.z) * cameraZoom,
+      cameraTarget.x + (cameraBasePosition.x - cameraTarget.x) * cameraZoom,
+      cameraTarget.y + (cameraBasePosition.y - cameraTarget.y) * cameraZoom,
+      cameraTarget.z + (cameraBasePosition.z - cameraTarget.z) * cameraZoom,
     );
-    camera.lookAt(CAMERA_TARGET.x, CAMERA_TARGET.y, CAMERA_TARGET.z);
+    camera.lookAt(cameraTarget.x, cameraTarget.y, cameraTarget.z);
     camera.updateProjectionMatrix?.();
+  };
+  /** @param {{position:{x:number,y:number,z:number}, target:{x:number,y:number,z:number}}} frame */
+  const setCameraFrame = (frame) => {
+    cameraBasePosition = { ...frame.position };
+    cameraTarget = { ...frame.target };
+    cameraZoom = 1;
+    applyCameraZoom();
+  };
+  const applyHomeCamera = () => {
+    setCameraFrame({ position: CAMERA_HOME, target: CAMERA_TARGET });
   };
   /** @param {number} factor */
   const zoomBy = (factor) => {
@@ -150,15 +265,9 @@ function mountThreeScene(container, THREE, graph, layout, options) {
     cameraZoom = clamp(cameraZoom * factor, CAMERA_ZOOM_MIN, CAMERA_ZOOM_MAX);
     applyCameraZoom();
   };
-  applyCameraZoom();
   const root = new THREE.Group();
   const decorationRoot = new THREE.Group();
   root.add(decorationRoot);
-  const resetCamera = () => {
-    root.rotation.y = 0;
-    cameraZoom = 1;
-    applyCameraZoom();
-  };
 
   scene.add(new THREE.AmbientLight(0xffffff, 0.7));
   const keyLight = new THREE.DirectionalLight(0xffffff, 1.2);
@@ -166,6 +275,7 @@ function mountThreeScene(container, THREE, graph, layout, options) {
   scene.add(keyLight);
   scene.add(root);
 
+  const thumbnailManager = createMagnitudeThumbnailManager(THREE, runtime, options.loadObservationThumbnail);
   let currentGraph = graph;
   let currentLayout = layout;
   let currentMode = layout.mode;
@@ -174,13 +284,39 @@ function mountThreeScene(container, THREE, graph, layout, options) {
   const reducedMotion = prefersReducedMotion(hostWindow);
   let currentAutoRotate = shouldAutoRotate(autoRotateRequested, currentMode, reducedMotion);
   let activeTransition = null;
+  /** @param {import('./layout-engine.js').VisualizationLayout} targetLayout */
+  const fitMagnitudeCamera = (targetLayout) => {
+    root.rotation.y = 0;
+    const fit = computeMagnitudeFitCameraPlacement(targetLayout, {
+      width: Math.max(1, container.clientWidth || 640),
+      height: Math.max(1, container.clientHeight || 420),
+    });
+    if (fit) {
+      setCameraFrame(fit);
+    } else {
+      applyHomeCamera();
+    }
+  };
+  const resetCamera = () => {
+    root.rotation.y = 0;
+    if (currentMode === "magnitude") {
+      fitMagnitudeCamera(currentLayout);
+    } else {
+      applyHomeCamera();
+    }
+  };
+  applyHomeCamera();
   const nodeObjectById = new Map();
   const labelObjectById = new Map();
   const edgeObjectById = new Map();
   const graphNodeById = new Map(graph.nodes.map((node) => [node.id, node]));
   for (const node of layout.nodes) {
     const graphNode = graphNodeById.get(node.id);
-    const mesh = createNodeMesh(THREE, graphNode, node, node.id === currentSelectedNodeId);
+    const mesh = createNodeObject(THREE, container.ownerDocument, graph, graphNode, node, {
+      mode: currentMode,
+      selected: node.id === currentSelectedNodeId,
+      thumbnailManager,
+    });
     root.add(mesh);
     nodeObjectById.set(node.id, mesh);
   }
@@ -189,6 +325,7 @@ function mountThreeScene(container, THREE, graph, layout, options) {
     layoutNodesById: layoutNodeById(layout),
     labelObjectById,
     selectedNodeId: currentSelectedNodeId,
+    mode: currentMode,
   });
   for (const edge of layout.edges) {
     const source = layoutNodeById(layout).get(edge.sourceId);
@@ -206,6 +343,7 @@ function mountThreeScene(container, THREE, graph, layout, options) {
     renderer.setSize(width, height, false);
     camera.aspect = width / height;
     camera.updateProjectionMatrix();
+    if (currentMode === "magnitude") fitMagnitudeCamera(currentLayout);
   };
 
   let dragging = false;
@@ -273,7 +411,10 @@ function mountThreeScene(container, THREE, graph, layout, options) {
     const nextSelectedNodeId = updateOptions.selectedNodeId || null;
     if ("autoRotate" in updateOptions) autoRotateRequested = updateOptions.autoRotate === true;
     currentAutoRotate = shouldAutoRotate(autoRotateRequested, nextMode, reducedMotion);
-    const nextLayout = layoutVisualizationGraph(nextGraph, { mode: nextMode });
+    const nextLayout = layoutVisualizationGraph(nextGraph, {
+      mode: nextMode,
+      magnitudeAxisKind: updateOptions.magnitudeAxisKind,
+    });
     reconcileSceneObjects(THREE, container.ownerDocument, root, {
       graph: nextGraph,
       layout: nextLayout,
@@ -281,8 +422,12 @@ function mountThreeScene(container, THREE, graph, layout, options) {
       labelObjectById,
       edgeObjectById,
       selectedNodeId: nextSelectedNodeId,
+      thumbnailManager,
     });
-    const animate = nextMode !== currentMode || !sameLayoutPositions(currentLayout, nextLayout);
+    const instant = updateOptions.instant === true;
+    const animate = !instant && (nextMode !== currentMode || !sameLayoutPositions(currentLayout, nextLayout));
+    const shouldFitMagnitude = nextMode === "magnitude" && (currentMode !== "magnitude" || animate);
+    const shouldRestoreHomeCamera = currentMode === "magnitude" && nextMode !== "magnitude";
     if (animate) {
       activeTransition = buildLayoutTransition(currentLayout, nextLayout, {
         nodeObjectById,
@@ -290,7 +435,8 @@ function mountThreeScene(container, THREE, graph, layout, options) {
         startedAt: animationNow(hostWindow),
         duration: MODE_TRANSITION_MS,
       });
-    } else if (!activeTransition) {
+    } else if (instant || !activeTransition) {
+      if (instant) activeTransition = null;
       applyLayoutPositions(nextLayout, { nodeObjectById, labelObjectById });
     }
     currentGraph = nextGraph;
@@ -300,6 +446,11 @@ function mountThreeScene(container, THREE, graph, layout, options) {
     updateSelection(nodeObjectById, currentSelectedNodeId);
     updateEdgeGeometry(THREE, currentLayout, edgeObjectById, nodeObjectById);
     refreshLayoutDecorations(THREE, container.ownerDocument, decorationRoot, currentLayout);
+    if (shouldFitMagnitude) {
+      fitMagnitudeCamera(currentLayout);
+    } else if (shouldRestoreHomeCamera) {
+      applyHomeCamera();
+    }
   };
 
   container.addEventListener("pointerdown", pointerDown);
@@ -335,6 +486,7 @@ function mountThreeScene(container, THREE, graph, layout, options) {
       if (disposed) return;
       disposed = true;
       if (frameId && cancelFrame) cancelFrame(frameId);
+      thumbnailManager.dispose();
       hostWindow.removeEventListener?.("resize", resize);
       container.removeEventListener("pointerdown", pointerDown);
       container.removeEventListener("pointermove", pointerMove);
@@ -351,6 +503,27 @@ function mountThreeScene(container, THREE, graph, layout, options) {
       container.replaceChildren();
     },
   };
+}
+
+/**
+ * @param {any} THREE
+ * @param {Document} document
+ * @param {any} graph
+ * @param {any} graphNode
+ * @param {import('./layout-engine.js').LayoutNode} node
+ * @param {{mode:"home"|"relation"|"size"|"magnitude", selected:boolean, thumbnailManager:ReturnType<typeof createMagnitudeThumbnailManager>}} options
+ */
+function createNodeObject(THREE, document, graph, graphNode, node, options) {
+  if (options.mode === "magnitude") {
+    return createMagnitudeNodeObject(THREE, document, graph, graphNode, node, options);
+  }
+  const mesh = createNodeMesh(THREE, graphNode, node, options.selected);
+  mesh.userData = {
+    ...mesh.userData,
+    renderMode: "standard",
+    renderKey: nodeRenderKey(graph, graphNode, node, options.mode),
+  };
+  return mesh;
 }
 
 /**
@@ -372,9 +545,118 @@ function createNodeMesh(THREE, graphNode, node, selected) {
   });
   const mesh = new THREE.Mesh(geometry, material);
   mesh.position.set(node.x, node.y * NODE_Y_SCALE, node.z);
-  if (selected) mesh.scale?.set?.(1.28, 1.28, 1.28);
+  if (selected) mesh.scale?.set?.(SELECTED_NODE_SCALE, SELECTED_NODE_SCALE, SELECTED_NODE_SCALE);
   mesh.userData = { nodeId: node.id };
   return mesh;
+}
+
+/**
+ * @param {any} THREE
+ * @param {Document} document
+ * @param {any} graph
+ * @param {any} graphNode
+ * @param {import('./layout-engine.js').LayoutNode} node
+ * @param {{selected:boolean, thumbnailManager:ReturnType<typeof createMagnitudeThumbnailManager>}} options
+ */
+function createMagnitudeNodeObject(THREE, document, graph, graphNode, node, options) {
+  const group = new THREE.Group();
+  const representativeObservationId = selectMagnitudeNodeRepresentativeObservationId(graph, graphNode);
+  group.position.set(node.x, node.y * NODE_Y_SCALE, node.z);
+  if (options.selected) group.scale?.set?.(SELECTED_NODE_SCALE, SELECTED_NODE_SCALE, SELECTED_NODE_SCALE);
+  group.userData = {
+    nodeId: node.id,
+    renderMode: "magnitude-thumbnail",
+    renderKey: nodeRenderKey(graph, graphNode, node, "magnitude"),
+    thumbnailObservationId: representativeObservationId,
+  };
+
+  const fallback = createMagnitudeFallbackNode(THREE, document, graphNode, node);
+  if (fallback) group.add(fallback);
+
+  if (representativeObservationId) {
+    options.thumbnailManager.request({
+      nodeObject: group,
+      layoutNode: node,
+      observationId: representativeObservationId,
+    });
+  }
+  return group;
+}
+
+/**
+ * @param {any} THREE
+ * @param {Document} document
+ * @param {any} graphNode
+ * @param {import('./layout-engine.js').LayoutNode} node
+ */
+function createMagnitudeFallbackNode(THREE, document, graphNode, node) {
+  const fallback = new THREE.Group();
+  fallback.userData = { nodeId: node.id, magnitudeFallback: true };
+
+  const markerGeometry = new THREE.SphereGeometry(Math.max(0.22, node.radius * 0.64), 16, 10);
+  const markerMaterial = new THREE.MeshStandardMaterial({
+    color: NODE_COLORS[graphNode?.kind] || 0x555555,
+    roughness: 0.78,
+    metalness: 0.04,
+    transparent: true,
+    opacity: node.mappingStatus === "unresolved" ? 0.48 : 0.86,
+  });
+  const marker = new THREE.Mesh(markerGeometry, markerMaterial);
+  marker.userData = { nodeId: node.id, magnitudeFallbackMarker: true };
+  fallback.add(marker);
+
+  const label = createLabelSprite(THREE, document, graphNode?.label || node.id);
+  if (label) {
+    label.position.set(0, Math.max(0.55, node.radius + 0.24), 0);
+    label.scale.set(2.8, 0.7, 1);
+    label.renderOrder = MAGNITUDE_FALLBACK_RENDER_ORDER;
+    label.userData = { nodeId: node.id, magnitudeFallbackLabel: true };
+    fallback.add(label);
+  }
+  return fallback;
+}
+
+/** @param {import('./layout-engine.js').VisualizationLayout} layout */
+function magnitudeLayoutSceneBounds(layout) {
+  const points = [];
+  const boards = Array.isArray(layout.metadata?.boards) ? layout.metadata.boards : [];
+  for (const board of boards) {
+    includeSceneBox(points, {
+      x: board.xMin - MAGNITUDE_FIT_BOARD_X_PADDING,
+      y: (board.yMin - MAGNITUDE_FIT_BOARD_Y_PADDING) * NODE_Y_SCALE,
+      z: board.z - MAGNITUDE_FIT_BOARD_Z_PADDING,
+    }, {
+      x: board.xMax + MAGNITUDE_FIT_BOARD_X_PADDING,
+      y: (board.yMax + MAGNITUDE_FIT_BOARD_Y_PADDING) * NODE_Y_SCALE,
+      z: board.z + MAGNITUDE_FIT_BOARD_Z_PADDING,
+    });
+    const axisMinX = finiteNumber(board.axisMinX) ? board.axisMinX : board.xMin;
+    const axisMaxX = finiteNumber(board.axisMaxX) ? board.axisMaxX : board.xMax;
+    includeSceneBox(points, boardPoint(board, axisMinX, board.axisY - 0.2), boardPoint(board, axisMaxX, board.axisY + 0.25));
+    for (const tick of board.ticks || []) {
+      includeSceneBox(points, boardPoint(board, tick.x, board.axisY - 0.8), boardPoint(board, tick.x, board.axisY + 0.25));
+    }
+  }
+
+  for (const node of layout.nodes || []) {
+    const position = positionFromLayoutNode(node);
+    const nodeHalfWidth = Math.max(node.radius, MAGNITUDE_FIT_NODE_X_PADDING);
+    const nodeHalfHeight = Math.max(
+      node.radius,
+      labelYOffsetForMode("magnitude", node) + (LABEL_SPRITE_HEIGHT / 2),
+    );
+    includeSceneBox(points, {
+      x: position.x - nodeHalfWidth,
+      y: position.y - node.radius,
+      z: position.z - MAGNITUDE_FIT_NODE_Z_PADDING,
+    }, {
+      x: position.x + nodeHalfWidth,
+      y: position.y + nodeHalfHeight,
+      z: position.z + MAGNITUDE_FIT_NODE_Z_PADDING,
+    });
+  }
+
+  return boundsFromPoints(points);
 }
 
 /** @param {import('./layout-engine.js').VisualizationLayout} layout */
@@ -386,7 +668,7 @@ function layoutNodeById(layout) {
  * @param {any} THREE
  * @param {Document} document
  * @param {any} root
- * @param {{graph:any, layout:import('./layout-engine.js').VisualizationLayout, nodeObjectById:Map<string, any>, labelObjectById:Map<string, any>, edgeObjectById:Map<string, any>, selectedNodeId:string|null}} options
+ * @param {{graph:any, layout:import('./layout-engine.js').VisualizationLayout, nodeObjectById:Map<string, any>, labelObjectById:Map<string, any>, edgeObjectById:Map<string, any>, selectedNodeId:string|null, thumbnailManager:ReturnType<typeof createMagnitudeThumbnailManager>}} options
  */
 function reconcileSceneObjects(THREE, document, root, options) {
   const graphNodeById = new Map(options.graph.nodes.map((node) => [node.id, node]));
@@ -394,7 +676,14 @@ function reconcileSceneObjects(THREE, document, root, options) {
   const layoutEdgeIds = new Set(options.layout.edges.map((edge) => edge.id));
 
   for (const [id, mesh] of [...options.nodeObjectById.entries()]) {
-    if (layoutNodesById.has(id)) continue;
+    const layoutNode = layoutNodesById.get(id);
+    const graphNode = graphNodeById.get(id);
+    if (
+      layoutNode &&
+      mesh.userData?.renderKey === nodeRenderKey(options.graph, graphNode, layoutNode, options.layout.mode)
+    ) {
+      continue;
+    }
     root.remove?.(mesh);
     disposeObject(mesh);
     options.nodeObjectById.delete(id);
@@ -409,7 +698,11 @@ function reconcileSceneObjects(THREE, document, root, options) {
   for (const node of options.layout.nodes) {
     if (!options.nodeObjectById.has(node.id)) {
       const graphNode = graphNodeById.get(node.id);
-      const mesh = createNodeMesh(THREE, graphNode, node, node.id === options.selectedNodeId);
+      const mesh = createNodeObject(THREE, document, options.graph, graphNode, node, {
+        mode: options.layout.mode,
+        selected: node.id === options.selectedNodeId,
+        thumbnailManager: options.thumbnailManager,
+      });
       root.add(mesh);
       options.nodeObjectById.set(node.id, mesh);
     }
@@ -419,6 +712,7 @@ function reconcileSceneObjects(THREE, document, root, options) {
     layoutNodesById,
     labelObjectById: options.labelObjectById,
     selectedNodeId: options.selectedNodeId,
+    mode: options.layout.mode,
   });
 
   for (const [id, line] of [...options.edgeObjectById.entries()]) {
@@ -443,7 +737,7 @@ function reconcileSceneObjects(THREE, document, root, options) {
  * @param {any} THREE
  * @param {Document} document
  * @param {any} root
- * @param {{graphNodeById:Map<string, any>, layoutNodesById:Map<string, import('./layout-engine.js').LayoutNode>, labelObjectById:Map<string, any>, selectedNodeId:string|null}} options
+ * @param {{graphNodeById:Map<string, any>, layoutNodesById:Map<string, import('./layout-engine.js').LayoutNode>, labelObjectById:Map<string, any>, selectedNodeId:string|null, mode:"home"|"relation"|"size"|"magnitude"}} options
  */
 function syncSelectedLabel(THREE, document, root, options) {
   for (const [id, label] of [...options.labelObjectById.entries()]) {
@@ -459,7 +753,7 @@ function syncSelectedLabel(THREE, document, root, options) {
   const graphNode = options.graphNodeById.get(options.selectedNodeId);
   const label = createLabelSprite(THREE, document, graphNode?.label || options.selectedNodeId);
   if (!label) return;
-  label.position.set(layoutNode.x, layoutNode.y * NODE_Y_SCALE + LABEL_Y_OFFSET, layoutNode.z);
+  label.position.set(layoutNode.x, layoutNode.y * NODE_Y_SCALE + labelYOffsetForMode(options.mode, layoutNode), layoutNode.z);
   root.add(label);
   options.labelObjectById.set(options.selectedNodeId, label);
 }
@@ -479,8 +773,8 @@ function buildLayoutTransition(currentLayout, nextLayout, options) {
     const from = readPosition(mesh, positionFromLayoutNode(previous));
     const to = positionFromLayoutNode(node);
     const label = options.labelObjectById.get(node.id);
-    const labelFrom = label ? readPosition(label, labelPosition(previous)) : null;
-    const labelTo = label ? labelPosition(node) : null;
+    const labelFrom = label ? readPosition(label, labelPosition(previous, currentLayout.mode)) : null;
+    const labelTo = label ? labelPosition(node, nextLayout.mode) : null;
     nodes.set(node.id, { mesh, label, from, to, labelFrom, labelTo });
   }
   return {
@@ -510,7 +804,7 @@ function applyLayoutTransition(transition, now) {
 function applyLayoutPositions(layout, options) {
   for (const node of layout.nodes) {
     setObjectPosition(options.nodeObjectById.get(node.id), positionFromLayoutNode(node));
-    setObjectPosition(options.labelObjectById.get(node.id), labelPosition(node));
+    setObjectPosition(options.labelObjectById.get(node.id), labelPosition(node, layout.mode));
   }
 }
 
@@ -536,8 +830,28 @@ function updateSelection(nodeObjectById, selectedNodeId) {
       if (typeof mesh.material.emissive === "number") mesh.material.emissive = selected ? 0xe86f36 : 0x000000;
       mesh.material.emissiveIntensity = selected ? 0.38 : 0;
     }
-    mesh.scale?.set?.(selected ? 1.28 : 1, selected ? 1.28 : 1, selected ? 1.28 : 1);
+    mesh.scale?.set?.(
+      selected ? SELECTED_NODE_SCALE : 1,
+      selected ? SELECTED_NODE_SCALE : 1,
+      selected ? SELECTED_NODE_SCALE : 1,
+    );
   }
+}
+
+/**
+ * @param {any} graph
+ * @param {any} graphNode
+ * @param {import('./layout-engine.js').LayoutNode} layoutNode
+ * @param {"home"|"relation"|"size"|"magnitude"} mode
+ */
+function nodeRenderKey(graph, graphNode, layoutNode, mode) {
+  if (mode !== "magnitude") return "standard";
+  return [
+    "magnitude-thumbnail",
+    layoutNode.id,
+    graphNode?.label || layoutNode.id,
+    selectMagnitudeNodeRepresentativeObservationId(graph, graphNode) || "",
+  ].join("|");
 }
 
 /**
@@ -566,9 +880,118 @@ function positionFromLayoutNode(node) {
   return { x: node.x, y: node.y * NODE_Y_SCALE, z: node.z };
 }
 
-/** @param {import('./layout-engine.js').LayoutNode} node */
-function labelPosition(node) {
-  return { x: node.x, y: node.y * NODE_Y_SCALE + LABEL_Y_OFFSET, z: node.z };
+/**
+ * @param {"home"|"relation"|"size"|"magnitude"} mode
+ * @param {import('./layout-engine.js').LayoutNode} node
+ */
+function labelYOffsetForMode(mode, node) {
+  if (mode !== "magnitude") return LABEL_Y_OFFSET;
+  const thumbnailHeight = clamp(node.radius * 2.35, MAGNITUDE_THUMBNAIL_MIN_SIZE, MAGNITUDE_THUMBNAIL_MAX_SIZE)
+    * SELECTED_NODE_SCALE;
+  return (thumbnailHeight / 2) + (LABEL_SPRITE_HEIGHT / 2) + MAGNITUDE_LABEL_THUMBNAIL_GAP;
+}
+
+/**
+ * @param {import('./layout-engine.js').LayoutNode} node
+ * @param {"home"|"relation"|"size"|"magnitude"} mode
+ */
+function labelPosition(node, mode) {
+  return { x: node.x, y: node.y * NODE_Y_SCALE + labelYOffsetForMode(mode, node), z: node.z };
+}
+
+/**
+ * @param {{x:number,y:number,z:number}[]} points
+ * @param {{x:number,y:number,z:number}} min
+ * @param {{x:number,y:number,z:number}} max
+ */
+function includeSceneBox(points, min, max) {
+  points.push(min, max);
+}
+
+/** @param {{x:number,y:number,z:number}[]} points */
+function boundsFromPoints(points) {
+  if (!points.length) return null;
+  const min = { x: Infinity, y: Infinity, z: Infinity };
+  const max = { x: -Infinity, y: -Infinity, z: -Infinity };
+  for (const point of points) {
+    if (!finiteNumber(point.x) || !finiteNumber(point.y) || !finiteNumber(point.z)) continue;
+    min.x = Math.min(min.x, point.x);
+    min.y = Math.min(min.y, point.y);
+    min.z = Math.min(min.z, point.z);
+    max.x = Math.max(max.x, point.x);
+    max.y = Math.max(max.y, point.y);
+    max.z = Math.max(max.z, point.z);
+  }
+  if (!Number.isFinite(min.x + min.y + min.z + max.x + max.y + max.z)) return null;
+  return { min, max };
+}
+
+/** @param {{min:{x:number,y:number,z:number}, max:{x:number,y:number,z:number}}} box */
+function boxCenter(box) {
+  return {
+    x: (box.min.x + box.max.x) / 2,
+    y: (box.min.y + box.max.y) / 2,
+    z: (box.min.z + box.max.z) / 2,
+  };
+}
+
+/** @param {{min:{x:number,y:number,z:number}, max:{x:number,y:number,z:number}}} box */
+function boxCorners(box) {
+  return [
+    { x: box.min.x, y: box.min.y, z: box.min.z },
+    { x: box.min.x, y: box.min.y, z: box.max.z },
+    { x: box.min.x, y: box.max.y, z: box.min.z },
+    { x: box.min.x, y: box.max.y, z: box.max.z },
+    { x: box.max.x, y: box.min.y, z: box.min.z },
+    { x: box.max.x, y: box.min.y, z: box.max.z },
+    { x: box.max.x, y: box.max.y, z: box.min.z },
+    { x: box.max.x, y: box.max.y, z: box.max.z },
+  ];
+}
+
+/** @param {{x:number,y:number,z:number}} left @param {{x:number,y:number,z:number}} right */
+function addVector(left, right) {
+  return { x: left.x + right.x, y: left.y + right.y, z: left.z + right.z };
+}
+
+/** @param {{x:number,y:number,z:number}} left @param {{x:number,y:number,z:number}} right */
+function subtractVector(left, right) {
+  return { x: left.x - right.x, y: left.y - right.y, z: left.z - right.z };
+}
+
+/** @param {{x:number,y:number,z:number}} vector @param {number} amount */
+function scaleVector(vector, amount) {
+  return { x: vector.x * amount, y: vector.y * amount, z: vector.z * amount };
+}
+
+/** @param {{x:number,y:number,z:number}} left @param {{x:number,y:number,z:number}} right */
+function dotVector(left, right) {
+  return left.x * right.x + left.y * right.y + left.z * right.z;
+}
+
+/** @param {{x:number,y:number,z:number}} left @param {{x:number,y:number,z:number}} right */
+function crossVector(left, right) {
+  return {
+    x: left.y * right.z - left.z * right.y,
+    y: left.z * right.x - left.x * right.z,
+    z: left.x * right.y - left.y * right.x,
+  };
+}
+
+/** @param {{x:number,y:number,z:number}} vector */
+function normalizeVector(vector) {
+  const length = Math.hypot(vector.x, vector.y, vector.z);
+  return length > 0 ? scaleVector(vector, 1 / length) : null;
+}
+
+/** @param {number} value */
+function degreesToRadians(value) {
+  return value * Math.PI / 180;
+}
+
+/** @param {number} value */
+function radiansToDegrees(value) {
+  return value * 180 / Math.PI;
 }
 
 /** @param {any} object @param {{x:number, y:number, z:number}} fallback */
@@ -615,11 +1038,11 @@ function clamp(value, min, max) {
 
 /**
  * @param {boolean} requested
- * @param {"home"|"relation"|"size"} mode
+ * @param {"home"|"relation"|"size"|"magnitude"} mode
  * @param {boolean} reducedMotion
  */
 function shouldAutoRotate(requested, mode, reducedMotion) {
-  return requested && mode !== "size" && !reducedMotion;
+  return requested && mode !== "size" && mode !== "magnitude" && !reducedMotion;
 }
 
 /** @param {any} hostWindow */
@@ -634,6 +1057,11 @@ function prefersReducedMotion(hostWindow) {
 /** @param {unknown} value */
 function finiteNumber(value) {
   return typeof value === "number" && Number.isFinite(value);
+}
+
+/** @param {unknown} value */
+function positiveFiniteNumber(value) {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : null;
 }
 
 /**
@@ -698,47 +1126,93 @@ function createEdgeLine(THREE, edge, source, target) {
  */
 function refreshLayoutDecorations(THREE, document, decorationRoot, layout) {
   clearGroup(decorationRoot);
-  if (layout.mode !== "size") return;
-
-  const scaledXs = layout.nodes.filter((node) => node.zone === "scaled").map((node) => node.x);
-  const minX = Math.min(-6, ...scaledXs);
-  const maxX = Math.max(8, ...scaledXs);
-  const axisY = -0.35;
-  const axisZ = -6.75;
-  const unsetBoundaryX = layout.metadata.unsetAreaX - 1.2;
-
-  decorationRoot.add(createDecorationLine(THREE, [
-    { x: minX, y: axisY, z: axisZ },
-    { x: maxX, y: axisY, z: axisZ },
-  ], 0x58784d, 0.55));
-  decorationRoot.add(createDecorationLine(THREE, [
-    { x: unsetBoundaryX, y: -0.8, z: -7.4 },
-    { x: unsetBoundaryX, y: 6.2, z: 7.4 },
-  ], 0x8a6f2a, 0.42));
-
-  addDecorationLabel(THREE, document, decorationRoot, layout.metadata.quantityKind || "quantity", {
-    x: minX,
-    y: axisY + 0.6,
-    z: axisZ,
-  });
-  addDecorationLabel(THREE, document, decorationRoot, "unset: no body_length", {
-    x: layout.metadata.unsetAreaX + 1.7,
-    y: 5.9,
-    z: -6.9,
-  });
-  for (const value of [0.1, 1, 10]) {
-    const x = Math.log10(value) * 6;
-    if (x < minX || x > maxX) continue;
-    decorationRoot.add(createDecorationLine(THREE, [
-      { x, y: axisY - 0.25, z: axisZ },
-      { x, y: axisY + 0.25, z: axisZ },
-    ], 0x2f3a32, 0.5));
-    addDecorationLabel(THREE, document, decorationRoot, `${value} m`, {
-      x,
-      y: axisY - 0.65,
-      z: axisZ,
-    });
+  const boards = Array.isArray(layout.metadata?.boards) ? layout.metadata.boards : [];
+  for (const board of boards) {
+    renderMagnitudeBoard(THREE, document, decorationRoot, layout, board);
   }
+}
+
+/**
+ * @param {any} THREE
+ * @param {Document} document
+ * @param {any} decorationRoot
+ * @param {import('./layout-engine.js').VisualizationLayout} layout
+ * @param {import('./layout-engine.js').LayoutBoard} board
+ */
+function renderMagnitudeBoard(THREE, document, decorationRoot, layout, board) {
+  const color = board.axisKind === "quantity" ? 0x58784d : 0x8a4f7d;
+  const lineColor = 0x2f3a32;
+  const frameColor = 0xbdb7ac;
+  const axisMinX = finiteNumber(board.axisMinX) ? board.axisMinX : board.xMin;
+  const axisMaxX = finiteNumber(board.axisMaxX) ? board.axisMaxX : board.xMax;
+  const boardId = board.id || "magnitude-board";
+
+  decorationRoot.add(createDecorationLine(THREE, [
+    boardPoint(board, board.xMin, board.yMin),
+    boardPoint(board, board.xMax, board.yMin),
+    boardPoint(board, board.xMax, board.yMax),
+    boardPoint(board, board.xMin, board.yMax),
+    boardPoint(board, board.xMin, board.yMin),
+  ], frameColor, 0.7, { decorationKind: "board-frame", boardId }));
+
+  for (const y of BOARD_LAYER_Y) {
+    if (y <= board.yMin || y >= board.yMax) continue;
+    decorationRoot.add(createDecorationLine(THREE, [
+      boardPoint(board, board.xMin, y),
+      boardPoint(board, board.xMax, y),
+    ], frameColor, 0.24, { decorationKind: "board-layer", boardId }));
+  }
+
+  decorationRoot.add(createDecorationLine(THREE, [
+    boardPoint(board, axisMinX, board.axisY),
+    boardPoint(board, axisMaxX, board.axisY),
+  ], color, 0.72, { decorationKind: "number-line", boardId }));
+
+  for (const tick of board.ticks || []) {
+    const opacity = tick.major ? 0.62 : 0.34;
+    decorationRoot.add(createDecorationLine(THREE, [
+      boardPoint(board, tick.x, board.axisY - 0.12),
+      boardPoint(board, tick.x, board.axisY + 0.2),
+    ], lineColor, opacity, { decorationKind: "axis-tick", boardId }));
+    if (tick.major) {
+      decorationRoot.add(createDecorationLine(THREE, [
+        boardPoint(board, tick.x, board.axisY),
+        boardPoint(board, tick.x, board.yMax),
+      ], lineColor, 0.13, { decorationKind: "axis-major-guide", boardId }));
+    }
+    addDecorationLabel(THREE, document, decorationRoot, tick.label, boardPoint(board, tick.x, board.axisY - 0.36));
+  }
+
+  for (const node of layout.nodes) {
+    if (node.boardId !== board.id || node.zone !== "scaled") continue;
+    decorationRoot.add(createDecorationLine(THREE, [
+      boardPoint(board, node.x, board.axisY),
+      boardPoint(board, node.x, node.y),
+    ], color, 0.24, { decorationKind: "node-guide", boardId, nodeId: node.id }));
+  }
+
+  if (finiteNumber(board.unsetAreaX)) {
+    const unsetBoundaryX = board.unsetAreaX - 1.2;
+    decorationRoot.add(createDecorationLine(THREE, [
+      boardPoint(board, unsetBoundaryX, board.yMin),
+      boardPoint(board, unsetBoundaryX, board.yMax),
+    ], 0x8a6f2a, 0.45, { decorationKind: "unset-boundary", boardId }));
+    if (board.unsetLabel) {
+      addDecorationLabel(THREE, document, decorationRoot, board.unsetLabel, boardPoint(board, board.unsetAreaX + 0.9, board.yMax - 0.22));
+    }
+  }
+
+  addDecorationLabel(THREE, document, decorationRoot, board.axisLabel, boardPoint(board, board.xMin + 0.25, board.yMax + 0.25));
+  addDecorationLabel(THREE, document, decorationRoot, `${board.normalization} ${board.unitLabel}`, boardPoint(board, axisMaxX - 0.1, board.axisY + 0.38));
+}
+
+/**
+ * @param {import('./layout-engine.js').LayoutBoard} board
+ * @param {number} x
+ * @param {number} y
+ */
+function boardPoint(board, x, y) {
+  return { x, y: y * NODE_Y_SCALE, z: board.z };
 }
 
 /**
@@ -746,11 +1220,14 @@ function refreshLayoutDecorations(THREE, document, decorationRoot, layout) {
  * @param {{x:number,y:number,z:number}[]} points
  * @param {number} color
  * @param {number} opacity
+ * @param {Record<string, any>} [userData]
  */
-function createDecorationLine(THREE, points, color, opacity) {
+function createDecorationLine(THREE, points, color, opacity, userData = {}) {
   const geometry = new THREE.BufferGeometry().setFromPoints(points.map((point) => new THREE.Vector3(point.x, point.y, point.z)));
   const material = new THREE.LineBasicMaterial({ color, transparent: true, opacity });
-  return new THREE.Line(geometry, material);
+  const line = new THREE.Line(geometry, material);
+  line.userData = userData;
+  return line;
 }
 
 /**
@@ -809,8 +1286,152 @@ function createLabelSprite(THREE, document, label) {
   });
   const sprite = new THREE.Sprite(material);
   sprite.renderOrder = LABEL_RENDER_ORDER;
-  sprite.scale.set(3.2, 0.8, 1);
+  sprite.scale.set(3.2, LABEL_SPRITE_HEIGHT, 1);
   return sprite;
+}
+
+/**
+ * @param {any} THREE
+ * @param {any} runtime
+ * @param {((observationId:string) => Promise<Blob|null>)|undefined} loadObservationThumbnail
+ */
+function createMagnitudeThumbnailManager(THREE, runtime, loadObservationThumbnail) {
+  const objectUrls = new Set();
+  const pendingTextures = new Set();
+  const urlApi = objectUrlApi(runtime);
+  let active = true;
+
+  /** @param {string} objectUrl */
+  const revokeObjectUrl = (objectUrl) => {
+    if (!objectUrls.delete(objectUrl)) return;
+    try {
+      urlApi?.revokeObjectURL?.(objectUrl);
+    } catch {
+      // Best-effort cleanup; the texture itself is still disposed below.
+    }
+  };
+
+  /**
+   * @param {{nodeObject:any, layoutNode:import('./layout-engine.js').LayoutNode, observationId:string}} options
+   */
+  const request = (options) => {
+    if (typeof loadObservationThumbnail !== "function" || !THREE.TextureLoader || !urlApi?.createObjectURL) return;
+    const token = Symbol(options.observationId);
+    options.nodeObject.userData.thumbnailRequestToken = token;
+
+    Promise.resolve()
+      .then(() => loadObservationThumbnail(options.observationId))
+      .then((blob) => {
+        if (!isMagnitudeThumbnailRequestLive(active, options.nodeObject, token) || !blob) return;
+        const objectUrl = urlApi.createObjectURL(blob);
+        objectUrls.add(objectUrl);
+        let loader;
+        let pendingTexture = null;
+        try {
+          loader = new THREE.TextureLoader();
+          pendingTexture = loader.load(
+            objectUrl,
+            (texture) => {
+              pendingTextures.delete(texture);
+              revokeObjectUrl(objectUrl);
+              if (!isMagnitudeThumbnailRequestLive(active, options.nodeObject, token)) {
+                texture?.dispose?.();
+                return;
+              }
+              applyMagnitudeThumbnailTexture(THREE, options.nodeObject, options.layoutNode, texture, options.observationId);
+            },
+            undefined,
+            () => {
+              if (pendingTexture) pendingTextures.delete(pendingTexture);
+              pendingTexture?.dispose?.();
+              revokeObjectUrl(objectUrl);
+            },
+          );
+          if (pendingTexture) pendingTextures.add(pendingTexture);
+        } catch {
+          pendingTexture?.dispose?.();
+          revokeObjectUrl(objectUrl);
+        }
+      })
+      .catch(() => {});
+  };
+
+  return {
+    request,
+    dispose() {
+      active = false;
+      for (const objectUrl of [...objectUrls]) revokeObjectUrl(objectUrl);
+      for (const texture of [...pendingTextures]) texture?.dispose?.();
+      pendingTextures.clear();
+    },
+  };
+}
+
+/**
+ * @param {boolean} managerActive
+ * @param {any} nodeObject
+ * @param {symbol} token
+ */
+function isMagnitudeThumbnailRequestLive(managerActive, nodeObject, token) {
+  return managerActive
+    && nodeObject?.userData?.disposed !== true
+    && nodeObject?.userData?.thumbnailRequestToken === token;
+}
+
+/**
+ * @param {any} THREE
+ * @param {any} nodeObject
+ * @param {import('./layout-engine.js').LayoutNode} layoutNode
+ * @param {any} texture
+ * @param {string} observationId
+ */
+function applyMagnitudeThumbnailTexture(THREE, nodeObject, layoutNode, texture, observationId) {
+  if (!THREE.SpriteMaterial || !THREE.Sprite) {
+    texture?.dispose?.();
+    return;
+  }
+  if (THREE.SRGBColorSpace) texture.colorSpace = THREE.SRGBColorSpace;
+  texture.needsUpdate = true;
+
+  for (const child of [...(nodeObject.children || [])]) {
+    if (!child.userData?.magnitudeFallback) continue;
+    nodeObject.remove?.(child);
+    disposeObject(child);
+  }
+
+  const material = new THREE.SpriteMaterial({
+    map: texture,
+    transparent: true,
+    depthWrite: false,
+  });
+  const sprite = new THREE.Sprite(material);
+  const baseSize = clamp(layoutNode.radius * 2.35, MAGNITUDE_THUMBNAIL_MIN_SIZE, MAGNITUDE_THUMBNAIL_MAX_SIZE);
+  const aspect = thumbnailTextureAspect(texture);
+  sprite.scale.set(baseSize * aspect, baseSize, 1);
+  sprite.renderOrder = MAGNITUDE_THUMBNAIL_RENDER_ORDER;
+  sprite.userData = {
+    nodeId: layoutNode.id,
+    magnitudeThumbnail: true,
+    observationId,
+  };
+  nodeObject.add(sprite);
+}
+
+/** @param {any} texture */
+function thumbnailTextureAspect(texture) {
+  const width = finiteNumber(texture?.image?.naturalWidth)
+    ? texture.image.naturalWidth
+    : texture?.image?.width;
+  const height = finiteNumber(texture?.image?.naturalHeight)
+    ? texture.image.naturalHeight
+    : texture?.image?.height;
+  if (!finiteNumber(width) || !finiteNumber(height) || height <= 0) return 1;
+  return clamp(width / height, 0.72, 1.5);
+}
+
+/** @param {any} runtime */
+function objectUrlApi(runtime) {
+  return runtime?.URL || runtime?.window?.URL || globalThis.URL;
 }
 
 /** @param {any} group */
@@ -824,7 +1445,9 @@ function clearGroup(group) {
 
 /** @param {any} object */
 function disposeObject(object) {
+  markObjectDisposed(object);
   object.traverse?.((child) => {
+    markObjectDisposed(child);
     child.geometry?.dispose?.();
     const materials = Array.isArray(child.material) ? child.material : [child.material].filter(Boolean);
     for (const material of materials) {
@@ -834,4 +1457,32 @@ function disposeObject(object) {
       material.dispose?.();
     }
   });
+}
+
+/** @param {any} object */
+function markObjectDisposed(object) {
+  if (!object) return;
+  object.userData = {
+    ...(object.userData || {}),
+    disposed: true,
+  };
+}
+
+/** @param {unknown[]|undefined} values */
+function sortedUniqueStrings(values) {
+  if (!Array.isArray(values)) return [];
+  const strings = [];
+  for (const value of values) {
+    if (typeof value !== "string") continue;
+    const trimmed = value.trim();
+    if (trimmed) strings.push(trimmed);
+  }
+  return [...new Set(strings)].sort(compareStrings);
+}
+
+/** @param {string} left @param {string} right */
+function compareStrings(left, right) {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
 }

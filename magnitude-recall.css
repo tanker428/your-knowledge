@@ -1,0 +1,397 @@
+.magnitude-recall-panel {
+  margin-top: 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--paper);
+  padding: 14px;
+  display: grid;
+  gap: 12px;
+}
+
+.magnitude-recall-empty {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.magnitude-recall-empty strong {
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.magnitude-recall-header {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.magnitude-recall-header span {
+  color: var(--accent);
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.magnitude-recall-header strong {
+  font-size: 13px;
+}
+
+.magnitude-recall-header small {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 850;
+}
+
+.magnitude-recall-scale-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.magnitude-recall-scale-row button {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+  color: var(--ink);
+  padding: 7px 9px;
+  font-size: 9px;
+  font-weight: 900;
+}
+
+.magnitude-recall-scale-row button.active {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: white;
+}
+
+.magnitude-recall-scale-row button:disabled {
+  opacity: .62;
+}
+
+.magnitude-recall-axis-label,
+.magnitude-recall-answer-readout {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 850;
+}
+
+.magnitude-recall-axis-label strong,
+.magnitude-recall-answer-readout strong {
+  color: var(--ink);
+}
+
+.magnitude-recall-study,
+.magnitude-recall-answer-layout {
+  display: grid;
+  grid-template-columns: 170px minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+}
+
+.magnitude-recall-tray {
+  min-height: 112px;
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  background: #fbf8f0;
+  display: grid;
+  place-items: center;
+  padding: 10px;
+}
+
+.magnitude-recall-card {
+  width: 100%;
+  min-height: 82px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: white;
+  color: var(--ink);
+  display: grid;
+  gap: 5px;
+  align-content: center;
+  text-align: left;
+  padding: 10px;
+  cursor: grab;
+}
+
+.magnitude-recall-card.with-thumbnail {
+  grid-template-columns: 56px minmax(0, 1fr);
+  align-items: center;
+  align-content: center;
+}
+
+.magnitude-recall-card-thumb {
+  grid-row: 1 / span 2;
+  display: block;
+  width: 56px;
+  height: 56px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--ink);
+}
+
+.magnitude-recall-card-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.magnitude-recall-card:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
+.magnitude-recall-card span {
+  color: var(--muted);
+  font-size: 8px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.magnitude-recall-card strong {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.magnitude-recall-axis-wrap {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.magnitude-recall-axis {
+  position: relative;
+  min-height: 118px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: white;
+  padding: 42px 14px 30px;
+  touch-action: none;
+}
+
+.magnitude-recall-axis:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.magnitude-recall-rail {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  top: 58px;
+  height: 4px;
+  border-radius: 99px;
+  background: linear-gradient(90deg, #607f8c, #d58a70);
+}
+
+.magnitude-recall-tick,
+.magnitude-recall-marker {
+  position: absolute;
+  left: calc(14px + (100% - 28px) * var(--recall-left) / 100);
+  transform: translateX(-50%);
+  display: grid;
+  justify-items: center;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.magnitude-recall-tick {
+  top: 45px;
+  gap: 20px;
+  color: var(--muted);
+  font-size: 8px;
+  font-weight: 850;
+}
+
+.magnitude-recall-tick i {
+  width: 1px;
+  height: 16px;
+  background: var(--line);
+}
+
+.magnitude-recall-tick.major i {
+  height: 22px;
+  background: var(--ink);
+}
+
+.magnitude-recall-marker {
+  top: 31px;
+  gap: 36px;
+  color: var(--accent);
+  font-size: 8px;
+  font-weight: 900;
+}
+
+.magnitude-recall-marker i {
+  width: 14px;
+  height: 14px;
+  border: 2px solid white;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px rgba(232, 111, 54, .28);
+}
+
+.magnitude-recall-marker.correct {
+  color: #405936;
+}
+
+.magnitude-recall-marker.correct i {
+  background: var(--sage);
+  box-shadow: 0 0 0 2px rgba(90, 120, 77, .28);
+}
+
+.magnitude-recall-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: end;
+}
+
+.magnitude-recall-controls label {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 850;
+}
+
+.magnitude-recall-controls input {
+  width: 120px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+  color: var(--ink);
+  padding: 8px;
+  font-size: 10px;
+}
+
+.magnitude-recall-feedback {
+  position: relative;
+  display: grid;
+  gap: 10px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.magnitude-recall-feedback > strong {
+  font-size: 13px;
+  color: #405936;
+}
+
+.magnitude-recall-feedback.incorrect > strong {
+  color: #8e3d29;
+}
+
+.magnitude-recall-feedback dl {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px;
+  margin: 0;
+}
+
+.magnitude-recall-feedback dl div {
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: white;
+  padding: 8px;
+  min-width: 0;
+}
+
+.magnitude-recall-feedback dt {
+  color: var(--muted);
+  font-size: 8px;
+  font-weight: 900;
+}
+
+.magnitude-recall-feedback dd {
+  margin: 4px 0 0;
+  font-size: 10px;
+  font-weight: 900;
+  overflow-wrap: anywhere;
+}
+
+.magnitude-recall-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.magnitude-recall-meta span {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: white;
+  color: var(--muted);
+  padding: 5px 7px;
+  font-size: 8px;
+  font-weight: 850;
+}
+
+.magnitude-recall-feedback textarea {
+  width: 100%;
+  min-height: 112px;
+  resize: vertical;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #272824;
+  color: white;
+  padding: 9px;
+  font-size: 10px;
+  font-family: ui-monospace, Consolas, monospace;
+}
+
+.magnitude-recall-feedback small {
+  color: var(--muted);
+  font-size: 8px;
+}
+
+.magnitude-recall-range-band {
+  position: absolute;
+  left: calc(14px + (100% - 28px) * var(--recall-left) / 100);
+  top: -68px;
+  width: calc((100% - 28px) * var(--recall-width) / 100);
+  height: 10px;
+  border-radius: 99px;
+  background: rgba(90, 120, 77, .2);
+  pointer-events: none;
+}
+
+@media (max-width: 720px) {
+  .magnitude-recall-study,
+  .magnitude-recall-answer-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .magnitude-recall-feedback dl {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .magnitude-recall-header {
+    grid-template-columns: 1fr auto;
+  }
+
+  .magnitude-recall-header small {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 520px) {
+  .magnitude-recall-feedback dl {
+    grid-template-columns: 1fr;
+  }
+
+  .magnitude-recall-controls {
+    align-items: stretch;
+  }
+
+  .magnitude-recall-controls label,
+  .magnitude-recall-controls input,
+  .magnitude-recall-controls button {
+    width: 100%;
+  }
+}

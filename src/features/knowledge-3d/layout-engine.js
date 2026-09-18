@@ -1,4 +1,11 @@
-import { resolveMeasurementForLogScale } from "./measurements.js";
+import {
+  magnitudeValueFromMeasurement,
+  normalizeMagnitudeValue,
+  SECONDS_PER_MILLION_YEARS,
+  TIME_UNIT_SI,
+  timeMagnitudeFromMaInterval,
+} from "./magnitude.js";
+import { LENGTH_UNIT_SI } from "./measurements.js";
 
 export const VISUALIZATION_LAYOUT_SCHEMA_VERSION = "1.0.0";
 
@@ -11,18 +18,66 @@ export const SEMANTIC_LAYER_Y = Object.freeze({
 export const DEFAULT_SIZE_QUANTITY_KIND = "body_length";
 export const SIZE_LAYOUT_SCALE = 6;
 export const SIZE_LAYOUT_DEFAULT_UNSET_X = 10;
+export const SIZE_BOARD_ID = "quantity:body_length";
+export const SIZE_BOARD_Z = 0;
+export const MAGNITUDE_QUANTITY_BOARD_Z = -3.8;
+export const TIME_MAGNITUDE_BOARD_ID = "time:duration";
+export const TIME_MAGNITUDE_BOARD_Z = 3.8;
+export const TIME_MAGNITUDE_UNIT_LABEL = "Ma";
 
 const HOME_RADIUS_BY_LAYER = Object.freeze({
   experience: 3.5,
   referent: 5,
   conceptual: 6.5,
 });
+const BOARD_AXIS_Y = -0.55;
+const BOARD_MIN_Y = -0.82;
+const BOARD_MAX_Y = 2.42;
+const BOARD_X_PADDING = 1.2;
+const BOARD_UNSET_PADDING = 2.8;
+const MAGNITUDE_TICK_MULTIPLIERS = Object.freeze([1, 2, 5]);
 
 /**
  * @typedef {import('./visualization-graph.js').VisualizationGraphV1} VisualizationGraphV1
  * @typedef {import('./visualization-graph.js').VisualizationNode} VisualizationNode
  * @typedef {import('./visualization-graph.js').VisualizationEdge} VisualizationEdge
- * @typedef {"home"|"relation"|"size"} LayoutMode
+ * @typedef {"home"|"relation"|"size"|"magnitude"} LayoutMode
+ * @typedef {"quantity"|"time"} MagnitudeAxisKind
+ */
+
+/**
+ * @typedef {object} LayoutAxisTick
+ * @property {number} valueSI
+ * @property {number} normalizedScalar
+ * @property {number} x
+ * @property {string} label
+ * @property {boolean} major
+ */
+
+/**
+ * Display-only board metadata for renderers. Coordinates describe the derived
+ * visualization surface only; they are not persisted to Project JSON or the KG.
+ *
+ * @typedef {object} LayoutBoard
+ * @property {string} id
+ * @property {"quantity"|"time"} axisKind
+ * @property {string} axisLabel
+ * @property {"log"|"linear"} normalization
+ * @property {string} unitSI
+ * @property {string} unitLabel
+ * @property {number} referenceValueSI
+ * @property {number} scale
+ * @property {number} xMin
+ * @property {number} xMax
+ * @property {number} axisMinX
+ * @property {number} axisMaxX
+ * @property {number} yMin
+ * @property {number} yMax
+ * @property {number} axisY
+ * @property {number} z
+ * @property {number|null} unsetAreaX
+ * @property {string|null} unsetLabel
+ * @property {LayoutAxisTick[]} ticks
  */
 
 /**
@@ -34,6 +89,8 @@ const HOME_RADIUS_BY_LAYER = Object.freeze({
  * @property {string} zone
  * @property {string} semanticLayer
  * @property {string} mappingStatus
+ * @property {string|null} boardId
+ * @property {number|null} normalizedScalar
  * @property {number} radius
  * @property {number|null} representativeValue
  * @property {{minSI:number, maxSI:number}|null} rangeSI
@@ -58,16 +115,17 @@ const HOME_RADIUS_BY_LAYER = Object.freeze({
  * @property {LayoutMode} mode
  * @property {LayoutNode[]} nodes
  * @property {LayoutEdge[]} edges
- * @property {{sourceGraphSchemaVersion:string, quantityKind:string|null, unsetAreaX:number}} metadata
+ * @property {{sourceGraphSchemaVersion:string, quantityKind:string|null, unsetAreaX:number, boards:LayoutBoard[]}} metadata
  */
 
 /**
  * @param {VisualizationGraphV1} graph
- * @param {{mode?: LayoutMode, quantityKind?: string, sizeScale?: number, unsetAreaX?: number}} [options]
+ * @param {{mode?: LayoutMode, quantityKind?: string, sizeScale?: number, unsetAreaX?: number, magnitudeAxisKind?: MagnitudeAxisKind}} [options]
  * @returns {VisualizationLayout}
  */
 export function layoutVisualizationGraph(graph, options = {}) {
   const mode = options.mode || "home";
+  if (mode === "magnitude") return magnitudeLayout(graph, options);
   if (mode === "size") return sizeLayout(graph, options);
   if (mode === "relation") return relationLayout(graph);
   return homeLayout(graph);
@@ -78,7 +136,7 @@ export function layoutVisualizationGraph(graph, options = {}) {
  * this projection in the layout layer prevents the UI count and selection
  * state from drifting away from what the renderer can actually display.
  * @param {VisualizationGraphV1} graph
- * @param {{mode?: LayoutMode}} [options]
+ * @param {{mode?: LayoutMode, magnitudeAxisKind?: MagnitudeAxisKind}} [options]
  */
 export function visualizationNodesForLayout(graph, options = {}) {
   const ids = new Set(layoutVisualizationGraph(graph, options).nodes.map((node) => node.id));
@@ -129,44 +187,110 @@ export function relationLayout(graph) {
 export function sizeLayout(graph, options = {}) {
   const quantityKind = options.quantityKind || DEFAULT_SIZE_QUANTITY_KIND;
   const scale = options.sizeScale ?? SIZE_LAYOUT_SCALE;
-  const sizeNodes = graph.nodes.filter(isSizeComparableNode);
+  const sizeNodes = graph.nodes.filter(isSizeComparableNode).sort(compareById);
   const resolvedNodes = sizeNodes.map((node) => ({
     node,
     resolved: resolveMeasurement(node, quantityKind),
   }));
   const scaledXs = resolvedNodes
     .filter((entry) => entry.resolved)
-    .map((entry) => Math.log10(entry.resolved.representativeValue) * scale);
+    .map((entry) => entry.resolved.normalizedScalar * scale);
   const unsetAreaX = options.unsetAreaX
     ?? round(Math.max(SIZE_LAYOUT_DEFAULT_UNSET_X, ...scaledXs.map((x) => x + 3)));
+  const board = quantityBoard({
+    boardId: SIZE_BOARD_ID,
+    quantityKind,
+    scale,
+    scaledXs,
+    unsetAreaX,
+    z: SIZE_BOARD_Z,
+  });
 
   let unsetIndex = 0;
+  const scaledLaneCounts = new Map();
   const nodes = resolvedNodes.map(({ node, resolved }) => {
     if (!resolved) {
       const next = unsetIndex;
       unsetIndex += 1;
       return layoutNode(node, {
-        // Semantic depth already has its own Y axis. Adding it again to X
-        // pushed conceptual unset nodes off-screen and made the zone appear
-        // empty even though the nodes existed.
         x: unsetAreaX,
-        y: semanticY(node),
-        z: round((next % 12) - 5.5 + Math.floor(next / 12) * 1.25),
+        y: boardLaneY(node, next),
+        z: board.z,
         zone: "unset",
+        boardId: board.id,
       });
     }
 
+    const laneIndex = scaledLaneCounts.get(node.semanticLayer) || 0;
+    scaledLaneCounts.set(node.semanticLayer, laneIndex + 1);
     return layoutNode(node, {
-      x: round(Math.log10(resolved.representativeValue) * scale),
-      y: semanticY(node),
-      z: round(stableJitter(node.id) * 2),
+      x: round(resolved.normalizedScalar * scale),
+      y: boardLaneY(node, laneIndex),
+      z: board.z,
       zone: "scaled",
-      representativeValue: resolved.representativeValue,
+      boardId: board.id,
+      normalizedScalar: resolved.normalizedScalar,
+      representativeValue: resolved.representativeValueSI,
       rangeSI: resolved.rangeSI,
     });
   });
 
-  return buildLayout("size", graph, nodes, quantityKind, unsetAreaX);
+  return buildLayout("size", graph, nodes, quantityKind, unsetAreaX, [board]);
+}
+
+/**
+ * Project either body length or geological interval duration onto one selected
+ * magnitude board. The time board intentionally uses duration magnitude
+ * (interval width) rather than chronological position.
+ *
+ * @param {VisualizationGraphV1} graph
+ * @param {{quantityKind?: string, sizeScale?: number, unsetAreaX?: number, magnitudeAxisKind?: MagnitudeAxisKind}} [options]
+ * @returns {VisualizationLayout}
+ */
+export function magnitudeLayout(graph, options = {}) {
+  const quantityKind = options.quantityKind || DEFAULT_SIZE_QUANTITY_KIND;
+  const scale = options.sizeScale ?? SIZE_LAYOUT_SCALE;
+  const axisKind = options.magnitudeAxisKind === "time" ? "time" : "quantity";
+  const quantityNodes = graph.nodes.filter(isQuantityMagnitudeNode).sort(compareById);
+  const timeNodes = graph.nodes.filter(isTimeMagnitudeNode).sort(compareById);
+  const quantityEntries = quantityNodes.map((node) => ({
+    node,
+    resolved: resolveMeasurement(node, quantityKind),
+  }));
+  const timeEntries = timeNodes.map((node) => ({
+    node,
+    resolved: resolveTimeMagnitude(node),
+  }));
+  const entries = axisKind === "time" ? timeEntries : quantityEntries;
+  const scaledXs = entries
+    .filter((entry) => entry.resolved)
+    .map((entry) => entry.resolved.normalizedScalar * scale);
+  const unsetAreaX = options.unsetAreaX
+    ?? round(Math.max(SIZE_LAYOUT_DEFAULT_UNSET_X, ...scaledXs.map((x) => x + 3)));
+  const axisMinX = round(Math.min(-SIZE_LAYOUT_SCALE, ...scaledXs) - BOARD_X_PADDING);
+  const axisMaxX = round(Math.max(SIZE_LAYOUT_SCALE, ...scaledXs) + BOARD_X_PADDING);
+  const quantity = quantityBoard({
+    boardId: SIZE_BOARD_ID,
+    quantityKind,
+    scale,
+    scaledXs,
+    unsetAreaX,
+    z: MAGNITUDE_QUANTITY_BOARD_Z,
+    axisMinX,
+    axisMaxX,
+  });
+  const time = timeBoard({
+    scale,
+    scaledXs,
+    unsetAreaX,
+    z: TIME_MAGNITUDE_BOARD_Z,
+    axisMinX,
+    axisMaxX,
+  });
+
+  const board = axisKind === "time" ? time : quantity;
+  const nodes = boardLayoutNodes(entries, board);
+  return buildLayout("magnitude", graph, nodes, quantityKind, unsetAreaX, [board]);
 }
 
 /**
@@ -175,9 +299,10 @@ export function sizeLayout(graph, options = {}) {
  * @param {LayoutNode[]} nodes
  * @param {string|null} quantityKind
  * @param {number} [unsetAreaX]
+ * @param {LayoutBoard[]} [boards]
  * @returns {VisualizationLayout}
  */
-function buildLayout(mode, graph, nodes, quantityKind, unsetAreaX = 14) {
+function buildLayout(mode, graph, nodes, quantityKind, unsetAreaX = 14, boards = []) {
   const nodeIds = new Set(nodes.map((node) => node.id));
   return {
     schemaVersion: VISUALIZATION_LAYOUT_SCHEMA_VERSION,
@@ -191,13 +316,14 @@ function buildLayout(mode, graph, nodes, quantityKind, unsetAreaX = 14) {
       sourceGraphSchemaVersion: graph.schemaVersion,
       quantityKind,
       unsetAreaX,
+      boards,
     },
   };
 }
 
 /**
  * @param {VisualizationNode} node
- * @param {{x:number, y:number, z:number, zone:string, representativeValue?:number|null, rangeSI?:{minSI:number, maxSI:number}|null}} position
+ * @param {{x:number, y:number, z:number, zone:string, boardId?:string|null, normalizedScalar?:number|null, representativeValue?:number|null, rangeSI?:{minSI:number, maxSI:number}|null}} position
  * @returns {LayoutNode}
  */
 function layoutNode(node, position) {
@@ -209,6 +335,8 @@ function layoutNode(node, position) {
     zone: position.zone,
     semanticLayer: node.semanticLayer,
     mappingStatus: node.mappingStatus,
+    boardId: position.boardId ?? null,
+    normalizedScalar: position.normalizedScalar ?? null,
     radius: nodeRadius(node),
     representativeValue: position.representativeValue ?? null,
     rangeSI: position.rangeSI ?? null,
@@ -262,17 +390,44 @@ function buildDegreeMap(graph) {
 /**
  * @param {VisualizationNode} node
  * @param {string} quantityKind
- * @returns {{representativeValue:number, rangeSI:{minSI:number, maxSI:number}|null}|null}
+ * @returns {{representativeValueSI:number, normalizedScalar:number, rangeSI:{minSI:number, maxSI:number}|null}|null}
  */
 function resolveMeasurement(node, quantityKind) {
   const measurement = (node.measurements || []).find((item) => item.quantityKind === quantityKind);
   if (!measurement) return null;
-  return resolveMeasurementForLogScale(measurement);
+  return normalizeMagnitudeValue(magnitudeValueFromMeasurement(measurement), sizeMagnitudeAxis(quantityKind));
+}
+
+/**
+ * @param {VisualizationNode} node
+ * @returns {{representativeValueSI:number, normalizedScalar:number, rangeSI:{minSI:number, maxSI:number}|null}|null}
+ */
+function resolveTimeMagnitude(node) {
+  return normalizeMagnitudeValue(timeMagnitudeFromMaInterval({
+    startMa: node.data?.startMa,
+    endMa: node.data?.endMa,
+    source: {
+      referenceIds: node.referenceIds,
+      sourceNodeIds: node.sourceNodeIds,
+    },
+  }), timeMagnitudeAxis());
 }
 
 /** @param {VisualizationNode} node */
 function isSizeComparableNode(node) {
   return node.kind === "concept" || node.kind === "entity";
+}
+
+/** @param {VisualizationNode} node */
+function isQuantityMagnitudeNode(node) {
+  return isSizeComparableNode(node) && !isTimeMagnitudeNode(node);
+}
+
+/** @param {VisualizationNode} node */
+function isTimeMagnitudeNode(node) {
+  return node.kind === "landmark"
+    || node.data?.referenceAxis === "geological-time"
+    || node.data?.axis === "geological-time";
 }
 
 /** @param {VisualizationNode} node */
@@ -296,9 +451,198 @@ function stableAngle(id) {
   return stableUnit(id) * Math.PI * 2;
 }
 
-/** @param {string} id */
-function stableJitter(id) {
-  return stableUnit(id) - 0.5;
+/**
+ * @param {{boardId:string, quantityKind:string, scale:number, scaledXs:number[], unsetAreaX:number, z:number, axisMinX?:number, axisMaxX?:number}} options
+ * @returns {LayoutBoard}
+ */
+function quantityBoard(options) {
+  const scaledMin = Math.min(-SIZE_LAYOUT_SCALE, ...options.scaledXs);
+  const scaledMax = Math.max(SIZE_LAYOUT_SCALE, ...options.scaledXs);
+  const axisMinX = options.axisMinX ?? round(scaledMin - BOARD_X_PADDING);
+  const axisMaxX = options.axisMaxX ?? round(scaledMax + BOARD_X_PADDING);
+  const xMax = round(Math.max(axisMaxX, options.unsetAreaX + BOARD_UNSET_PADDING));
+  return {
+    id: options.boardId,
+    axisKind: "quantity",
+    axisLabel: options.quantityKind,
+    normalization: "log",
+    unitSI: LENGTH_UNIT_SI,
+    unitLabel: LENGTH_UNIT_SI,
+    referenceValueSI: 1,
+    scale: options.scale,
+    xMin: axisMinX,
+    xMax,
+    axisMinX,
+    axisMaxX,
+    yMin: BOARD_MIN_Y,
+    yMax: BOARD_MAX_Y,
+    axisY: BOARD_AXIS_Y,
+    z: options.z,
+    unsetAreaX: options.unsetAreaX,
+    unsetLabel: `unset: no ${options.quantityKind}`,
+    ticks: magnitudeAxisTicks(sizeMagnitudeAxis(options.quantityKind), {
+      scale: options.scale,
+      minX: axisMinX,
+      maxX: axisMaxX,
+      unitLabel: LENGTH_UNIT_SI,
+    }),
+  };
+}
+
+/**
+ * @param {{scale:number, scaledXs:number[], unsetAreaX:number, z:number, axisMinX?:number, axisMaxX?:number}} options
+ * @returns {LayoutBoard}
+ */
+function timeBoard(options) {
+  const scaledMin = Math.min(-SIZE_LAYOUT_SCALE, ...options.scaledXs);
+  const scaledMax = Math.max(SIZE_LAYOUT_SCALE, ...options.scaledXs);
+  const axisMinX = options.axisMinX ?? round(scaledMin - BOARD_X_PADDING);
+  const axisMaxX = options.axisMaxX ?? round(scaledMax + BOARD_X_PADDING);
+  const xMax = round(Math.max(axisMaxX, options.unsetAreaX + BOARD_UNSET_PADDING));
+  return {
+    id: TIME_MAGNITUDE_BOARD_ID,
+    axisKind: "time",
+    axisLabel: "duration",
+    normalization: "log",
+    unitSI: TIME_UNIT_SI,
+    unitLabel: TIME_MAGNITUDE_UNIT_LABEL,
+    referenceValueSI: SECONDS_PER_MILLION_YEARS,
+    scale: options.scale,
+    xMin: axisMinX,
+    xMax,
+    axisMinX,
+    axisMaxX,
+    yMin: BOARD_MIN_Y,
+    yMax: BOARD_MAX_Y,
+    axisY: BOARD_AXIS_Y,
+    z: options.z,
+    unsetAreaX: options.unsetAreaX,
+    unsetLabel: "unset: no duration",
+    ticks: magnitudeAxisTicks(timeMagnitudeAxis(), {
+      scale: options.scale,
+      minX: axisMinX,
+      maxX: axisMaxX,
+      unitLabel: TIME_MAGNITUDE_UNIT_LABEL,
+      labelValueSI: SECONDS_PER_MILLION_YEARS,
+    }),
+  };
+}
+
+/**
+ * @param {string} quantityKind
+ * @returns {import('./magnitude.js').MagnitudeAxis}
+ */
+function sizeMagnitudeAxis(quantityKind) {
+  return {
+    axisKind: "quantity",
+    normalization: "log",
+    quantityKind,
+    unitSI: LENGTH_UNIT_SI,
+    referenceValueSI: 1,
+  };
+}
+
+/**
+ * @returns {import('./magnitude.js').MagnitudeAxis}
+ */
+function timeMagnitudeAxis() {
+  return {
+    axisKind: "time",
+    normalization: "log",
+    unitSI: TIME_UNIT_SI,
+    referenceValueSI: SECONDS_PER_MILLION_YEARS,
+  };
+}
+
+/**
+ * @param {import('./magnitude.js').MagnitudeAxis} axis
+ * @param {{scale:number, minX:number, maxX:number, unitLabel:string, labelValueSI?:number}} options
+ * @returns {LayoutAxisTick[]}
+ */
+function magnitudeAxisTicks(axis, options) {
+  const minScalar = Math.floor(options.minX / options.scale);
+  const maxScalar = Math.ceil(options.maxX / options.scale);
+  const referenceValueSI = positiveFiniteNumber(axis.referenceValueSI) || 1;
+  const labelValueSI = positiveFiniteNumber(options.labelValueSI) || 1;
+  const ticks = [];
+  for (let exponent = minScalar - 1; exponent <= maxScalar + 1; exponent += 1) {
+    for (const multiplier of MAGNITUDE_TICK_MULTIPLIERS) {
+      const valueSI = multiplier * (10 ** exponent) * referenceValueSI;
+      const normalized = normalizeMagnitudeValue({
+        axisKind: axis.axisKind,
+        quantityKind: axis.quantityKind ?? null,
+        valueSI,
+        minSI: null,
+        maxSI: null,
+        unitSI: axis.unitSI,
+      }, axis);
+      if (!normalized) continue;
+      const x = round(normalized.normalizedScalar * options.scale);
+      if (x < options.minX - 0.000001 || x > options.maxX + 0.000001) continue;
+      ticks.push({
+        valueSI,
+        normalizedScalar: normalized.normalizedScalar,
+        x,
+        label: `${formatMagnitudeTick(valueSI / labelValueSI)} ${options.unitLabel}`,
+        major: multiplier === 1,
+      });
+    }
+  }
+  return ticks.sort((left, right) => left.x - right.x || left.valueSI - right.valueSI);
+}
+
+/**
+ * @param {{node:VisualizationNode, resolved:{representativeValueSI:number, normalizedScalar:number, rangeSI:{minSI:number, maxSI:number}|null}|null}[]} entries
+ * @param {LayoutBoard} board
+ * @returns {LayoutNode[]}
+ */
+function boardLayoutNodes(entries, board) {
+  let unsetIndex = 0;
+  const scaledLaneCounts = new Map();
+  return entries.map(({ node, resolved }) => {
+    if (!resolved) {
+      const next = unsetIndex;
+      unsetIndex += 1;
+      return layoutNode(node, {
+        x: board.unsetAreaX ?? SIZE_LAYOUT_DEFAULT_UNSET_X,
+        y: boardLaneY(node, next),
+        z: board.z,
+        zone: "unset",
+        boardId: board.id,
+      });
+    }
+
+    const laneIndex = scaledLaneCounts.get(node.semanticLayer) || 0;
+    scaledLaneCounts.set(node.semanticLayer, laneIndex + 1);
+    return layoutNode(node, {
+      x: round(resolved.normalizedScalar * board.scale),
+      y: boardLaneY(node, laneIndex),
+      z: board.z,
+      zone: "scaled",
+      boardId: board.id,
+      normalizedScalar: resolved.normalizedScalar,
+      representativeValue: resolved.representativeValueSI,
+      rangeSI: resolved.rangeSI,
+    });
+  });
+}
+
+/** @param {VisualizationNode} node @param {number} index */
+function boardLaneY(node, index) {
+  const lane = (index % 5) - 2;
+  const stack = Math.floor(index / 5);
+  return round(semanticY(node) + lane * 0.12 + stack * 0.18);
+}
+
+/** @param {number} value */
+function formatMagnitudeTick(value) {
+  if (value >= 1) return Number(value.toPrecision(4)).toLocaleString("en-US");
+  return Number(value.toPrecision(4)).toString();
+}
+
+/** @param {unknown} value */
+function positiveFiniteNumber(value) {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : null;
 }
 
 /** @param {string} id */
