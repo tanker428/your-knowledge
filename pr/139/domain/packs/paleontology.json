@@ -1,0 +1,89 @@
+{
+  "id": "paleontology",
+  "label": "自然史・古生物",
+  "icon": "🦴",
+  "description": "恐竜、進化、化石、地質時代",
+  "visitTemplate": {
+    "title": "恐竜・自然史博物館",
+    "description": "展示物、骨格、説明パネル、系統図を整理",
+    "icon": "🦕"
+  },
+  "categories": [
+    {
+      "id": "skeleton",
+      "label": "骨格標本"
+    },
+    {
+      "id": "fossil",
+      "label": "化石・標本"
+    },
+    {
+      "id": "restoration",
+      "label": "生体復元・模型"
+    },
+    {
+      "id": "trace",
+      "label": "足跡・痕跡"
+    },
+    {
+      "id": "rock-strata",
+      "label": "岩石・地層"
+    },
+    {
+      "id": "phylogeny",
+      "label": "系統図"
+    },
+    {
+      "id": "geologic-time",
+      "label": "地質年代・時間軸"
+    },
+    {
+      "id": "paleoenvironment",
+      "label": "古環境"
+    },
+    {
+      "id": "dinosaur",
+      "label": "恐竜"
+    },
+    {
+      "id": "saurischia",
+      "label": "竜盤類"
+    },
+    {
+      "id": "ornithischia",
+      "label": "鳥盤類"
+    },
+    {
+      "id": "pterosaur",
+      "label": "翼竜"
+    },
+    {
+      "id": "marine-reptile",
+      "label": "海生爬虫類"
+    },
+    {
+      "id": "mammal-human",
+      "label": "哺乳類・人類"
+    },
+    {
+      "id": "plant",
+      "label": "植物"
+    },
+    {
+      "id": "insect",
+      "label": "昆虫"
+    },
+    {
+      "id": "evolution",
+      "label": "進化・系統"
+    },
+    {
+      "id": "anatomy",
+      "label": "身体構造"
+    },
+    {
+      "id": "exhibit-space",
+      "label": "展示空間"
+    }
+  ]
+}
