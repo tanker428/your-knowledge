@@ -25,6 +25,17 @@ const LOG_SCALE = findMagnitudeRecallScale(BODY_LENGTH_LOG_RECALL_SCALE_ID);
 const LINEAR_SCALE = findMagnitudeRecallScale(BODY_LENGTH_LINEAR_RECALL_SCALE_ID);
 
 describe("body_length magnitude recall core", () => {
+  it("accepts an optional estimated range without changing error or default recall scoring", () => {
+    const input = { itemId: "range-dino", scaleId: LOG_SCALE.id, answerValueSI: 14, correctValueSI: 12, elapsedMs: 500, inputMethod: "numeric" };
+    const original = scoreMagnitudeRecallAnswer(input);
+    expect(original.correct).toBe(false);
+    expect(scoreMagnitudeRecallAnswer({ ...input, rangeSI: { minSI: 10, maxSI: 14 } }))
+      .toEqual({ ...original, correct: true });
+    for (const rangeSI of [{ minSI: 14, maxSI: 10 }, { minSI: -1, maxSI: 15 }, { minSI: NaN, maxSI: 15 }, { minSI: 0, maxSI: Infinity }]) {
+      expect(scoreMagnitudeRecallAnswer({ ...input, rangeSI })).toEqual(original);
+    }
+  });
+
   it("normalizes and denormalizes bounded log and linear scales without renderer coordinates", () => {
     expect(LOG_SCALE).not.toBeNull();
     expect(LINEAR_SCALE).not.toBeNull();

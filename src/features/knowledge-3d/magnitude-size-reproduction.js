@@ -1,4 +1,4 @@
-import { normalizeScaleBoundedValue } from "./magnitude-recall.js";
+import { denormalizeScaleUnitPosition, normalizeScaleBoundedValue } from "./magnitude-recall.js";
 import { LENGTH_UNIT_SI } from "./measurements.js";
 
 export const MAGNITUDE_SIZE_REPRODUCTION_SCHEMA_VERSION = "1.0.0";
@@ -154,6 +154,9 @@ export function buildSizeReproductionAnswer(input) {
     answerValueSI = sizeReproductionValueFromDrawLength(Number(input.drawLengthUnits), drawUnitsPerMeter);
   } else if (input?.valueSI !== undefined && input.valueSI !== null) {
     answerValueSI = finiteNumberOrNull(input.valueSI);
+  } else if (input?.answerU !== undefined && input.answerU !== null) {
+    const u = finiteNumberOrNull(input.answerU);
+    answerValueSI = u === null ? null : denormalizeScaleUnitPosition(u, scale);
   } else {
     answerValueSI = null;
   }

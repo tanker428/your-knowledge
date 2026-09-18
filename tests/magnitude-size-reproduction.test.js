@@ -116,6 +116,17 @@ describe("magnitude size reproduction answer normalization", () => {
     expect(answer?.u).toBeCloseTo(12 / 15, 12);
   });
 
+  it("converts scale u back to SI without treating log position as a length", () => {
+    const linear = buildSizeReproductionAnswer({ scale: LINEAR_SCALE, answerU: 0.8 });
+    const log = buildSizeReproductionAnswer({ scale: LOG_SCALE, answerU: 2 / 3 });
+    expect(linear?.answerValueSI).toBeCloseTo(12, 12);
+    expect(log?.answerValueSI).toBeCloseTo(10, 12);
+    expect(computeSizeReproductionGeometry({ answerValueSI: log.answerValueSI })?.answerLengthDrawUnits).toBeCloseTo(2.4, 12);
+    for (const answerU of [-0.1, 1.1, NaN, Infinity, "", null]) {
+      expect(buildSizeReproductionAnswer({ scale: LOG_SCALE, answerU })).toBeNull();
+    }
+  });
+
   it("rejects out-of-range and negative answers", () => {
     expect(
       buildSizeReproductionAnswer({ scale: LINEAR_SCALE, valueSI: -1 }),

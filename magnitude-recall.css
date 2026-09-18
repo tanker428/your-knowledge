@@ -8,6 +8,76 @@
   gap: 12px;
 }
 
+.magnitude-size-panel { min-width: 0; }
+.magnitude-size-help { margin: 0; font-size: 12px; color: var(--muted); }
+.magnitude-size-board {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: white;
+  padding: 16px 24px;
+}
+.magnitude-size-row { min-width: 0; font-size: 12px; }
+.magnitude-size-row > span { display: block; overflow-wrap: anywhere; }
+.magnitude-size-track {
+  position: relative;
+  height: 44px;
+  margin-top: 4px;
+  /* Every row shares this exact origin and width, including the pointer hit area. */
+  background: linear-gradient(var(--line), var(--line)) left center / 100% 1px no-repeat;
+}
+.magnitude-size-line {
+  position: absolute;
+  left: var(--size-left);
+  width: var(--size-width);
+  top: 50%;
+  border-top: 4px solid var(--accent);
+  transform: translateY(-50%);
+  box-sizing: border-box;
+}
+.magnitude-size-line::before,
+.magnitude-size-line::after {
+  content: "";
+  position: absolute;
+  top: -8px;
+  height: 12px;
+  border-left: 1px solid currentColor;
+}
+.magnitude-size-line::before { left: 0; }
+.magnitude-size-line::after { right: 0; }
+.magnitude-size-line.reference { border-top: 6px double #526b7d; }
+.magnitude-size-line.correct { border-top: 4px dashed #405936; }
+.magnitude-size-line.range { border-top: 4px dotted #766044; }
+.magnitude-size-line[hidden] { display: none; }
+.magnitude-size-endpoint {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 44px;
+  height: 44px;
+  border: 0;
+  background: transparent;
+  touch-action: none;
+  cursor: ew-resize;
+}
+.magnitude-size-endpoint::after {
+  content: "";
+  display: block;
+  margin: auto;
+  width: 10px;
+  height: 24px;
+  border: 2px solid white;
+  border-radius: 6px;
+  background: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.magnitude-size-endpoint:focus-visible { outline: 2px solid var(--accent); border-radius: 6px; }
+.magnitude-size-controls label:first-child { flex: 1 1 180px; }
+.magnitude-size-controls input[type="range"] { width: 100%; min-height: 44px; padding: 0; }
+.magnitude-size-panel small { font-size: 11px; color: var(--muted); }
+.magnitude-size-panel input[aria-invalid="true"] { outline: 2px solid #8e3d29; }
+
 .magnitude-recall-empty {
   display: grid;
   gap: 4px;
