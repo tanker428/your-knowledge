@@ -395,3 +395,104 @@
     width: 100%;
   }
 }
+
+.magnitude-count-panel {
+  min-width: 0;
+}
+
+.magnitude-count-question {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px;
+  line-height: 1.7;
+}
+
+.magnitude-count-panel p {
+  margin: 4px 0;
+  font-size: 12px;
+}
+
+.magnitude-count-area {
+  min-height: 110px;
+  border: 2px solid var(--accent);
+  border-radius: 12px;
+  padding: 16px;
+  background: #fbf8f0;
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+  touch-action: manipulation;
+  user-select: none;
+}
+
+.magnitude-count-area:focus-visible {
+  outline: 3px solid var(--ink);
+  outline-offset: 3px;
+}
+
+.magnitude-count-panel button:disabled {
+  cursor: default;
+  opacity: .5;
+}
+
+.magnitude-count-panel .magnitude-count-readout {
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.magnitude-count-gauge {
+  height: 16px;
+  background: #e9e4d9;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.magnitude-count-gauge span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+
+.magnitude-count-actions,
+.magnitude-count-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.magnitude-count-comparison {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.magnitude-count-comparison-track {
+  position: relative;
+  height: 70px;
+  margin: 0 8px;
+  border-bottom: 1px solid var(--ink);
+}
+
+.magnitude-count-answer-marker,
+.magnitude-count-correct-marker {
+  position: absolute;
+  height: 28px;
+  border-left: 4px solid var(--accent);
+  transform: translateX(-50%);
+}
+
+.magnitude-count-correct-marker {
+  top: 36px;
+  border-left: 4px dashed #405936;
+}
+
+.magnitude-count-range {
+  position: absolute;
+  top: 30px;
+  border-top: 4px dotted #405936;
+}
+
+.magnitude-count-legend {
+  padding-top: 8px;
+  font-size: 12px;
+}
