@@ -149,5 +149,6 @@ describe("magnitude recall panel", () => {
     expect(feedback.body.textContent).toContain("推定範囲 4 m - 5.5 m");
     expect(feedback.body.textContent).toContain("出典 rf-body-length-range");
     expect(feedback.querySelector("textarea")?.value).toContain('"inputMethod": "numeric"');
+    expect(feedback.querySelector("[data-magnitude-recall-download]")).not.toBeNull();
   });
 });

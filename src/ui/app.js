@@ -2951,6 +2951,16 @@ export async function initApp(deps) {
     $("[data-magnitude-recall-submit]")?.addEventListener("click", () => {
       commitMagnitudeRecallFromUi(recall);
     });
+    $("[data-magnitude-recall-download]")?.addEventListener("click", () => {
+      const result = state.magnitudeRecallSession?.result;
+      if (!result) return;
+      const blob = new Blob([JSON.stringify(result, null, 2)], { type: "application/json" });
+      const name = `magnitude-recall-${result.itemId}-${new Date().toISOString().slice(0, 10)}.json`;
+      void shareOrDownload(blob, name, "Magnitude Recall 結果").then((outcome) => {
+        if (outcome === "shared") showToast("学習結果を共有しました");
+        else if (outcome === "downloaded") showToast("学習結果を書き出しました");
+      });
+    });
     $("[data-magnitude-recall-next]")?.addEventListener("click", () => {
       const currentIndex = Math.max(0, recall.items.findIndex((item) => item.itemId === recall.item?.itemId));
       state.magnitudeRecallItemCursor = (currentIndex + 1) % recall.items.length;
