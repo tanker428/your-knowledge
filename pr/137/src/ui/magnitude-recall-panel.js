@@ -156,7 +156,10 @@ function renderFeedback(item, scale, session, result, answerU, correctU) {
     </dl>
     <div class="magnitude-recall-meta">${range}<span>単位 ${escapeHtml(item.unitSI)}</span>${source}<span>${item.estimated ? "推定値" : "確定値"}</span></div>
     <textarea readonly aria-label="TrialResult JSON">${escapeHtml(JSON.stringify(result, null, 2))}</textarea>
-    <button type="button" class="primary-button" data-magnitude-recall-next>次の問題</button>
+    <div class="magnitude-recall-feedback-actions">
+      <button type="button" class="text-button" data-magnitude-recall-download>結果をJSONで保存</button>
+      <button type="button" class="primary-button" data-magnitude-recall-next>次の問題</button>
+    </div>
     <small>u=${answerU == null ? "-" : formatUnit(answerU)} / correct=${correctU == null ? "-" : formatUnit(correctU)} / ${escapeHtml(session.scaleId)}</small>
   </div>`;
 }
