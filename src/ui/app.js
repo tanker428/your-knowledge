@@ -100,7 +100,23 @@ import {
   QUIZ_QUESTION_TYPES,
   scoreQuizAnswer,
 } from "../features/knowledge-graph/quiz-generation.js";
-import { getReferenceChildren } from "../domain/reference-registry.js";
+import {
+  getReferenceChildren,
+  getReferenceGraphByAxis,
+  getReferenceNodeById,
+  getReferenceParents,
+  getVisibleReferenceRoots,
+} from "../domain/reference-registry.js";
+import {
+  DEFAULT_TAXONOMY_INITIAL_EXPAND_DEPTH,
+  expandTaxonomyNodePath,
+  getInitialTaxonomyExpandedIds,
+  getVisibleTaxonomyRows,
+  resolveTaxonomyRootIds,
+  searchTaxonomyNodes,
+  setTaxonomyNodeExpanded,
+  taxonomyDisplayLabel,
+} from "../features/reference-taxonomy/taxonomy-tree-model.js";
 import { LOCAL_USER_ID, mergeQuizResultsIntoLearningEvents, rebuildUserKnowledgeStates, recordQuizLearning, removeVisitLearningRecords } from "../domain/learning-state.js";
 import { getLearnedReferenceFacts } from "../domain/learned-reference-facts.js";
 import { buildCollectionProgressForView } from "../features/collections/collection-progress.js";
@@ -288,6 +304,11 @@ export async function initApp(deps) {
     /** @type {string|null} */
     knowledgeObservationId: "o07a",
     knowledgeSearch: "",
+    /** @type {Set<string>|null} */
+    taxonomyExpanded: null,
+    /** @type {string|null} */
+    taxonomyFocusedNodeId: null,
+    taxonomySearch: "",
     deck: "observed",
     quizIndex: 0,
     quizScore: 0,
@@ -699,6 +720,7 @@ export async function initApp(deps) {
     if (viewName === "photos") renderPhotos();
     if (viewName === "organize") renderOrganize();
     if (viewName === "knowledge") renderKnowledge();
+    if (viewName === "taxonomy") renderTaxonomy();
     if (viewName === "learn") renderLearn();
     if (viewName === "collection") renderCollections();
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -2796,6 +2818,231 @@ export async function initApp(deps) {
     $$('[data-open-photo]').forEach((button) => button.addEventListener("click", () => openPhotoModal(button.dataset.openPhoto)));
   }
 
+  /** @returns {import('../domain/reference-registry.js').ReferenceGraph} */
+  function taxonomyReferenceGraph() {
+    return getReferenceGraphByAxis(referenceData.graph, "taxonomy");
+  }
+
+  /**
+   * @param {import('../domain/reference-registry.js').ReferenceGraph} graph
+   * @returns {string[]}
+   */
+  function taxonomyRootIds(graph) {
+    return resolveTaxonomyRootIds(graph, getVisibleReferenceRoots(referenceData.graph, "taxonomy"));
+  }
+
+  /**
+   * @param {import('../domain/reference-registry.js').ReferenceGraph} graph
+   * @param {string[]} rootIds
+   */
+  function ensureTaxonomyState(graph, rootIds) {
+    if (!state.taxonomyExpanded) {
+      state.taxonomyExpanded = getInitialTaxonomyExpandedIds(
+        graph,
+        rootIds,
+        DEFAULT_TAXONOMY_INITIAL_EXPAND_DEPTH,
+      );
+    }
+    if (!state.taxonomyFocusedNodeId || !getReferenceNodeById(graph, state.taxonomyFocusedNodeId)) {
+      state.taxonomyFocusedNodeId = rootIds[0] || null;
+    }
+  }
+
+  function renderTaxonomy() {
+    const graph = taxonomyReferenceGraph();
+    const rootIds = taxonomyRootIds(graph);
+    ensureTaxonomyState(graph, rootIds);
+    const expanded = state.taxonomyExpanded || new Set();
+    const rows = getVisibleTaxonomyRows(graph, rootIds, expanded);
+    const focusedNode = state.taxonomyFocusedNodeId
+      ? getReferenceNodeById(graph, state.taxonomyFocusedNodeId)
+      : null;
+    const matches = searchTaxonomyNodes(graph, state.taxonomySearch, { limit: 18 });
+    const verifiedCount = graph.nodes.filter((node) => node.status === "verified").length;
+    const displayOnlyCount = graph.nodes.filter((node) => node.quizEligible === false).length;
+    const badge = $("#taxonomyDataBadge");
+    if (badge) {
+      badge.textContent = verifiedCount === graph.nodes.length
+        ? "verified"
+        : `${verifiedCount}/${graph.nodes.length} verified`;
+    }
+    const search = $("#taxonomySearch");
+    if (search) search.value = state.taxonomySearch;
+    $("#taxonomyStats").innerHTML = `<article><strong>${rows.length}</strong><span>表示中</span></article><article><strong>${graph.nodes.length}</strong><span>分類ノード</span></article><article><strong>${verifiedCount}</strong><span>verified</span></article><article><strong>${displayOnlyCount}</strong><span>表示専用</span></article>`;
+    $("#taxonomySearchResults").innerHTML = renderTaxonomySearchResults(matches);
+    $("#taxonomyTree").innerHTML = rows.length
+      ? rows.map((row) => renderTaxonomyTreeRow(graph, row)).join("")
+      : '<div class="empty-state"><strong>分類ルートが見つかりません</strong><p>参照データのtaxonomy軸とmanifestのdisplayRootIdsByAxisを確認してください。</p></div>';
+    $("#taxonomyDetail").innerHTML = renderTaxonomyDetail(graph, focusedNode);
+    bindTaxonomyMapEvents(graph);
+  }
+
+  /**
+   * @param {import('../features/reference-taxonomy/taxonomy-tree-model.js').TaxonomySearchResult[]} matches
+   */
+  function renderTaxonomySearchResults(matches) {
+    if (!state.taxonomySearch.trim()) return "";
+    if (!matches.length) return '<div class="taxonomy-search-empty">該当なし</div>';
+    return matches.map((result) => {
+      const scientific = result.scientificName && result.scientificName !== result.label
+        ? `<small>${escapeHtml(result.scientificName)}</small>`
+        : "";
+      return `<button type="button" data-taxonomy-focus="${escapeHtml(result.node.id)}"><strong>${escapeHtml(result.label)}</strong>${scientific}<span>${escapeHtml(result.rank || "taxon")}</span></button>`;
+    }).join("");
+  }
+
+  /**
+   * @param {import('../domain/reference-registry.js').ReferenceGraph} graph
+   * @param {import('../features/reference-taxonomy/taxonomy-tree-model.js').TaxonomyTreeRow} row
+   */
+  function renderTaxonomyTreeRow(graph, row) {
+    const label = taxonomyDisplayLabel(graph, row.node);
+    const scientific = row.node.scientificName && row.node.scientificName !== label
+      ? `<small>${escapeHtml(row.node.scientificName)}</small>`
+      : "";
+    const toggle = row.childCount
+      ? `<button class="taxonomy-node-toggle" type="button" data-taxonomy-toggle="${escapeHtml(row.id)}" aria-label="${escapeHtml(label)}を${row.expanded ? "閉じる" : "開く"}">${row.expanded ? "-" : "+"}</button>`
+      : '<span class="taxonomy-node-toggle empty" aria-hidden="true"></span>';
+    const badges = [
+      row.node.rank || "taxon",
+      row.node.status || "unknown",
+      row.node.quizEligible === false ? "display" : "",
+      row.childCount ? `${row.childCount} children` : "",
+    ].filter(Boolean);
+    return `<div class="taxonomy-tree-row ${row.id === state.taxonomyFocusedNodeId ? "active" : ""} ${row.node.quizEligible === false ? "display-only" : ""}" data-taxonomy-row="${escapeHtml(row.id)}" role="treeitem" aria-level="${row.depth + 1}" ${row.childCount ? `aria-expanded="${row.expanded}"` : ""} style="--tree-depth:${row.depth}">${toggle}<button class="taxonomy-node-card" type="button" data-taxonomy-select="${escapeHtml(row.id)}"><span class="taxonomy-node-main"><strong>${escapeHtml(label)}</strong>${scientific}</span><span class="taxonomy-node-badges">${badges.map((badge) => `<i>${escapeHtml(badge)}</i>`).join("")}</span></button></div>`;
+  }
+
+  /**
+   * @param {import('../domain/reference-registry.js').ReferenceGraph} graph
+   * @param {import('../domain/reference-registry.js').ReferenceNode|null} node
+   */
+  function renderTaxonomyDetail(graph, node) {
+    if (!node) {
+      return '<div class="empty-state"><strong>分類ノードを選択してください</strong><p>ツリーまたは検索結果から詳細を表示できます。</p></div>';
+    }
+    const label = taxonomyDisplayLabel(graph, node);
+    const scientific = node.scientificName && node.scientificName !== label
+      ? `<p class="taxonomy-scientific-name">${escapeHtml(node.scientificName)}</p>`
+      : "";
+    const parents = getReferenceParents(graph, node.id).filter(isTaxonomyDetailNode);
+    const children = getReferenceChildren(graph, node.id).filter(isTaxonomyDetailNode);
+    const lineage = taxonomyLineage(graph, node);
+    return `<div class="taxonomy-detail-header"><span>${escapeHtml(node.status || "unknown")}</span><h2>${escapeHtml(label)}</h2>${scientific}</div><dl class="taxonomy-detail-meta"><div><dt>rank</dt><dd>${escapeHtml(node.rank || "taxon")}</dd></div><div><dt>quiz</dt><dd>${node.quizEligible === false ? "display only" : "eligible"}</dd></div><div><dt>id</dt><dd>${escapeHtml(node.id)}</dd></div></dl><div class="taxonomy-lineage">${lineage.map((item) => `<button type="button" data-taxonomy-focus="${escapeHtml(item.id)}">${escapeHtml(taxonomyDisplayLabel(graph, item))}</button>`).join("<span>/</span>")}</div><section class="taxonomy-detail-section"><h3>親分類</h3>${renderTaxonomyLinkList(graph, parents, "親分類なし")}</section><section class="taxonomy-detail-section"><h3>子分類</h3>${renderTaxonomyLinkList(graph, children, "子分類なし")}</section>`;
+  }
+
+  /**
+   * @param {import('../domain/reference-registry.js').ReferenceGraph} graph
+   * @param {import('../domain/reference-registry.js').ReferenceNode[]} nodes
+   * @param {string} emptyLabel
+   */
+  function renderTaxonomyLinkList(graph, nodes, emptyLabel) {
+    if (!nodes.length) return `<p class="muted-copy">${escapeHtml(emptyLabel)}</p>`;
+    return `<div class="taxonomy-link-list">${nodes.map((node) => {
+      const label = taxonomyDisplayLabel(graph, node);
+      const scientific = node.scientificName && node.scientificName !== label
+        ? `<small>${escapeHtml(node.scientificName)}</small>`
+        : "";
+      return `<button type="button" data-taxonomy-focus="${escapeHtml(node.id)}"><strong>${escapeHtml(label)}</strong>${scientific}</button>`;
+    }).join("")}</div>`;
+  }
+
+  /**
+   * @param {import('../domain/reference-registry.js').ReferenceGraph} graph
+   * @param {import('../domain/reference-registry.js').ReferenceNode} node
+   */
+  function taxonomyLineage(graph, node) {
+    const lineage = [node];
+    const seen = new Set([node.id]);
+    let current = node;
+    while (current) {
+      const parent = getReferenceParents(graph, current.id).find(isTaxonomyDetailNode);
+      if (!parent || seen.has(parent.id)) break;
+      seen.add(parent.id);
+      lineage.unshift(parent);
+      current = parent;
+    }
+    return lineage;
+  }
+
+  /** @param {import('../domain/reference-registry.js').ReferenceNode|null|undefined} node */
+  function isTaxonomyDetailNode(node) {
+    return Boolean(node && node.axis === "taxonomy" && node.internalOnly !== true);
+  }
+
+  /**
+   * @param {import('../domain/reference-registry.js').ReferenceGraph} graph
+   * @param {string} nodeId
+   * @param {boolean} [scroll]
+   */
+  function focusTaxonomyNode(graph, nodeId, scroll = false) {
+    if (!getReferenceNodeById(graph, nodeId)) return;
+    state.taxonomyFocusedNodeId = nodeId;
+    state.taxonomyExpanded = expandTaxonomyNodePath(
+      graph,
+      nodeId,
+      state.taxonomyExpanded || new Set(),
+    );
+    renderTaxonomy();
+    if (scroll) scrollTaxonomyRowIntoView(nodeId);
+  }
+
+  /** @param {string} nodeId */
+  function scrollTaxonomyRowIntoView(nodeId) {
+    requestAnimationFrame(() => {
+      const row = $$("[data-taxonomy-row]").find((item) => item.dataset.taxonomyRow === nodeId);
+      row?.scrollIntoView({ block: "center", behavior: "smooth" });
+    });
+  }
+
+  function resetTaxonomyExpansion() {
+    const graph = taxonomyReferenceGraph();
+    const rootIds = taxonomyRootIds(graph);
+    state.taxonomyExpanded = getInitialTaxonomyExpandedIds(
+      graph,
+      rootIds,
+      DEFAULT_TAXONOMY_INITIAL_EXPAND_DEPTH,
+    );
+    state.taxonomyFocusedNodeId = rootIds[0] || null;
+    renderTaxonomy();
+  }
+
+  function collapseTaxonomyExpansion() {
+    const graph = taxonomyReferenceGraph();
+    const rootIds = taxonomyRootIds(graph);
+    state.taxonomyExpanded = new Set();
+    state.taxonomyFocusedNodeId = rootIds[0] || null;
+    renderTaxonomy();
+  }
+
+  /** @param {import('../domain/reference-registry.js').ReferenceGraph} graph */
+  function bindTaxonomyMapEvents(graph) {
+    $$("[data-taxonomy-toggle]").forEach((button) => button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const nodeId = button.dataset.taxonomyToggle;
+      if (!nodeId) return;
+      const expanded = state.taxonomyExpanded || new Set();
+      state.taxonomyExpanded = setTaxonomyNodeExpanded(
+        expanded,
+        graph,
+        nodeId,
+        !expanded.has(nodeId),
+      );
+      state.taxonomyFocusedNodeId = nodeId;
+      renderTaxonomy();
+      scrollTaxonomyRowIntoView(nodeId);
+    }));
+    $$("[data-taxonomy-select]").forEach((button) => button.addEventListener("click", () => {
+      const nodeId = button.dataset.taxonomySelect;
+      if (!nodeId) return;
+      state.taxonomyFocusedNodeId = nodeId;
+      renderTaxonomy();
+    }));
+    $$("[data-taxonomy-focus]").forEach((button) => button.addEventListener("click", () => {
+      const nodeId = button.dataset.taxonomyFocus;
+      if (nodeId) focusTaxonomyNode(graph, nodeId, true);
+    }));
+  }
+
   function quizGenerationOptions() {
     return { scope: state.quizScope, difficulty: state.quizDifficulty, questionTypes: state.quizQuestionTypes };
   }
@@ -3725,6 +3972,7 @@ export async function initApp(deps) {
     renderPhotos();
     renderCollections();
     if ($("#view-knowledge").classList.contains("active")) renderKnowledge();
+    if ($("#view-taxonomy").classList.contains("active")) renderTaxonomy();
     if ($("#view-learn").classList.contains("active")) renderLearn();
   }
 
@@ -3956,6 +4204,15 @@ export async function initApp(deps) {
         renderKnowledge();
       },
     );
+    $("#taxonomySearch")?.addEventListener(
+      "input",
+      (/** @type {any} */ event) => {
+        state.taxonomySearch = event.target.value;
+        renderTaxonomy();
+      },
+    );
+    $("#taxonomyResetButton")?.addEventListener("click", resetTaxonomyExpansion);
+    $("#taxonomyCollapseButton")?.addEventListener("click", collapseTaxonomyExpansion);
 
     $$("#deckSwitch [data-deck]").forEach((button) =>
       button.addEventListener("click", () => {
